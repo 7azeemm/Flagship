@@ -19,23 +19,21 @@ impl SectionParser for StorageParser {
     }
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
-        if let Some(caps) = RegexCache::captures(r"(?i)\b((?:\d+)\s*(?:g|go|gb|t|to|tb)|(?:256|500|512|1024))\b", text) {
-            if let Some(m) = caps.get(1) {
-                let size = m.as_str().to_uppercase();
-                let number: u64 = size.chars()
-                    .take_while(|c| c.is_numeric())
-                    .collect::<String>()
-                    .parse().unwrap_or(0);
+        if let Some(str) = RegexCache::captures(r"(?i)\b((?:\d+)\s*(?:g|go|gb|t|to|tb)|(?:256|500|512|1024))\b", text, 1) {
+            let size = str.to_uppercase();
+            let number: u64 = size.chars()
+                .take_while(|c| c.is_numeric())
+                .collect::<String>()
+                .parse().unwrap_or(0);
 
-                let size = match size.contains("T") {
-                    true => format!("{number}TB"),
-                    false if number == 1024 => "1TB".to_string(),
-                    false if number == 2048 => "2TB".to_string(),
-                    false => format!("{number}GB")
-                };
+            let size = match size.contains("T") {
+                true => format!("{number}TB"),
+                false if number == 1024 => "1TB".to_string(),
+                false if number == 2048 => "2TB".to_string(),
+                false => format!("{number}GB")
+            };
 
-                product.filter_ids.insert("storage_size".to_string(), size);
-            }
+            product.filter_ids.insert("storage_size".to_string(), size);
         }
 
         let title = product.title.to_uppercase().replace(",", ".");
@@ -46,18 +44,5 @@ impl SectionParser for StorageParser {
         } else {
             product.filter_ids.insert("storage_type".to_string(), "HDD".to_string());
         }
-    }
-
-    fn post_processing(&self, product: &mut Product) -> Option<String> {
-        let mut specs = Vec::new();
-
-        if let Some(size) = product.filter_ids.get("storage_size") {
-            specs.push(size.clone());
-        }
-        if let Some(memory_type) = product.filter_ids.get("storage_type") {
-            specs.push(memory_type.clone());
-        }
-
-        Some(specs.join(" "))
     }
 }

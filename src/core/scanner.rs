@@ -28,7 +28,7 @@ use crate::core::retailers::megapc::MegaPC;
 
 static USE_CACHE: bool = false;
 static CATALOG_SCANNER: OnceLock<Arc<CatalogScanner>> = OnceLock::new();
-pub static PAGE_CACHE: Lazy<RwLock<HashMap<String, Vec<Product>>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+pub static PAGE_CACHE: Lazy<RwLock<HashMap<String, Product>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 pub static DESCRIPTION_CACHE: Lazy<RwLock<HashMap<String, ProductDescription>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 const DESCRIPTION_CACHE_PATH: &str = "state/descriptions.json";
 const PAGE_CACHE_PATH: &str = "state/page_cache.json";
@@ -62,6 +62,13 @@ impl CatalogScanner {
         });
         let _ = CATALOG_SCANNER.set(scanner.clone());
 
+        if USE_CACHE {
+            let mut storage = ProductStorage::get_storage().write().await;
+            storage.products = PAGE_CACHE.read().await.clone();
+            tracing::info!(products = storage.products.len(), "Using cached products");
+            return;
+        }
+
         tokio::spawn(async move {
             loop {
                 *scanner.next_scheduled_at.write().await = None;
@@ -82,7 +89,7 @@ impl CatalogScanner {
 
     async fn load_caches() {
         if USE_CACHE {
-            match FileLoader::load_or_default::<HashMap<String, Vec<Product>>>(PAGE_CACHE_PATH).await {
+            match FileLoader::load_or_default::<HashMap<String, Product>>(PAGE_CACHE_PATH).await {
                 Ok(cache) => *PAGE_CACHE.write().await = cache,
                 Err(error) => tracing::error!(%error, "Failed to load page cache")
             }
@@ -105,10 +112,8 @@ impl CatalogScanner {
     }
 
     async fn save_caches(&self) {
-        if USE_CACHE {
-            if let Err(error) = FileLoader::save_to_file(PAGE_CACHE_PATH, &*PAGE_CACHE.read().await).await {
-                tracing::error!(%error, "Failed to save page cache");
-            }
+        if let Err(error) = FileLoader::save_to_file(PAGE_CACHE_PATH, &ProductStorage::get_storage().read().await.products).await {
+            tracing::error!(%error, "Failed to save page cache");
         }
         if let Err(error) = FileLoader::save_to_file(DESCRIPTION_CACHE_PATH, &*DESCRIPTION_CACHE.read().await).await {
             tracing::error!(%error, "Failed to save description cache");
@@ -243,19 +248,6 @@ impl CatalogScanner {
         retailers: &[&'static str],
         report: &mut ScanReport,
     ) -> Vec<Product> {
-        if USE_CACHE {
-            let cached = PAGE_CACHE.read().await.values().flatten()
-                .filter(|product| {
-                    sections.contains(&product.section)
-                        && (retailers.is_empty() || retailers.contains(&product.site.as_str()))
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-
-            tracing::info!(products = cached.len(), "Using cached scrape products");
-            return cached;
-        }
-
         let start_time = Instant::now();
         let mut all_products = Vec::new();
         let mut page_reports = Vec::new();

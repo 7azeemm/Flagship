@@ -29,7 +29,7 @@ impl SectionParser for PCParser {
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let desc = product.description.clone().unwrap_or_default().replace("(5G)", "").replace("2.4", "");
-        let text = product.section.config().title_cleaner.replace_words(&format!("{text} | {desc}").to_uppercase(), true);
+        let text = product.section.config().replace_words(&format!("{text} | {desc}").to_uppercase(), true);
         let text = text.replace(" .6\"", ".6\"").replace(".,", ".").replace("GRAPHIQUE", "GRAPHICS")
             .replace("GRAPHIC ", "GRAPHICS ").replace("ᵉ", "E").replace("‑", "-").replace("™", "")
             .replace("®", "").replace("(TM)", "").replace("–", "").replace("PROCESSOR ", "")
@@ -101,8 +101,8 @@ impl SectionParser for PCParser {
             let pattern = r"(?i)(\d+)\s*(?:g|go|gb)\s+(?:(?:de\s+)?m[eé]moire\s+d[eé]di[eé]e|(?:gddr[0-9]|gddr\s*[0-9]))";
 
             // Using Pattern
-            if let Some(caps) = RegexCache::captures(&pattern, &text) {
-                if let Some(size) = caps.get(1).and_then(|v| v.as_str().parse::<i32>().ok()) {
+            if let Some(str) = RegexCache::captures(&pattern, &text, 1) {
+                if let Ok(size) = str.parse::<i32>() {
                     if gpu_memories.contains(&size) {
                         gpu_memory = Some(size);
                     }
@@ -260,7 +260,7 @@ impl SectionParser for PCParser {
 }
 
 fn extract_cpu(text: &str) -> Option<SearchResult> {
-    let text = Section::CPU.config().title_cleaner.replace_words(&text, true);
+    let text = Section::CPU.config().replace_words(&text, true);
 
     // Dataset Search
     for node in &Section::CPU.parser().dataset().nodes {
@@ -288,8 +288,8 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
 
             if label.contains("i") {
                 let generation_pattern = r"(?i)\b([2-9]|1[0-4])\s*(?:th|é|e|è|éme|ème|eme|gén|gen)\s*(?:gen|gén|generation|génération)?\b";
-                if let Some(caps) = RegexCache::captures(&generation_pattern, &text) {
-                    if let Some(generation) = caps.get(1).and_then(|v| v.as_str().parse::<i32>().ok()) {
+                if let Some(str) = RegexCache::captures(&generation_pattern, &text, 1) {
+                    if let Ok(generation) = str.parse::<i32>() {
                         label.push_str(&format!(" {generation}th Gen"));
                     }
                 }
@@ -338,7 +338,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
 }
 
 fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<SearchResult> {
-    let text = Section::GPU.config().title_cleaner.replace_words(&text, true);
+    let text = Section::GPU.config().replace_words(&text, true);
     let has_dedicated_gpu = vec!["RTX", "RX", "GTX", " GT "].into_iter().any(|w| text.contains(w));
     let mut gpus: Vec<_> = vec![];
 
@@ -350,8 +350,7 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
         }
 
         // Skip if GPU is not available in that platform
-        let platform = node.data.get_str("platform");
-        match (section.is_laptop(), platform) {
+        match (section.is_laptop(), node.data.get_str("platform")) {
             (true, Some("laptop" | "both")) => {}
             (false, Some("both")) => {}
             (false, None) => {}

@@ -28,26 +28,20 @@ impl SectionParser for MemoryParser {
             "Desktop".to_string()
         });
 
-        if let Some(caps) = RegexCache::captures(r"(?i)\b(\d+)\s*(?:gb|go|g)\b", text) {
-            if let Some(size) = caps.get(1) {
-                product.filter_ids.insert("memory_size".to_string(), format!("{}GB", size.as_str()));
-            }
+        if let Some(size) = RegexCache::captures(r"(?i)\b(\d+)\s*(?:gb|go|g)\b", text, 1) {
+            product.filter_ids.insert("memory_size".to_string(), format!("{}GB", size));
         }
 
-        if let Some(caps) = RegexCache::captures(r"(?i)\b(ddr[345])\b", text) {
-            if let Some(m) = caps.get(1) {
-                product.filter_ids.insert("memory_type".to_string(), m.as_str().to_uppercase());
-            }
+        if let Some(memory_type) = RegexCache::captures(r"(?i)\b(ddr[345])\b", text, 1) {
+            product.filter_ids.insert("memory_type".to_string(), memory_type.to_uppercase());
         }
 
         let mut memory_speed = None;
 
-        if let Some(caps) = RegexCache::captures(r"(?i)\b(\d{3,5})\s*(?:MHz|MT|Hz)", text) {
-            if let Some(m) = caps.get(1) {
-                if let Ok(speed) = m.as_str().parse::<u32>() && speed <= 10000 {
-                    memory_speed = Some(speed);
-                    product.filter_ids.insert("memory_speed".to_string(), format!("{speed} MT/s"));
-                }
+        if let Some(str) = RegexCache::captures(r"(?i)\b(\d{3,5})\s*(?:MHz|MT|Hz)", text, 1) {
+            if let Ok(speed) = str.parse::<u32>() && speed <= 10000 {
+                memory_speed = Some(speed);
+                product.filter_ids.insert("memory_speed".to_string(), format!("{speed} Mhz"));
             }
         }
 
@@ -55,7 +49,7 @@ impl SectionParser for MemoryParser {
             for speed in vec![2400, 2666, 3200, 3600, 5200, 5600] {
                 if text.contains(&speed.to_string()) {
                     memory_speed = Some(speed);
-                    product.filter_ids.insert("memory_speed".to_string(), format!("{speed} MT/s"));
+                    product.filter_ids.insert("memory_speed".to_string(), format!("{speed} Mhz"));
                     break;
                 }
             }
@@ -69,23 +63,5 @@ impl SectionParser for MemoryParser {
                 10000..=u32::MAX => "",
             }.to_string());
         }
-    }
-
-    fn post_processing(&self, product: &mut Product) -> Option<String> {
-        let mut specs = Vec::new();
-
-        if let Some(size) = product.filter_ids.get("memory_size") {
-            specs.push(size.clone());
-        }
-
-        if let Some(memory_type) = product.filter_ids.get("memory_type") {
-            specs.push(memory_type.clone());
-        }
-
-        if let Some(speed) = product.filter_ids.get("memory_speed") {
-            specs.push(speed.clone());
-        }
-
-        Some(specs.join(" "))
     }
 }

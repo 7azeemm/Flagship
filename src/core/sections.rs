@@ -10,7 +10,6 @@ use crate::core::parsers::mouse_parser::MouseParser;
 use crate::core::parsers::pc_parser::PCParser;
 use crate::core::parsers::power_supply_parser::PowerSupplyParser;
 use crate::core::parsers::storage_parser::StorageParser;
-use crate::core::parsers::television_parser::TelevisionParser;
 use crate::core::parsers::{GenericSectionParser, SectionParser};
 use crate::utils::file_loader::FileLoader;
 use crate::utils::regex_cache::RegexCache;
@@ -119,18 +118,13 @@ pub struct SectionConfig {
     pub move_rules: Vec<Vec<String>>,
     pub move_by_description_rules: Vec<Vec<String>>,
     pub min_price: i32,
-    pub title_cleaner: TitleCleanerConfig,
-    pub brands: Vec<String>,
+    pub remove_words: Vec<String>,
+    pub replace_words: Vec<Vec<String>>,
+    pub add_brands_by_models: Vec<Vec<String>>,
     pub filters: Vec<String>,
     pub components: Vec<String>,
     pub group: Vec<String>,
-    pub datasets: HashMap<String, Section>,
-    #[serde(default = "default_id_field_name")]
-    pub id_field_name: String,
-}
-
-fn default_id_field_name() -> String {
-    "name".to_string()
+    pub main_field: Option<String>,
 }
 
 impl SectionConfig {
@@ -161,6 +155,21 @@ impl SectionConfig {
         *SECTION_PARSERS.write().unwrap() = parsers;
         Ok(count)
     }
+
+    pub fn replace_words(&self, text: &str, uppercase: bool) -> String {
+        let mut text = text.to_string();
+        for list in &self.replace_words {
+            if let (Some(from), Some(to)) = (list.first(), list.get(1)) {
+                let string = RegexCache::replace_all(&format!("(?i){}", regex::escape(from)), &text, to);
+                text = if uppercase {
+                    string.to_uppercase()
+                } else {
+                    string.to_string()
+                }
+            }
+        }
+        text
+    }
 }
 
 fn build_parser(
@@ -178,35 +187,9 @@ fn build_parser(
         Section::Headphones => Arc::new(HeadphonesParser { config, dataset }),
         Section::Console => Arc::new(ConsoleParser { config, dataset }),
         Section::ConsoleGame => Arc::new(ConsoleGameParser { config, dataset }),
-        Section::Monitor => Arc::new(MonitorParser { config, dataset }),
-        Section::Television => Arc::new(TelevisionParser { config, dataset }),
+        Section::Monitor | Section::Television => Arc::new(MonitorParser { config, dataset }),
         Section::PC | Section::GamingPC | Section::AllInOnePC | Section::MiniPC |
         Section::Laptop | Section::GamingLaptop | Section::MacBook => Arc::new(PCParser { config, dataset }),
         _ => Arc::new(GenericSectionParser { config, dataset }),
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(default)]
-pub struct TitleCleanerConfig {
-    pub remove_words: Vec<String>,
-    pub replace_words: Vec<Vec<String>>,
-    pub add_brands_by_models: Vec<Vec<String>>,
-}
-
-impl TitleCleanerConfig {
-    pub fn replace_words(&self, text: &str, uppercase: bool) -> String {
-        let mut text = text.to_string();
-        for list in &self.replace_words {
-            if let (Some(from), Some(to)) = (list.first(), list.get(1)) {
-                let string = RegexCache::replace_all(&format!("(?i){}", regex::escape(from)), &text, to);
-                text = if uppercase {
-                    string.to_uppercase()
-                } else {
-                    string.to_string()
-                }
-            }
-        }
-        text
     }
 }

@@ -20,7 +20,7 @@ use crate::core::retailers::tunewtec::TunewTec;
 use crate::core::retailers::tunisianet::Tunisianet;
 use crate::core::retailers::utils::{extract_basics, extract_prices, validate_url};
 use crate::core::retailers::wiki_tn::WikiTN;
-use crate::core::scanner::{DESCRIPTION_CACHE, PAGE_CACHE};
+use crate::core::scanner::DESCRIPTION_CACHE;
 use crate::core::sections::Section;
 use crate::core::tracking::scan_metrics::PageMetrics;
 use crate::core::tracking::scan_report::{PageReport, ScrapeError, ScrapeErrorKind};
@@ -203,9 +203,6 @@ pub trait Retailer: Send + Sync {
         }
 
         products.retain(|p| !to_remove.contains(&p.url));
-
-        // Saving to cache
-        PAGE_CACHE.write().await.insert(url.clone(), products.clone());
 
         (
             PageReport {

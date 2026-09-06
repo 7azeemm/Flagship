@@ -109,11 +109,10 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     }
 
     let panel_pattern = r"(?i)\b(IPS|OLED|QLED|LCD)\b";
-    if let Some(caps) = RegexCache::captures(panel_pattern, text) {
-        if let Some(panel_type) = caps.get(1).and_then(|v| Some(v.as_str().to_string())) {
-            product.filter_ids.insert("panel_type".to_string(), panel_type.to_uppercase());
-            specs_list.push(panel_type);
-        }
+    if let Some(str) = RegexCache::captures(panel_pattern, text, 1) {
+        let panel_type = str.to_uppercase();
+        product.filter_ids.insert("panel_type".to_string(), panel_type.clone());
+        specs_list.push(panel_type);
     };
 
     let refresh_pattern = r"(?i)\b(\d+)\s*(hz|h z |hertz)\b";

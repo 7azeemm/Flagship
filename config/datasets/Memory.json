@@ -1,9 +1,5 @@
 {
-  "ADATA": [
-    "ADATA",
-    "ADATA Premier",
-    "ADATA XPG GAMMIX"
-  ],
+  "ADATA": [],
   "AFOX": [],
   "AORUS": [],
   "AXLE": [],
@@ -15,14 +11,7 @@
   "Corsair": [],
   "Crucial": [],
   "Dato": [],
-  "G.SKILL": [
-    "G.SKILL",
-    "G.SKILL Ripjaws",
-    "G.SKILL Z5",
-    "G.SKILL M5",
-    "G.SKILL S5",
-    "G.SKILL Trident"
-  ],
+  "G.SKILL": [],
   "GOODRAM": [],
   "HIKSEMI": [],
   "HP": [],
@@ -30,10 +19,7 @@
   "Innovation": [],
   "Kimtigo": [],
   "KingFast": [],
-  "Kingston": [
-    "Kingston",
-    "Kingston Fury Beast"
-  ],
+  "Kingston": [],
   "Lexar": [],
   "Micron": [],
   "Mushkin": [],
@@ -44,17 +30,7 @@
   "SK Hynix": [],
   "Samsung": [],
   "Silicon Power": [],
-  "TeamGroup": [
-    "TeamGroup",
-    "TeamGroup Elite",
-    "TeamGroup T-Force Zeus",
-    "TeamGroup Vulcan Z"
-  ],
+  "TeamGroup": [],
   "TwinMOS": [],
-  "XPG": [
-    "XPG",
-    "XPG D35G",
-    "XPG GAMMIX",
-    "XPG Spectrix"
-  ]
+  "XPG": []
 }

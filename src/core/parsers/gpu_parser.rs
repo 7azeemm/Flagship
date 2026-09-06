@@ -19,17 +19,8 @@ impl SectionParser for GPUParser {
     }
 
     fn parse_specs(&self, product: &mut Product, cleaned_title: &str) {
-        if let Some(caps) = RegexCache::captures(r"(?i)\b(\d+)\s*(?:gb|go|g)\b", cleaned_title) {
-            if let Some(m) = caps.get(1) {
-                product.filter_ids.insert("memory_size".to_string(), m.as_str().to_string());
-            }
+        if let Some(size) = RegexCache::captures(r"(?i)\b(\d+)\s*(?:gb|go|g)\b", cleaned_title, 1) {
+            product.filter_ids.insert("memory_size".to_string(), format!("{size}GB"));
         }
-    }
-
-    fn post_processing(&self, product: &mut Product) -> Option<String> {
-        if let Some(memory_size) = product.filter_ids.get_mut("memory_size") {
-            memory_size.push_str("GB");
-        }
-        None
     }
 }

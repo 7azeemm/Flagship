@@ -8,11 +8,9 @@
       ["Laptop", "portable"],
       ["GamingPC", "setup|gamer|gaming|OMEN"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Penitum", "Pentium"]
-      ]
-    },
+    "replace_words": [
+      ["Penitum", "Pentium"]
+    ],
     "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"]
   },
@@ -28,18 +26,14 @@
       ["MiniPC", "mini|barebone"]
     ],
     "filters": [
-      "model", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size", "resolution", "refresh_rate"
+      "brand", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size", "resolution", "refresh_rate"
     ],
-    "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
-    "id_field_name": "model"
+    "components": ["brand", "display", "cpu", "gpu", "memory", "storage"],
+    "main_field": "brand"
   },
   {
     "id": "MiniPC",
     "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
-    "datasets": {
-      "cpu": "CPU",
-      "gpu": "GPU"
-    },
     "components": ["cpu", "gpu", "memory", "storage"]
   },
   {
@@ -52,17 +46,15 @@
     "move_by_description_rules": [
       ["GamingLaptop", "#rtx||radeon rx&asus tuf"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["HP15", "HP 15"], ["HP14", "HP 14"]
-      ]
-    },
+    "replace_words": [
+      ["HP15", "HP 15"], ["HP14", "HP 14"]
+    ],
     "filters": [
-      "model", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size", "resolution", "panel_type",
-      "refresh_rate"
+      "model", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size",
+      "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
-    "id_field_name": "model"
+    "main_field": "model"
   },
   {
     "id": "GamingLaptop",
@@ -76,26 +68,24 @@
     "move_by_description_rules": [
       ["Laptop", "!=rtx&iris|ThinkPad|Dell Pro|HP 15|latitude|dell 14"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Idea Pad", "IdeaPad"], ["Légion", "Legion"], ["Cybrorg", "Cyborg"], ["GE68HX", "GE68 HX"], ["GP68HX", "GP68 HX"],
-        ["V16X", "Vivobook 16X"], ["GF 63", "GF63"], [" 15-F", " 15 F"], [" G5M", " G5 M"], [" G6K", " G6 K"],
-        [" TUF5", " TUF 5"], [" TUF6", " TUF 6"], [" TUF7", " TUF 7"], ["A2XWG", "A2XW G"], ["A2XWI", "A2XW I"],
-        ["Gen 2 ", "Gen2 "], ["Gen 3 ", "Gen3 "], ["P16V G3", "P16V Gen3"], [" 13VG ", " 13V "], [" 13VF ", " 13V "],
-        ["HX13V", "HX 13V "], [" 18HX ", " 18 HX "]
-      ],
-      "add_brands_by_models": [
-        ["V16", "V3607"], ["ROG", "Zephyrus"], ["MSI", "Katana"], ["Gigabyte", "Aorus"],
-        ["Lenovo", "Legion"], ["Dell", "Alienware"], ["HP", "Victus"]
-      ]
-    },
+    "replace_words": [
+      ["Idea Pad", "IdeaPad"], ["Légion", "Legion"], ["Cybrorg", "Cyborg"], ["GE68HX", "GE68 HX"], ["GP68HX", "GP68 HX"],
+      ["V16X", "Vivobook 16X"], ["GF 63", "GF63"], [" 15-F", " 15 F"], [" G5M", " G5 M"], [" G6K", " G6 K"],
+      [" TUF5", " TUF 5"], [" TUF6", " TUF 6"], [" TUF7", " TUF 7"], ["A2XWG", "A2XW G"], ["A2XWI", "A2XW I"],
+      ["Gen 2 ", "Gen2 "], ["Gen 3 ", "Gen3 "], ["P16V G3", "P16V Gen3"], [" 13VG ", " 13V "], [" 13VF ", " 13V "],
+      ["HX13V", "HX 13V "], [" 18HX ", " 18 HX "]
+    ],
+    "add_brands_by_models": [
+      ["V16", "V3607"], ["ROG", "Zephyrus"], ["MSI", "Katana"], ["Gigabyte", "Aorus"],
+      ["Lenovo", "Legion"], ["Dell", "Alienware"], ["HP", "Victus"]
+    ],
     "filters": [
       "model", "cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size",
       "display_size", "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
     "group": ["model", "cpu", "gpu"],
-    "id_field_name": "model"
+    "main_field": "model"
   },
   {
     "id": "MacBook",
@@ -111,14 +101,12 @@
     "move_rules": [
       ["Others", "support&!=tactile||barre"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["CoolerMaster", "Cooler Master"]
-      ]
-    },
-    "filters": ["model", "display_size", "resolution", "panel_type", "refresh_rate"],
-    "components": ["model", "display"],
-    "id_field_name": "model"
+    "replace_words": [
+      ["CoolerMaster", "Cooler Master"]
+    ],
+    "filters": ["brand", "display_size", "resolution", "panel_type", "refresh_rate"],
+    "components": ["brand", "display"],
+    "main_field": "brand"
   },
   {
     "id": "CPU",
@@ -128,31 +116,29 @@
       ["Motherboard", "carte&!=pack|intel"],
       ["Laptop", "portable"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Ryzen3", "Ryzen 3"], ["Ryzen5", "Ryzen 5"], ["Ryzen7", "Ryzen 7"], ["Ryzen9", "Ryzen 9"],
-        ["R3-", "Ryzen 3 "], ["R5-", "Ryzen 5 "], ["R7-", "Ryzen 7 "], ["R9-", "Ryzen 9 "],
-        ["Ryzen 3-", "Ryzen 3 "], ["Ryzen 5-", "Ryzen 5 "], ["Ryzen 7-", "Ryzen 7 "], ["Ryzen 9-", "Ryzen 9 "],
-        ["i5 -", "i5-"], ["i3 -", "i3-"], ["i7 -", "i7-"], ["i9 -", "i9-"],
-        ["i3- ", "i3-"], ["i5- ", "i5-"], ["i7- ", "i7-"], ["i9- ", "i9-"],
-        ["i3 ", "i3-"], ["i5 ", "i5-"], ["i7 ", "i7-"], ["i9 ", "i9-"],
-        ["Core 3-", "Core 3 "], ["Core 5-", "Core 5 "], ["Core 7-", "Core 7 "], ["Core 9-", "Core 9 "],
-        ["Core U 5", "Core Ultra 5"], ["Core U 7", "Core Ultra 7"], ["Core U 9", "Core Ultra 9"],
-        ["U5-", "Ultra 5 "], ["U7-", "Ultra 7 "], ["U9-", "Ultra 9 "],
-        ["Ultra5", "Ultra 5"], ["Ultra7", "Ultra 7"], ["Ultra9", "Ultra 9"],
-        ["Ultra 5-", "Ultra 5 "], ["Ultra 7-", "Ultra 7 "], ["Ultra 9-", "Ultra 9 "],
-        ["Intel ultra 5", "Intel Core Ultra 5"], ["Intel ultra 7", "Intel Core Ultra 7"],
-        ["Intel ultra 9", "Intel Core Ultra 9"],
-        ["Core i 3 ", "Core i3"], ["Core i 5", "Core i5"], ["Core i 7", "Core i7"], ["Core i 9 ", "Core i9"],
-        ["Ulta ", "Ultra "], ["Ryzen AL", "Ryzen AI"], [" 258 V", " 258V"], [" 256 V", " 256V"],
-        ["RYZENTM5", "RYZEN 5"], ["RYZEN 9 AI", "RYZEN AI 9"], [", HEXA-CORE", ""], ["Penitum", "Pentium"],
-        [" HS", "HS"], ["450 HX ", "450HX "], ["Inte ", "Intel "], ["I ntel", "Intel"], [" A4- ", " A4-"],
-        ["Ryzen 9 AI", "Ryzen AI 9"], ["275 HX", "275HX"], ["0 H (", "0H ("], ["i7-240H", "7 240H"], ["i5–210H", "5 210H"]
-      ]
-    },
-    "filters": ["cpu", "socket", "memory_support", "core_count", "thread_count"],
+    "replace_words": [
+      ["Ryzen3", "Ryzen 3"], ["Ryzen5", "Ryzen 5"], ["Ryzen7", "Ryzen 7"], ["Ryzen9", "Ryzen 9"],
+      ["R3-", "Ryzen 3 "], ["R5-", "Ryzen 5 "], ["R7-", "Ryzen 7 "], ["R9-", "Ryzen 9 "],
+      ["Ryzen 3-", "Ryzen 3 "], ["Ryzen 5-", "Ryzen 5 "], ["Ryzen 7-", "Ryzen 7 "], ["Ryzen 9-", "Ryzen 9 "],
+      ["i5 -", "i5-"], ["i3 -", "i3-"], ["i7 -", "i7-"], ["i9 -", "i9-"],
+      ["i3- ", "i3-"], ["i5- ", "i5-"], ["i7- ", "i7-"], ["i9- ", "i9-"],
+      ["i3 ", "i3-"], ["i5 ", "i5-"], ["i7 ", "i7-"], ["i9 ", "i9-"],
+      ["Core 3-", "Core 3 "], ["Core 5-", "Core 5 "], ["Core 7-", "Core 7 "], ["Core 9-", "Core 9 "],
+      ["Core U 5", "Core Ultra 5"], ["Core U 7", "Core Ultra 7"], ["Core U 9", "Core Ultra 9"],
+      ["U5-", "Ultra 5 "], ["U7-", "Ultra 7 "], ["U9-", "Ultra 9 "],
+      ["Ultra5", "Ultra 5"], ["Ultra7", "Ultra 7"], ["Ultra9", "Ultra 9"],
+      ["Ultra 5-", "Ultra 5 "], ["Ultra 7-", "Ultra 7 "], ["Ultra 9-", "Ultra 9 "],
+      ["Intel ultra 5", "Intel Core Ultra 5"], ["Intel ultra 7", "Intel Core Ultra 7"],
+      ["Intel ultra 9", "Intel Core Ultra 9"],
+      ["Core i 3 ", "Core i3"], ["Core i 5", "Core i5"], ["Core i 7", "Core i7"], ["Core i 9 ", "Core i9"],
+      ["Ulta ", "Ultra "], ["Ryzen AL", "Ryzen AI"], [" 258 V", " 258V"], [" 256 V", " 256V"],
+      ["RYZENTM5", "RYZEN 5"], ["RYZEN 9 AI", "RYZEN AI 9"], [", HEXA-CORE", ""], ["Penitum", "Pentium"],
+      [" HS", "HS"], ["450 HX ", "450HX "], ["Inte ", "Intel "], ["I ntel", "Intel"], [" A4- ", " A4-"],
+      ["Ryzen 9 AI", "Ryzen AI 9"], ["275 HX", "275HX"], ["0 H (", "0H ("], ["i7-240H", "7 240H"], ["i5–210H", "5 210H"]
+    ],
+    "filters": ["cpu", "socket", "memory_support", "core_count"],
     "components": ["cpu"],
-    "id_field_name": "cpu"
+    "main_field": "cpu"
   },
   {
     "id": "GPU",
@@ -163,27 +149,25 @@
       ["Case", "Boetier|Boitier"],
       ["Motherboard", "mere"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["0Ti", "0 Ti"], ["0TI", "0 Ti"], ["Overclocked", "OC"], ["GIGABAYTE", "Gigabyte"], ["Fual", "Dual"],
-        ["GT7", "GT 7"], ["GT6", "GT 6"], ["GT-", "GT "], ["GTX1", "GTX 1"], ["GTX9", "GTX 9"], ["RTX350", "RTX 3050"],
-        ["RTX2", "RTX 2"], ["RTX3", "RTX 3"], ["RTX4", "RTX 4"], ["RTX5", "RTX 5"], ["0XT", "0 XT"],
-        ["RX5", "RX 5"], ["RX6", "RX 6"], ["RX7", "RX 7"], ["RX9", "RX 9"], ["RX Vega", "Vega"], ["TRIX", "STRIX"],
-        ["sStrix", "STRIX"], ["X STORM", "XSTORM"], ["T16Go", "16GB"], ["O24G", "24GB"], ["4080SUP", "4080 SUPER"],
-        ["1660S", "1660 SUPER"], ["Dual Fans", "Dual Fan"], ["Triple Fans", "Triple Fan"], ["3GT", "3GB"],
-        ["2000E", "2000"], ["RTXe", "RTX"], [" MX ", " MX"], ["130 V", "130V"], ["140 V", "140V"], ["GTX 20", "RTX 20"],
-        ["GTX 30", "RTX 30"], ["GTX 40", "RTX 40"], ["GTX 50", "RTX 50"], ["IRISE", "IRIS"], ["GT 920M", "920M"],
-        ["PRO1000", "PRO 1000 "], ["3070Q", "3070 Max-Q"], ["3080Q", "3080 Max-Q"], [" MQ ", " Max-Q "]
-      ],
-      "add_brands_by_models": [
-        ["Gigabyte", "AORUS"], ["MSI", "VENTUS"], ["MSI ROG", "STRIX"], ["Gigabyte", "EAGLE"],
-        ["Gigabyte", "WINDFORCE"]
-      ]
-    },
-    "filters": ["gpu", "memory_size", "bus_interface", "memory_type", "memory_bus", "memory_bandwidth", "cores"],
-    "components": ["chipset"],
-    "group": ["gpu"],
-    "id_field_name": "gpu"
+    "replace_words": [
+      ["0Ti", "0 Ti"], ["0TI", "0 Ti"], ["Overclocked", "OC"], ["GIGABAYTE", "Gigabyte"], ["Fual", "Dual"],
+      ["GT7", "GT 7"], ["GT6", "GT 6"], ["GT-", "GT "], ["GTX1", "GTX 1"], ["GTX9", "GTX 9"], ["RTX350", "RTX 3050"],
+      ["RTX2", "RTX 2"], ["RTX3", "RTX 3"], ["RTX4", "RTX 4"], ["RTX5", "RTX 5"], ["0XT", "0 XT"],
+      ["RX5", "RX 5"], ["RX6", "RX 6"], ["RX7", "RX 7"], ["RX9", "RX 9"], ["RX Vega", "Vega"], ["TRIX", "STRIX"],
+      ["sStrix", "STRIX"], ["X STORM", "XSTORM"], ["T16Go", "16GB"], ["O24G", "24GB"], ["4080SUP", "4080 SUPER"],
+      ["1660S", "1660 SUPER"], ["Dual Fans", "Dual Fan"], ["Triple Fans", "Triple Fan"], ["3GT", "3GB"],
+      ["2000E", "2000"], ["RTXe", "RTX"], [" MX ", " MX"], ["130 V", "130V"], ["140 V", "140V"], ["GTX 20", "RTX 20"],
+      ["GTX 30", "RTX 30"], ["GTX 40", "RTX 40"], ["GTX 50", "RTX 50"], ["IRISE", "IRIS"], ["GT 920M", "920M"],
+      ["PRO1000", "PRO 1000 "], ["3070Q", "3070 Max-Q"], ["3080Q", "3080 Max-Q"], [" MQ ", " Max-Q "]
+    ],
+    "add_brands_by_models": [
+      ["Gigabyte", "AORUS"], ["MSI", "VENTUS"], ["MSI ROG", "STRIX"], ["Gigabyte", "EAGLE"],
+      ["Gigabyte", "WINDFORCE"]
+    ],
+    "filters": ["gpu", "memory_size", "memory_type", "cores", "bus_interface"],
+    "components": ["gpu"],
+    "main_field": "gpu",
+    "group": ["gpu"]
   },
   {
     "id": "Memory",
@@ -194,55 +178,49 @@
       ["GPU", "graphique"],
       ["Motherboard", "mere"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["D4", "DDR4"], ["D5", "DDR5"], ["DDR 4", "DDR4"], ["DDR 5", "DDR5"], ["DRR4", "DDR4"], ["DDR3L", "DDR3"],
-        ["Team Group", "TeamGroup"], ["Sk-Hynix", "SK Hynix"], ["DATOTEK", "Dato"]
-      ]
-    },
-    "filters": ["brand", "platform", "memory_size", "memory_type", "memory_speed"],
-    "id_field_name": "brand"
+    "replace_words": [
+      ["D4", "DDR4"], ["D5", "DDR5"], ["DDR 4", "DDR4"], ["DDR 5", "DDR5"], ["DRR4", "DDR4"], ["DDR3L", "DDR3"],
+      ["Team Group", "TeamGroup"], ["Sk-Hynix", "SK Hynix"], ["DATOTEK", "Dato"]
+    ],
+    "filters": ["model", "platform", "memory_size", "memory_type", "memory_speed"],
+    "main_field": "model"
   },
   {
     "id": "Storage",
     "move_rules": [
       ["Others", "extern|externe|usb|caddy|carte|Boitier|Boîtier|dock|argus|Led|ASUSTOR|SanDisk"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Team Group", "TeamGroup"], ["SGAMMIX", "GAMMIX"], ["FUTUREX", "Future"], ["Colorfull", "Colorful"],
-        ["WD", "Western Digital"], ["Gigabayte", "Gigabyte"], [" SDD ", " SSD "]
-      ],
-      "add_brands_by_models": [
-        ["MSI", "SPATIUM"], ["Seagate", "BarraCuda"]
-      ]
-    },
+    "replace_words": [
+      ["Team Group", "TeamGroup"], ["SGAMMIX", "GAMMIX"], ["FUTUREX", "Future"], ["Colorfull", "Colorful"],
+      ["WD", "Western Digital"], ["Gigabayte", "Gigabyte"], [" SDD ", " SSD "]
+    ],
+    "add_brands_by_models": [
+      ["MSI", "SPATIUM"], ["Seagate", "BarraCuda"]
+    ],
     "filters": ["brand", "storage_type", "storage_size"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Motherboard",
     "move_rules": [
       ["Others", "riser|portable|carte hdd|hp|dell|toshiba"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Gigabite", "Gigabyte"], ["Wi-Fi", "WiFi"], ["B560-M", "B560M"],
-        ["WIFI 6E", "WiFi6E"], ["WIFI 6", "WiFi6"], ["WIFI 7", "WiFi7"],  ["STELL", "Steel"],
-        ["Creatot", "CREATOR"], ["5 650M", "B650M"], ["AXG11", "AX"], ["HDVM.2", "HDV/M.2"],
-        ["CREATOR B550", "B550-CREATOR"], ["ProArt X890", "ProArt Z890"],
-        ["Gigabyte A520M-K", "Gigabyte A520M K"], ["A620M Gaming XAXG10", "A620M Gaming X AX"],
-        ["ELITE AX1.3", "ELITE AX"], ["B650 A ELITE", "B650 AORUS ELITE"], ["B650 AIGLE AXE", "B650 EAGLE AX"],
-        ["B650 UD AX1.0", "B650 UD AX"], ["B660M A Pro", "B660M AORUS Pro"],
-        ["Gigabyte B850 EAGLE WiFi6", "Gigabyte B850 EAGLE WiFi6E"],
-        ["Gigabyte B850 EAGLE WiFi", "Gigabyte B850 EAGLE WiFi6E"]
-      ],
-      "add_brands_by_models": [
-        ["Gigabyte", "AORUS"], ["ASUS", "ROG"]
-      ]
-    },
+    "replace_words": [
+      ["Gigabite", "Gigabyte"], ["Wi-Fi", "WiFi"], ["B560-M", "B560M"],
+      ["WIFI 6E", "WiFi6E"], ["WIFI 6", "WiFi6"], ["WIFI 7", "WiFi7"],  ["STELL", "Steel"],
+      ["Creatot", "CREATOR"], ["5 650M", "B650M"], ["AXG11", "AX"], ["HDVM.2", "HDV/M.2"],
+      ["CREATOR B550", "B550-CREATOR"], ["ProArt X890", "ProArt Z890"],
+      ["Gigabyte A520M-K", "Gigabyte A520M K"], ["A620M Gaming XAXG10", "A620M Gaming X AX"],
+      ["ELITE AX1.3", "ELITE AX"], ["B650 A ELITE", "B650 AORUS ELITE"], ["B650 AIGLE AXE", "B650 EAGLE AX"],
+      ["B650 UD AX1.0", "B650 UD AX"], ["B660M A Pro", "B660M AORUS Pro"],
+      ["Gigabyte B850 EAGLE WiFi6", "Gigabyte B850 EAGLE WiFi6E"],
+      ["Gigabyte B850 EAGLE WiFi", "Gigabyte B850 EAGLE WiFi6E"]
+    ],
+    "add_brands_by_models": [
+      ["Gigabyte", "AORUS"], ["ASUS", "ROG"]
+    ],
     "filters": ["brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Cooler",
@@ -253,14 +231,12 @@
       ["PowerSupply", "#alimentation"],
       ["GPU", "graphique"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["RAIMAX", "RAIDMAX"], ["Aero Cool", "AeroCool"], ["Inter-Tech", "InterTech"], ["Inter Tech", "InterTech"],
-        ["Master Liquid", "MasterLiquid"]
-      ]
-    },
+    "replace_words": [
+      ["RAIMAX", "RAIDMAX"], ["Aero Cool", "AeroCool"], ["Inter-Tech", "InterTech"], ["Inter Tech", "InterTech"],
+      ["Master Liquid", "MasterLiquid"]
+    ],
     "filters": ["brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "PowerSupply",
@@ -269,13 +245,11 @@
       ["Case", "Boitier"],
       ["AccessoriesCombo", "pack"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Inter-Tech", "InterTech"], ["Inter Tech", "InterTech"], ["Aercool", "AeroCool"], ["Cooler Master"]
-      ]
-    },
+    "replace_words": [
+      ["Inter-Tech", "InterTech"], ["Inter Tech", "InterTech"], ["Aercool", "AeroCool"], ["Cooler Master"]
+    ],
     "filters": ["brand", "wattage"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Case",
@@ -283,17 +257,15 @@
       ["Others", "led&!=Boitier"],
       ["GamingPC", "#rtx||ecran"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["CoolerMaster", "Cooler Master"], ["Aero Cool", "AeroCool"], ["INTERECH", "InterTech"],
-        ["Inter-Tech", "InterTech"]
-      ],
-      "add_brands_by_models": [
-        ["Gigabyte", "AORUS"]
-      ]
-    },
+    "replace_words": [
+      ["CoolerMaster", "Cooler Master"], ["Aero Cool", "AeroCool"], ["INTERECH", "InterTech"],
+      ["Inter-Tech", "InterTech"]
+    ],
+    "add_brands_by_models": [
+      ["Gigabyte", "AORUS"]
+    ],
     "filters": ["brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Mouse",
@@ -308,13 +280,11 @@
       ["Keyboard", "clavier"],
       ["Headphones", "casque"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["Redragan", "Redragon"], ["WhiteShark", "White Shark"], ["Hyper X", "HyperX"]
-      ]
-    },
+    "replace_words": [
+      ["Redragan", "Redragon"], ["WhiteShark", "White Shark"], ["Hyper X", "HyperX"]
+    ],
     "filters": ["type", "brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Keyboard",
@@ -325,13 +295,11 @@
       ["Mouse", "souris"],
       ["Headphones", "casque"]
     ],
-    "title_cleaner": {
-      "replace_words": [
-        ["White-Shark", "White Shark"], ["WhiteShark", "White Shark"]
-      ]
-    },
+    "replace_words": [
+      ["White-Shark", "White Shark"], ["WhiteShark", "White Shark"]
+    ],
     "filters": ["type", "brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "MousePad",
@@ -376,7 +344,7 @@
       ["ConsoleAccessories", "volant|dock|game stick&!=pack"],
       ["ConsoleGame", "jeu Nintendo Switch||jeux|jeu&PS5|PS4|PC|Nintendo&!=console"]
     ],
-    "filters": ["type"],
+    "filters": ["platform"],
     "min_price": 400
   },
   {
@@ -411,34 +379,30 @@
       ["Tablet", "Tab|Pad"]
     ],
     "min_price": 100,
-    "title_cleaner": {
-      "replace_words": [
-        ["0Pro 5G", "0 Pro 5G"], [" 50 S ", " 50S "], ["Pro+ ", "Pro Plus "], ["Pro + ", "Pro Plus "], [" Hot50 ", " Hot 50 "],
-        [" 40FF ", " 40 FF "], [" 16 E ", " 16E "], ["Fold6", "Fold 6"], ["Fold5", "Fold 5"], ["Fold3", "Fold 3"],
-        ["Flip6", "Flip 6"], ["Flip5", "Flip 5"], [" S25+ ", " S25 Plus "], [" S24+ ", " S24 Plus "], ["Note11S", "Note 11S"],
-        ["iPhone1", "iPhone 1"], [" 15 F ", " 15F "], [" Reno12", " Reno 12"], [" Reno14", " Reno 14"],
-        [" Reno15", " Reno 15"], [" Reno8", " Reno 8"], [" Reno11", " Reno 11"], [" 12 F ", " 12F "], [" 8 T ", " 8T "],
-        [" Play10 ", " Play 10 "], ["Honors ", "Honor "], [" Go1 ", " Go 1 "], [" Go2 ", " Go 2 "]
-      ]
-    },
+    "replace_words": [
+      ["0Pro 5G", "0 Pro 5G"], [" 50 S ", " 50S "], ["Pro+ ", "Pro Plus "], ["Pro + ", "Pro Plus "], [" Hot50 ", " Hot 50 "],
+      [" 40FF ", " 40 FF "], [" 16 E ", " 16E "], ["Fold6", "Fold 6"], ["Fold5", "Fold 5"], ["Fold3", "Fold 3"],
+      ["Flip6", "Flip 6"], ["Flip5", "Flip 5"], [" S25+ ", " S25 Plus "], [" S24+ ", " S24 Plus "], ["Note11S", "Note 11S"],
+      ["iPhone1", "iPhone 1"], [" 15 F ", " 15F "], [" Reno12", " Reno 12"], [" Reno14", " Reno 14"],
+      [" Reno15", " Reno 15"], [" Reno8", " Reno 8"], [" Reno11", " Reno 11"], [" 12 F ", " 12F "], [" 8 T ", " 8T "],
+      [" Play10 ", " Play 10 "], ["Honors ", "Honor "], [" Go1 ", " Go 1 "], [" Go2 ", " Go 2 "]
+    ],
     "filters": ["model"],
-    "id_field_name": "model"
+    "main_field": "model"
   },
   {
     "id": "Tablet",
     "min_price": 70,
-    "title_cleaner": {
-      "add_brands_by_models": [
-        ["Samsung", "Galaxy"], ["Apple", "iPad"]
-      ]
-    },
+    "add_brands_by_models": [
+      ["Samsung", "Galaxy"], ["Apple", "iPad"]
+    ],
     "filters": ["brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Smartwatch",
     "filters": ["brand"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Television",
@@ -447,7 +411,7 @@
     ],
     "min_price": 100,
     "filters": ["brand", "display_size", "resolution"],
-    "id_field_name": "brand"
+    "main_field": "brand"
   },
   {
     "id": "Others"

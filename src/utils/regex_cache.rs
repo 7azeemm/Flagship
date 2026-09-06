@@ -60,8 +60,8 @@ impl RegexCache {
         Self::get(pattern).is_match(text)
     }
 
-    pub fn captures<'a>(pattern: &str, text: &'a str) -> Option<Captures<'a>> {
-        Self::get(pattern).captures(text)
+    pub fn captures<'a>(pattern: &str, text: &'a str, index: usize) -> Option<&'a str> {
+        Self::get(pattern).captures(text).and_then(|v| v.get(index)).map(|s| s.as_str())
     }
 
     pub fn find_starts(pattern: &str, text: &str) -> Vec<usize> {

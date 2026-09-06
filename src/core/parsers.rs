@@ -9,7 +9,6 @@ pub mod mouse_parser;
 pub mod pc_parser;
 pub mod power_supply_parser;
 pub mod storage_parser;
-pub mod television_parser;
 
 use crate::core::dataset::{Dataset, SearchResult};
 use crate::core::product::Product;
@@ -32,46 +31,24 @@ pub trait SectionParser: Send + Sync {
     fn parse(&self, product: &mut Product) {
         let cleaned_title = self.clean_title(&product.title);
         self.parse_specs(product, &cleaned_title);
-        self.parse_brand(product, &cleaned_title);
-
-        let name = self.lookup_dataset(product, &cleaned_title);
-        let details = self.post_processing(product);
-
-        if let Some(name) = name {
-            let value = details.map(|text| format!("{name} {text}")).unwrap_or(name);
-            product.components.insert(self.config().id_field_name.clone(), value);
-            for component in &product.section.config().components {
-                if !product.components.contains_key(component) && let Some(value) = product.filter_ids.get(component) {
-                    product.components.insert(component.clone(), value.clone());
-                }
-            }
-        }
+        self.lookup_dataset(product, &cleaned_title);
     }
 
-    fn parse_specs(&self, _product: &mut Product, _text: &str) {}
-
-    fn parse_brand(&self, product: &mut Product, text: &str) {
-        for brand in &self.config().brands {
-            if RegexCache::matches(&format!("(?i)\\b{brand}\\b"), text) {
-                // product.specs.set("brand", brand.as_str());
-                return;
-            }
-        }
-        //WARNING: No brand detected
+    fn parse_specs(&self, _product: &mut Product, _text: &str) {
     }
 
     fn clean_title(&self, title: &str) -> String {
-        let cleaner = &self.config().title_cleaner;
+        let config = &self.config();
         let mut text = title.replace("®", "").replace("™", "");
 
         // Remove Words
-        for word in &cleaner.remove_words {
+        for word in &config.remove_words {
             let pattern = format!("(?i)\\b{}\\b", regex::escape(word));
             text = RegexCache::replace_all(&pattern, &text, "").to_string();
         }
 
         // Replace Words
-        for list in &cleaner.replace_words {
+        for list in &config.replace_words {
             if let (Some(from), Some(to)) = (list.first(), list.get(1)) {
                 let pattern = format!("(?i){}", regex::escape(from));
                 text = RegexCache::replace_all(&pattern, &text, to).to_string();
@@ -80,7 +57,7 @@ pub trait SectionParser: Send + Sync {
 
         // Add Missing Brands
         let lower = text.to_lowercase();
-        for list in &cleaner.add_brands_by_models {
+        for list in &config.add_brands_by_models {
             if let (Some(brand), Some(word)) = (list.first(), list.get(1)) {
                 if !lower.contains(&brand.to_lowercase()) && lower.contains(&word.to_lowercase()) {
                     text = format!("{brand} {text}");
@@ -99,13 +76,9 @@ pub trait SectionParser: Send + Sync {
         deduplicated.join(" ").trim().to_string()
     }
 
-    fn post_processing(&self, _product: &mut Product) -> Option<String> {
-        None
-    }
-
-    fn lookup_dataset(&self, product: &mut Product, title: &str) -> Option<String> {
+    fn lookup_dataset(&self, product: &mut Product, title: &str) {
         if self.dataset().nodes.is_empty() {
-            return Some(title.to_string());
+            return;
         }
 
         let text = product
@@ -116,26 +89,32 @@ pub trait SectionParser: Send + Sync {
             .to_uppercase();
 
         let memory_size = match product.section {
-            Section::GPU => product.filter_ids.get("memory_size").map(String::as_str),
+            Section::GPU => product.filter_ids.get("memory_size").map(|s| s.replace("GB", "")),
             _ => None,
         };
 
-        if let Some(result) = self.search_in_dataset(&text, memory_size) {
-            product.filter_ids.insert(self.config().id_field_name.clone(), result.id);
+        if let Some(result) = self.search_in_dataset(&text, memory_size.as_ref()) {
+            if let Some(field) = &self.config().main_field {
+                product.components.insert(field.to_string(), result.label);
+                product.filter_ids.insert(field.to_string(), result.id);
+            }
             if let Some(Value::Object(obj)) = result.data {
                 for (key, value) in obj {
                     if let Some(value) = value.as_str() && !value.is_empty() {
-                        product.filter_ids.insert(key, value.to_string());
+                        if self.config().components.contains(&key) {
+                            product.components.insert(key.clone(), value.to_string());
+                        }
+                        if self.config().filters.contains(&key) && !product.filter_ids.contains_key(&key) {
+                            product.filter_ids.insert(key, value.to_string());
+                        }
                     }
                 }
             }
-            return Some(result.label);
+            return;
         }
-
-        None
     }
 
-    fn search_in_dataset(&self, text: &str, memory_size: Option<&str>) -> Option<SearchResult> {
+    fn search_in_dataset(&self, text: &str, memory_size: Option<&String>) -> Option<SearchResult> {
         for node in &self.dataset().nodes {
             if !words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
                 continue;
@@ -151,7 +130,7 @@ pub trait SectionParser: Send + Sync {
 
             let Some(chipset_data) = &node.data else { continue; };
             let chipset_size = chipset_data.get_str("memory_size");
-            if chipset_size == memory_size || memory_size.is_none() {
+            if chipset_size == memory_size.map(|x| x.as_str()) || memory_size.is_none() {
                 return Some(SearchResult {
                     id: node.id.clone(),
                     label: node.label.clone(),

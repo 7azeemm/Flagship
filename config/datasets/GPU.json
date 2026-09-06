@@ -35,7 +35,7 @@
     "Arc B570": [
       {
         "name": "ASRock Arc B570 10GB Challenger",
-        "chipset": "Arc B570 10GB"
+        "gpu": "Arc B570 10GB"
       },
       {
         "name": "Arc B570 10GB",
@@ -57,7 +57,7 @@
     "Arc B580": [
       {
         "name": "ASRock Arc B580 12GB Steel Legend",
-        "chipset": "Arc B580 12GB"
+        "gpu": "Arc B580 12GB"
       },
       {
         "name": "Arc B580 12GB",
@@ -81,11 +81,11 @@
     "GeForce GT 1030": [
       {
         "name": "MSI GeForce GT 1030 2GB OC",
-        "chipset": "GeForce GT 1030 2GB"
+        "gpu": "GeForce GT 1030 2GB"
       },
       {
         "name": "PNY GeForce GT 1030 2GB",
-        "chipset": "GeForce GT 1030 2GB"
+        "gpu": "GeForce GT 1030 2GB"
       },
       {
         "name": "GeForce GT 1030 2GB",
@@ -107,15 +107,15 @@
     "GeForce GT 610": [
       {
         "name": "AXLE GeForce GT 610 2GB",
-        "chipset": "GeForce GT 610 2GB"
+        "gpu": "GeForce GT 610 2GB"
       },
       {
         "name": "Arktek GeForce GT 610 2GB",
-        "chipset": "GeForce GT 610 2GB"
+        "gpu": "GeForce GT 610 2GB"
       },
       {
         "name": "XStorm GeForce GT 610 2GB",
-        "chipset": "GeForce GT 610 2GB"
+        "gpu": "GeForce GT 610 2GB"
       },
       {
         "name": "GeForce GT 610 2GB",
@@ -183,15 +183,15 @@
     "GeForce GT 710": [
       {
         "name": "Gigabyte GeForce GT 710 2GB",
-        "chipset": "GeForce GT 710 2GB"
+        "gpu": "GeForce GT 710 2GB"
       },
       {
         "name": "MSI GeForce GT 710 2GB",
-        "chipset": "GeForce GT 710 2GB"
+        "gpu": "GeForce GT 710 2GB"
       },
       {
         "name": "Palit GeForce GT 710 2GB",
-        "chipset": "GeForce GT 710 2GB"
+        "gpu": "GeForce GT 710 2GB"
       },
       {
         "name": "GeForce GT 710 2GB",
@@ -212,23 +212,23 @@
     "GeForce GT 730": [
       {
         "name": "AXLE GeForce GT 730 4GB",
-        "chipset": "GeForce GT 730 4GB"
+        "gpu": "GeForce GT 730 4GB"
       },
       {
         "name": "Arktek GeForce GT 730 2GB",
-        "chipset": "GeForce GT 730 2GB"
+        "gpu": "GeForce GT 730 2GB"
       },
       {
         "name": "Arktek GeForce GT 730 4GB",
-        "chipset": "GeForce GT 730 4GB"
+        "gpu": "GeForce GT 730 4GB"
       },
       {
         "name": "MSI GeForce GT 730 4GB",
-        "chipset": "GeForce GT 730 4GB"
+        "gpu": "GeForce GT 730 4GB"
       },
       {
         "name": "WINNFOX GeForce GT 730 4GB",
-        "chipset": "GeForce GT 730 4GB"
+        "gpu": "GeForce GT 730 4GB"
       },
       {
         "name": "GeForce GT 730 2GB",
@@ -266,7 +266,7 @@
     "GeForce GTX 1050": [
       {
         "name": "ASUS ROG Strix GeForce GTX 1050 2GB GAMING OC",
-        "chipset": "GeForce GTX 1050 2GB"
+        "gpu": "GeForce GTX 1050 2GB"
       },
       {
         "name": "GeForce GTX 1050 2GB",
@@ -305,7 +305,7 @@
     "GeForce GTX 1050 Ti": [
       {
         "name": "ASUS ROG Strix GeForce GTX 1050 Ti 4GB GAMING OC",
-        "chipset": "GeForce GTX 1050 Ti 4GB"
+        "gpu": "GeForce GTX 1050 Ti 4GB"
       },
       {
         "name": "GeForce GTX 1050 Ti 4GB",
@@ -327,7 +327,7 @@
     "GeForce GTX 1060": [
       {
         "name": "EVGA GeForce GTX 1060 3GB GAMING",
-        "chipset": "GeForce GTX 1060 3GB"
+        "gpu": "GeForce GTX 1060 3GB"
       },
       {
         "name": "GeForce GTX 1060 3GB",
@@ -366,7 +366,7 @@
     "GeForce GTX 1070": [
       {
         "name": "ASUS Turbo GeForce GTX 1070 8GB",
-        "chipset": "GeForce GTX 1070 8GB"
+        "gpu": "GeForce GTX 1070 8GB"
       },
       {
         "name": "GeForce GTX 1070 8GB",
@@ -388,7 +388,7 @@
     "GeForce GTX 1070 Ti": [
       {
         "name": "ASUS Turbo GeForce GTX 1070 Ti 8GB",
-        "chipset": "GeForce GTX 1070 Ti 8GB"
+        "gpu": "GeForce GTX 1070 Ti 8GB"
       },
       {
         "name": "GeForce GTX 1070 Ti 8GB",
@@ -446,23 +446,23 @@
     "GeForce GTX 1650": [
       {
         "name": "Gigabyte GeForce GTX 1650 4GB ITX OC",
-        "chipset": "GeForce GTX 1650 4GB"
+        "gpu": "GeForce GTX 1650 4GB"
       },
       {
         "name": "MSI GeForce GTX 1650 4GB VENTUS XS",
-        "chipset": "GeForce GTX 1650 4GB"
+        "gpu": "GeForce GTX 1650 4GB"
       },
       {
         "name": "PNY GeForce GTX 1650 4GB",
-        "chipset": "GeForce GTX 1650 4GB"
+        "gpu": "GeForce GTX 1650 4GB"
       },
       {
         "name": "PNY GeForce GTX 1650 4GB OC",
-        "chipset": "GeForce GTX 1650 4GB"
+        "gpu": "GeForce GTX 1650 4GB"
       },
       {
         "name": "ZOTAC GAMING GeForce GTX 1650 4GB",
-        "chipset": "GeForce GTX 1650 4GB"
+        "gpu": "GeForce GTX 1650 4GB"
       },
       {
         "name": "GeForce GTX 1650 4GB",
@@ -520,7 +520,7 @@
     "GeForce GTX 1660": [
       {
         "name": "Gigabyte GeForce GTX 1660 6GB OC",
-        "chipset": "GeForce GTX 1660 6GB"
+        "gpu": "GeForce GTX 1660 6GB"
       },
       {
         "name": "GeForce GTX 1660 6GB",
@@ -542,11 +542,11 @@
     "GeForce GTX 1660 SUPER": [
       {
         "name": "ASUS TUF Gaming GeForce GTX 1660 SUPER 6GB",
-        "chipset": "GeForce GTX 1660 SUPER 6GB"
+        "gpu": "GeForce GTX 1660 SUPER 6GB"
       },
       {
         "name": "Gigabyte GeForce GTX 1660 SUPER 6GB OC",
-        "chipset": "GeForce GTX 1660 SUPER 6GB"
+        "gpu": "GeForce GTX 1660 SUPER 6GB"
       },
       {
         "name": "GeForce GTX 1660 SUPER 6GB",
@@ -568,11 +568,11 @@
     "GeForce GTX 1660 Ti": [
       {
         "name": "Arktek GeForce GTX 1660 Ti 6GB",
-        "chipset": "GeForce GTX 1660 Ti 6GB"
+        "gpu": "GeForce GTX 1660 Ti 6GB"
       },
       {
         "name": "Gigabyte GeForce GTX 1660 Ti 6GB OC",
-        "chipset": "GeForce GTX 1660 Ti 6GB"
+        "gpu": "GeForce GTX 1660 Ti 6GB"
       },
       {
         "name": "GeForce GTX 1660 Ti 6GB",
@@ -670,15 +670,15 @@
     "GeForce RTX 2060": [
       {
         "name": "PNY GeForce RTX 2060 12GB",
-        "chipset": "GeForce RTX 2060 12GB"
+        "gpu": "GeForce RTX 2060 12GB"
       },
       {
         "name": "PNY GeForce RTX 2060 12GB REVEL Dual Fan",
-        "chipset": "GeForce RTX 2060 12GB"
+        "gpu": "GeForce RTX 2060 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 2060 6GB",
-        "chipset": "GeForce RTX 2060 6GB"
+        "gpu": "GeForce RTX 2060 6GB"
       },
       {
         "name": "GeForce RTX 2060 12GB",
@@ -733,11 +733,11 @@
     "GeForce RTX 2060 SUPER": [
       {
         "name": "ASUS ROG Strix GeForce RTX 2060 SUPER 8GB EVO GAMING",
-        "chipset": "GeForce RTX 2060 SUPER 8GB"
+        "gpu": "GeForce RTX 2060 SUPER 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 2060 SUPER 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 2060 SUPER 8GB"
+        "gpu": "GeForce RTX 2060 SUPER 8GB"
       },
       {
         "name": "GeForce RTX 2060 SUPER 8GB",
@@ -849,95 +849,95 @@
     "GeForce RTX 3050": [
       {
         "name": "ASUS Dual GeForce RTX 3050 6GB",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3050 6GB EAGLE",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3050 6GB EAGLE OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3050 6GB OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3050 8GB EAGLE",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "INNO3D GeForce RTX 3050 6GB Twin V2 X2",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "INNO3D GeForce RTX 3050 8GB Twin X2",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "MANLI GeForce RTX 3050 8GB Dual Fan",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB 2X OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB E OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 6GB VENTUS E 2X OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "MSI GeForce RTX 3050 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "MSI GeForce RTX 3050 8GB VENTUS XS 2X",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "MSI GeForce RTX 3050 8GB VENTUS XS 2X OC",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "MSI GeForce RTX 3050 8GB VENTUS XS 2X OC White",
-        "chipset": "GeForce RTX 3050 8GB"
+        "gpu": "GeForce RTX 3050 8GB"
       },
       {
         "name": "PNY GeForce RTX 3050 6GB",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "PNY GeForce RTX 3050 6GB Dual Fan",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3050 6GB LP",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3050 6GB SOLO",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3050 6GB Twin Edge OC",
-        "chipset": "GeForce RTX 3050 6GB"
+        "gpu": "GeForce RTX 3050 6GB"
       },
       {
         "name": "GeForce RTX 3050 8GB",
@@ -1028,43 +1028,43 @@
     "GeForce RTX 3060": [
       {
         "name": "ASUS Dual GeForce RTX 3060 12GB V2",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3060 12GB",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3060 12GB EAGLE OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3060 12GB OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 3060 12GB WINDFORCE OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "MANLI GeForce RTX 3060 12GB Dual Fan",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "MSI GeForce RTX 3060 12GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "Palit GeForce RTX 3060 12GB Dual OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3060 12GB Twin Edge",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3060 12GB Twin Edge OC",
-        "chipset": "GeForce RTX 3060 12GB"
+        "gpu": "GeForce RTX 3060 12GB"
       },
       {
         "name": "GeForce RTX 3060 12GB",
@@ -1137,11 +1137,11 @@
     "GeForce RTX 3070": [
       {
         "name": "ASUS TUF Gaming GeForce RTX 3070 8GB V2",
-        "chipset": "GeForce RTX 3070 8GB"
+        "gpu": "GeForce RTX 3070 8GB"
       },
       {
         "name": "Palit GeForce RTX 3070 8GB Game Rock",
-        "chipset": "GeForce RTX 3070 8GB"
+        "gpu": "GeForce RTX 3070 8GB"
       },
       {
         "name": "GeForce RTX 3070 8GB",
@@ -1199,11 +1199,11 @@
     "GeForce RTX 3070 Ti": [
       {
         "name": "ASUS TUF Gaming GeForce RTX 3070 Ti 8GB",
-        "chipset": "GeForce RTX 3070 Ti 8GB"
+        "gpu": "GeForce RTX 3070 Ti 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 3070 Ti 8GB TRINITY",
-        "chipset": "GeForce RTX 3070 Ti 8GB"
+        "gpu": "GeForce RTX 3070 Ti 8GB"
       },
       {
         "name": "GeForce RTX 3070 Ti 16GB",
@@ -1258,11 +1258,11 @@
     "GeForce RTX 3080": [
       {
         "name": "MSI GeForce RTX 3080 12GB VENTUS Plus 3X OC",
-        "chipset": "GeForce RTX 3080 12GB"
+        "gpu": "GeForce RTX 3080 12GB"
       },
       {
         "name": "MSI GeForce RTX 3080 12GB VENTUS Plus OC",
-        "chipset": "GeForce RTX 3080 12GB"
+        "gpu": "GeForce RTX 3080 12GB"
       },
       {
         "name": "GeForce RTX 3080 10GB",
@@ -1336,7 +1336,7 @@
     "GeForce RTX 3080 Ti": [
       {
         "name": "Gigabyte GeForce RTX 3080 Ti 12GB VISION OC",
-        "chipset": "GeForce RTX 3080 Ti 12GB"
+        "gpu": "GeForce RTX 3080 Ti 12GB"
       },
       {
         "name": "GeForce RTX 3080 Ti 20GB",
@@ -1391,7 +1391,7 @@
     "GeForce RTX 3090": [
       {
         "name": "MSI GeForce RTX 3090 24GB",
-        "chipset": "GeForce RTX 3090 24GB"
+        "gpu": "GeForce RTX 3090 24GB"
       },
       {
         "name": "GeForce RTX 3090 24GB",
@@ -1466,59 +1466,59 @@
     "GeForce RTX 4060": [
       {
         "name": "ASUS Dual GeForce RTX 4060 8GB",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "ASUS Dual GeForce RTX 4060 8GB V2",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB Aero 3X OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB EAGLE ICE OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB EAGLE OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB GAMING OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "MANLI GeForce RTX 4060 8GB",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 8GB GAMING X",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 8GB VENTUS 2X OC White",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 4060 8GB Twin Edge",
-        "chipset": "GeForce RTX 4060 8GB"
+        "gpu": "GeForce RTX 4060 8GB"
       },
       {
         "name": "GeForce RTX 4060 8GB",
@@ -1557,63 +1557,63 @@
     "GeForce RTX 4060 Ti": [
       {
         "name": "ASUS Dual GeForce RTX 4060 Ti 16GB",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 Ti 16GB Aero OC",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 Ti 16GB GAMING OC",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 Ti 16GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4060 Ti 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4060 Ti 8GB"
+        "gpu": "GeForce RTX 4060 Ti 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 16GB GAMING X Slim",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 16GB GAMING X Slim White",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 16GB VENTUS 2X",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 16GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 8GB GAMING X",
-        "chipset": "GeForce RTX 4060 Ti 8GB"
+        "gpu": "GeForce RTX 4060 Ti 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 8GB GAMING X Slim",
-        "chipset": "GeForce RTX 4060 Ti 8GB"
+        "gpu": "GeForce RTX 4060 Ti 8GB"
       },
       {
         "name": "MSI GeForce RTX 4060 Ti 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4060 Ti 8GB"
+        "gpu": "GeForce RTX 4060 Ti 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 4060 Ti 16GB Twin Edge",
-        "chipset": "GeForce RTX 4060 Ti 16GB"
+        "gpu": "GeForce RTX 4060 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 4060 Ti 8GB Twin Edge",
-        "chipset": "GeForce RTX 4060 Ti 8GB"
+        "gpu": "GeForce RTX 4060 Ti 8GB"
       },
       {
         "name": "GeForce RTX 4060 Ti 8GB",
@@ -1651,39 +1651,39 @@
     "GeForce RTX 4070": [
       {
         "name": "ASUS Dual GeForce RTX 4070 12GB OC",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 12GB Aero V2 OC",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 12GB GAMING OC",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 12GB WINDFORCE 3X",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 12GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 12GB GAMING X Slim",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 12GB GAMING X Slim White",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 12GB VENTUS 2X OC White",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 12GB VENTUS E 2X OC",
-        "chipset": "GeForce RTX 4070 12GB"
+        "gpu": "GeForce RTX 4070 12GB"
       },
       {
         "name": "GeForce RTX 4070 12GB",
@@ -1722,31 +1722,31 @@
     "GeForce RTX 4070 SUPER": [
       {
         "name": "Gigabyte GeForce RTX 4070 SUPER 12GB EAGLE OC",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 SUPER 12GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 SUPER 12GB GAMING X Slim",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 SUPER 12GB GAMING X Slim White",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 SUPER 12GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 SUPER 12GB VENTUS 2X OC White",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 SUPER 12GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4070 SUPER 12GB"
+        "gpu": "GeForce RTX 4070 SUPER 12GB"
       },
       {
         "name": "GeForce RTX 4070 SUPER 12GB",
@@ -1768,27 +1768,27 @@
     "GeForce RTX 4070 Ti": [
       {
         "name": "Gigabyte GeForce RTX 4070 Ti 12GB GAMING",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 Ti 12GB GAMING OC",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti 12GB GAMING X Slim White",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti 12GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti 12GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti 12GB VENTUS E 3X OC",
-        "chipset": "GeForce RTX 4070 Ti 12GB"
+        "gpu": "GeForce RTX 4070 Ti 12GB"
       },
       {
         "name": "GeForce RTX 4070 Ti 12GB",
@@ -1810,31 +1810,31 @@
     "GeForce RTX 4070 Ti SUPER": [
       {
         "name": "Gigabyte GeForce RTX 4070 Ti SUPER 16GB",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 Ti SUPER 16GB EAGLE OC",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 Ti SUPER 16GB GAMING OC",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4070 Ti SUPER 16GB WINDFORCE OC",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti SUPER 16GB GAMING X Slim",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti SUPER 16GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4070 Ti SUPER 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4070 Ti SUPER 16GB"
+        "gpu": "GeForce RTX 4070 Ti SUPER 16GB"
       },
       {
         "name": "GeForce RTX 4070 Ti SUPER 16GB",
@@ -1856,19 +1856,19 @@
     "GeForce RTX 4080": [
       {
         "name": "ASUS ROG Strix GeForce RTX 4080 16GB",
-        "chipset": "GeForce RTX 4080 16GB"
+        "gpu": "GeForce RTX 4080 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4080 16GB GAMING OC",
-        "chipset": "GeForce RTX 4080 16GB"
+        "gpu": "GeForce RTX 4080 16GB"
       },
       {
         "name": "MSI GeForce RTX 4080 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4080 16GB"
+        "gpu": "GeForce RTX 4080 16GB"
       },
       {
         "name": "ZOTAC GeForce RTX 4080 16GB TRINITY",
-        "chipset": "GeForce RTX 4080 16GB"
+        "gpu": "GeForce RTX 4080 16GB"
       },
       {
         "name": "GeForce RTX 4080 16GB",
@@ -1907,19 +1907,19 @@
     "GeForce RTX 4080 SUPER": [
       {
         "name": "Gigabyte GeForce RTX 4080 SUPER 16GB GAMING OC",
-        "chipset": "GeForce RTX 4080 SUPER 16GB"
+        "gpu": "GeForce RTX 4080 SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4080 SUPER 16GB",
-        "chipset": "GeForce RTX 4080 SUPER 16GB"
+        "gpu": "GeForce RTX 4080 SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4080 SUPER 16GB GAMING X Slim",
-        "chipset": "GeForce RTX 4080 SUPER 16GB"
+        "gpu": "GeForce RTX 4080 SUPER 16GB"
       },
       {
         "name": "MSI GeForce RTX 4080 SUPER 16GB GAMING X Slim White",
-        "chipset": "GeForce RTX 4080 SUPER 16GB"
+        "gpu": "GeForce RTX 4080 SUPER 16GB"
       },
       {
         "name": "GeForce RTX 4080 SUPER 16GB",
@@ -1941,39 +1941,39 @@
     "GeForce RTX 4090": [
       {
         "name": "ASUS ROG Strix GeForce RTX 4090 24GB GAMING",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "ASUS TUF Gaming GeForce RTX 4090 24GB",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4090 24GB GAMING",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "Gigabyte GeForce RTX 4090 24GB GAMING OC",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "MSI GeForce RTX 4090 24GB",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "MSI GeForce RTX 4090 24GB GAMING X",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "MSI GeForce RTX 4090 24GB GAMING X Slim",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "MSI GeForce RTX 4090 24GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "MSI GeForce RTX 4090 24GB VENTUS E 3X OC",
-        "chipset": "GeForce RTX 4090 24GB"
+        "gpu": "GeForce RTX 4090 24GB"
       },
       {
         "name": "GeForce RTX 4090 24GB",
@@ -2012,55 +2012,55 @@
     "GeForce RTX 5050": [
       {
         "name": "ASUS Dual GeForce RTX 5050 8GB",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "ASUS Prime GeForce RTX 5050 8GB",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5050 8GB GAMING",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5050 8GB GAMING OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5050 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "MSI GeForce RTX 5050 8GB OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "MSI GeForce RTX 5050 8GB SHADOW 2X OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "MSI GeForce RTX 5050 8GB SHADOW BULK 2X OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "MSI GeForce RTX 5050 8GB VENTUS 2X",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "MSI GeForce RTX 5050 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "PNY GeForce RTX 5050 8GB Dual Fan",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "PNY GeForce RTX 5050 8GB Dual Fan 2X",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5050 8GB Twin Edge",
-        "chipset": "GeForce RTX 5050 8GB"
+        "gpu": "GeForce RTX 5050 8GB"
       },
       {
         "name": "GeForce RTX 5050 8GB",
@@ -2099,95 +2099,95 @@
     "GeForce RTX 5060": [
       {
         "name": "ASUS Dual GeForce RTX 5060 8GB",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "ASUS GeForce RTX 5060 8GB LP BRK",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "ASUS TUF Gaming GeForce RTX 5060 8GB",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 8GB EAGLE OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 8GB WINDFORCE",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 8GB WINDFORCE 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "INNO3D GeForce RTX 5060 8GB Twin X2",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB INSPIRE 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB SHADOW 2X",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB SHADOW 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB SHADOW BULK 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 8GB VENTUS 2X OC White",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 8GB",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 8GB Dual Fan",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 8GB Dual Fan 2X OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 8GB Dual Fan OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 8GB OC",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5060 8GB AMP",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5060 8GB SOLO",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5060 8GB Twin Edge",
-        "chipset": "GeForce RTX 5060 8GB"
+        "gpu": "GeForce RTX 5060 8GB"
       },
       {
         "name": "GeForce RTX 5060 8GB",
@@ -2226,107 +2226,107 @@
     "GeForce RTX 5060 Ti": [
       {
         "name": "ASUS Dual GeForce RTX 5060 Ti 16GB",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 Ti 16GB WINDFORCE OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 Ti 8GB EAGLE OC",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 Ti 8GB WINDFORCE",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5060 Ti 8GB WINDFORCE OC",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB INSPIRE 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB SHADOW 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB SHADOW Plus 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB SHADOW Plus BULK 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB TRIO",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB TRIO OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB TRIO OC White",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 16GB VENTUS Plus 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 8GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "MSI GeForce RTX 5060 Ti 8GB VENTUS Plus 2X OC",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 16GB Dual Fan",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 16GB Dual Fan OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 16GB OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 16GB RGB Triple Fan OC",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 8GB Dual Fan",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "PNY GeForce RTX 5060 Ti 8GB Dual Fan OC",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5060 Ti 16GB Twin Edge",
-        "chipset": "GeForce RTX 5060 Ti 16GB"
+        "gpu": "GeForce RTX 5060 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5060 Ti 8GB Twin Edge",
-        "chipset": "GeForce RTX 5060 Ti 8GB"
+        "gpu": "GeForce RTX 5060 Ti 8GB"
       },
       {
         "name": "GeForce RTX 5060 Ti 8GB",
@@ -2364,123 +2364,123 @@
     "GeForce RTX 5070": [
       {
         "name": "ASUS Dual GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ASUS ROG Strix GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ASUS Prime GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ASUS TUF Gaming GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB Aero OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB EAGLE ICE SFF OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB EAGLE OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB EAGLE SFF OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB GAMING OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 12GB WINDFORCE SFF OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "INNO3D GeForce RTX 5070 12GB Twin X2",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB INSPIRE",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB INSPIRE 3X OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB SHADOW 2X OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB SHADOW 3X OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB TRIO OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB TRIO OC White",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB VANGUARD",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB VENTUS 2X OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB VENTUS 2X OC White",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "MSI GeForce RTX 5070 12GB World of Warcraft OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "PNY GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "PNY GeForce RTX 5070 12GB ARGB Triple Fan OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "PNY GeForce RTX 5070 12GB OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 12GB",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 12GB OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 12GB Twin Edge",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 12GB Twin Edge OC",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 12GB Twin Edge White",
-        "chipset": "GeForce RTX 5070 12GB"
+        "gpu": "GeForce RTX 5070 12GB"
       },
       {
         "name": "GeForce RTX 5070 12GB",
@@ -2537,99 +2537,99 @@
     "GeForce RTX 5070 Ti": [
       {
         "name": "ASUS Prime GeForce RTX 5070 Ti 16GB",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 Ti 16GB EAGLE ICE OC White",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 Ti 16GB EAGLE ICE SFF OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 Ti 16GB EAGLE SFF OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 Ti 16GB GAMING OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5070 Ti 16GB WINDFORCE SFF OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB INSPIRE 3X OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB INSPIRE Plus 3X OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB INSPIRE Plus OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB MLG OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB SHADOW 3X OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB TRIO OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB TRIO OC White",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB TRIO Plus OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB VANGUARD",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "MSI GeForce RTX 5070 Ti 16GB VENTUS Plus 3X OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "PNY GeForce RTX 5070 Ti 16GB OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB Extreme INFINITY",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB Extreme INFINITY AMP",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB OC",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB OC White",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5070 Ti 16GB SFF",
-        "chipset": "GeForce RTX 5070 Ti 16GB"
+        "gpu": "GeForce RTX 5070 Ti 16GB"
       },
       {
         "name": "GeForce RTX 5070 Ti 16GB",
@@ -2686,79 +2686,79 @@
     "GeForce RTX 5080": [
       {
         "name": "ASUS ROG Astral GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "ASUS Prime GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "ASUS TUF Gaming GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5080 16GB Aero SFF OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5080 16GB GAMING OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5080 16GB WINDFORCE SFF OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "INNO3D GeForce RTX 5080 16GB OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB INSPIRE 3X OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB INSPIRE Plus 3X OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB SHADOW 3X OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB TRIO OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB TRIO OC White",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB VANGUARD",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB VENTUS 3X OC White",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "MSI GeForce RTX 5080 16GB VENTUS Plus 3X OC",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "ZOTAC GAMING GeForce RTX 5080 16GB",
-        "chipset": "GeForce RTX 5080 16GB"
+        "gpu": "GeForce RTX 5080 16GB"
       },
       {
         "name": "GeForce RTX 5080 16GB",
@@ -2815,43 +2815,43 @@
     "GeForce RTX 5090": [
       {
         "name": "ASUS ROG Astral GeForce RTX 5090 32GB",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5090 32GB",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5090 32GB GAMING OC",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "Gigabyte GeForce RTX 5090 32GB WINDFORCE OC",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB LIGHTNING Z Plus",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB TRIO OC",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB VANGUARD",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB VANGUARD OC",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "MSI GeForce RTX 5090 32GB VENTUS 3X OC",
-        "chipset": "GeForce RTX 5090 32GB"
+        "gpu": "GeForce RTX 5090 32GB"
       },
       {
         "name": "GeForce RTX 5090 32GB",
@@ -2892,11 +2892,11 @@
     "Radeon RX 580": [
       {
         "name": "AXLE Radeon RX 580 8GB",
-        "chipset": "Radeon RX 580 8GB"
+        "gpu": "Radeon RX 580 8GB"
       },
       {
         "name": "OCPC Radeon RX 580 8GB",
-        "chipset": "Radeon RX 580 8GB"
+        "gpu": "Radeon RX 580 8GB"
       },
       {
         "name": "Radeon RX 580 8GB",
@@ -2954,7 +2954,7 @@
     "Radeon RX 6600 XT": [
       {
         "name": "MSI Radeon RX 6600 XT 8GB MECH 2X",
-        "chipset": "Radeon RX 6600 XT 8GB"
+        "gpu": "Radeon RX 6600 XT 8GB"
       },
       {
         "name": "Radeon RX 6600 XT 8GB",
@@ -2976,7 +2976,7 @@
     "Radeon RX 6650 XT": [
       {
         "name": "ZEPHYR Radeon RX 6650 XT 8GB MINI Loong Year Limited Edition White",
-        "chipset": "Radeon RX 6650 XT 8GB"
+        "gpu": "Radeon RX 6650 XT 8GB"
       },
       {
         "name": "Radeon RX 6650 XT 8GB",
@@ -3016,7 +3016,7 @@
     "Radeon RX 6700 XT": [
       {
         "name": "MSI Radeon RX 6700 XT 12GB MECH 2X",
-        "chipset": "Radeon RX 6700 XT 12GB"
+        "gpu": "Radeon RX 6700 XT 12GB"
       },
       {
         "name": "Radeon RX 6700 XT 12GB",
@@ -3111,7 +3111,7 @@
     "Radeon RX 6900 XT": [
       {
         "name": "MSI Radeon RX 6900 XT 16GB",
-        "chipset": "Radeon RX 6900 XT 16GB"
+        "gpu": "Radeon RX 6900 XT 16GB"
       },
       {
         "name": "Radeon RX 6900 XT 16GB",
@@ -3151,7 +3151,7 @@
     "Radeon RX 7600": [
       {
         "name": "Gigabyte Radeon RX 7600 8GB GAMING OC",
-        "chipset": "Radeon RX 7600 8GB"
+        "gpu": "Radeon RX 7600 8GB"
       },
       {
         "name": "Radeon RX 7600 8GB",
@@ -3190,11 +3190,11 @@
     "Radeon RX 7600 XT": [
       {
         "name": "Gigabyte Radeon RX 7600 XT 16GB GAMING OC",
-        "chipset": "Radeon RX 7600 XT 16GB"
+        "gpu": "Radeon RX 7600 XT 16GB"
       },
       {
         "name": "XFX Speedster SWFT 210 Radeon RX 7600 XT 16GB",
-        "chipset": "Radeon RX 7600 XT 16GB"
+        "gpu": "Radeon RX 7600 XT 16GB"
       },
       {
         "name": "Radeon RX 7600 XT 16GB",
@@ -3234,7 +3234,7 @@
     "Radeon RX 7700 XT": [
       {
         "name": "Gigabyte Radeon RX 7700 XT 12GB GAMING OC",
-        "chipset": "Radeon RX 7700 XT 12GB"
+        "gpu": "Radeon RX 7700 XT 12GB"
       },
       {
         "name": "Radeon RX 7700 XT 12GB",
@@ -3256,31 +3256,31 @@
     "Radeon RX 7800 XT": [
       {
         "name": "ASRock Radeon RX 7800 XT 16GB Challenger",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "Gigabyte Radeon RX 7800 XT 16GB GAMING OC",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "PowerColor Fighter Radeon RX 7800 XT 16GB",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "PowerColor Fighter Radeon RX 7800 XT 16GB 3X OC",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "PowerColor Hellhound Radeon RX 7800 XT 16GB",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "PowerColor Hellhound Radeon RX 7800 XT 16GB 3X OC",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "PowerColor Radeon RX 7800 XT 16GB",
-        "chipset": "Radeon RX 7800 XT 16GB"
+        "gpu": "Radeon RX 7800 XT 16GB"
       },
       {
         "name": "Radeon RX 7800 XT 16GB",
@@ -3356,15 +3356,15 @@
     "Radeon RX 9060 XT": [
       {
         "name": "Gigabyte Radeon RX 9060 XT 16GB GAMING OC",
-        "chipset": "Radeon RX 9060 XT 16GB"
+        "gpu": "Radeon RX 9060 XT 16GB"
       },
       {
         "name": "Sapphire PULSE Radeon RX 9060 XT 16GB OC",
-        "chipset": "Radeon RX 9060 XT 16GB"
+        "gpu": "Radeon RX 9060 XT 16GB"
       },
       {
         "name": "XFX Swift Radeon RX 9060 XT 8GB OC White",
-        "chipset": "Radeon RX 9060 XT 8GB"
+        "gpu": "Radeon RX 9060 XT 8GB"
       },
       {
         "name": "Radeon RX 9060 XT 8GB",
@@ -3420,7 +3420,7 @@
     "Radeon RX 9070": [
       {
         "name": "Gigabyte Radeon RX 9070 16GB GAMING OC",
-        "chipset": "Radeon RX 9070 16GB"
+        "gpu": "Radeon RX 9070 16GB"
       },
       {
         "name": "Radeon RX 9070 16GB",
@@ -3442,7 +3442,7 @@
     "Radeon RX 9070 XT": [
       {
         "name": "Gigabyte Radeon RX 9070 XT 16GB GAMING OC",
-        "chipset": "Radeon RX 9070 XT 16GB"
+        "gpu": "Radeon RX 9070 XT 16GB"
       },
       {
         "name": "Radeon RX 9070 XT 16GB",

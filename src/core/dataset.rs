@@ -90,7 +90,7 @@ impl Dataset {
                     .collect();
 
                 for variant in model.children.iter_mut() {
-                    if let Some(chipset_label) = variant.data.get_str("chipset") {
+                    if let Some(chipset_label) = variant.data.get_str("gpu") {
                         if let Some(chipset) = snapshot.iter().find(|c| c.label == chipset_label) {
                             let mut merged = merge_objects(variant.data.as_ref(), chipset.data.as_ref());
                             merged.insert("vendor_card".to_string(), true.into());

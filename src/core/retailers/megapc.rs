@@ -222,8 +222,6 @@ async fn fetch_api(
         list
     };
 
-    PAGE_CACHE.write().await.insert(link.to_string(), products.clone());
-
     Ok((products, errors))
 }
 
