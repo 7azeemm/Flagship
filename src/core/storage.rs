@@ -2,19 +2,20 @@ use crate::core::product::{Product, ProductStatus};
 use crate::core::scanner::CatalogScanner;
 use crate::core::sections::Section;
 use crate::core::tracking::scan_report::ScanReport;
+use crate::core::variant::VariantStorage;
 use crate::utils::file_loader::FileLoader;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::time::Instant;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use strum::IntoEnumIterator;
-use tokio::sync::RwLock;
-use tracing::error;
+use tokio::sync::{Mutex, RwLock};
 
 static PRODUCT_STORAGE: Lazy<RwLock<ProductStorage>> = Lazy::new(|| RwLock::new(ProductStorage::default()));
-const REMOVED_PRODUCTS_PATH: &str = "data/removed_products.json";
+const REMOVED_PRODUCTS_PATH: &str = "state/removed_products.json";
 
 #[derive(Clone, Default)]
 pub struct ProductStorage {
@@ -79,29 +80,28 @@ impl ProductStorage {
         );
     }
 
-    pub async fn save() {
+    pub async fn save(storage: &ProductStorage, sections: Vec<Section>, save_removed: bool) {
         let start_time = Instant::now();
-        let storage = PRODUCT_STORAGE.read().await;
-        let mut by_section: HashMap<Section, HashMap<&String, &Product>> = Section::iter()
+        let mut by_section: HashMap<Section, HashMap<&String, &Product>> = sections
+            .into_iter()
             .map(|section| (section, HashMap::new()))
             .collect();
 
         for (id, product) in &storage.products {
-            by_section
-                .entry(product.section)
-                .or_default()
-                .insert(id, product);
+            by_section.entry(product.section).and_modify(|map| {
+                map.insert(id, product);
+            });
         }
 
         for (section, products) in by_section {
             let path = format!("data/{section}.json");
             if let Err(error) = FileLoader::save_to_file(&path, &products).await {
-                error!("Failed to save {section} products in {path}: {error}")
+                tracing::error!("Failed to save {section} products in {path}: {error}")
             }
         }
 
-        if let Err(error) = FileLoader::save_to_file(REMOVED_PRODUCTS_PATH, &storage.removed_products).await {
-            error!("Failed to save removed products in {REMOVED_PRODUCTS_PATH}: {error}")
+        if save_removed && let Err(error) = FileLoader::save_to_file(REMOVED_PRODUCTS_PATH, &storage.removed_products).await {
+            tracing::error!("Failed to save removed products in {REMOVED_PRODUCTS_PATH}: {error}")
         }
 
         tracing::info!(
@@ -117,6 +117,13 @@ impl ProductStorage {
             .products
             .get(product_id)
             .cloned()
+    }
+
+    pub async fn get_product(product_id: &str) -> Option<Product> {
+        let mut storage = PRODUCT_STORAGE.write().await;
+        let product = storage.products.get_mut(product_id)?;
+        product.views = product.views.saturating_add(1);
+        Some(product.clone())
     }
 
     pub async fn search(query: &str, limit: usize) -> Vec<Product> {
@@ -154,17 +161,18 @@ impl ProductStorage {
     pub async fn replace_by_id(original_id: &str, product: Product) -> Result<Product, String> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let previous = storage.products.remove(original_id).ok_or_else(|| "Product not found".to_string())?;
+        let section = product.section;
 
         if product.id != original_id && storage.products.contains_key(&product.id) {
             storage.products.insert(previous.id.clone(), previous);
             return Err("Another product already uses that ID".into());
         }
 
-        let new_id = product.id.clone();
-        storage.products.insert(new_id.clone(), product);
+        storage.products.insert(product.id.clone(), product);
 
-        drop(storage);
-        Self::save().await;
+        Self::save(&*storage, vec![section], false).await;
+        VariantStorage::update(&storage.products, false).await;
+        
         Ok(previous)
     }
 
@@ -172,7 +180,7 @@ impl ProductStorage {
         section.try_parser().ok_or_else(|| "The parsers are still starting".to_string())?;
         let mut storage = PRODUCT_STORAGE.write().await;
         let mut summary = ReparseSummary::default();
-        let mut affected_sections = HashSet::from([section]);
+        let mut sections = HashSet::from([section]);
 
         for product in storage.products.values_mut().filter(|product| product.section == section) {
             summary.total += 1;
@@ -182,7 +190,7 @@ impl ProductStorage {
                 continue;
             }
 
-            affected_sections.insert(product.section);
+            sections.insert(product.section);
             summary.changed += 1;
             summary.moved += usize::from(product.section != old.section);
             summary.updates.push(ProductUpdate {
@@ -195,7 +203,8 @@ impl ProductStorage {
             return Ok(summary);
         }
 
-        Self::save_sections(&storage, &affected_sections).await?;
+        Self::save(&storage, sections.into_iter().collect(), false).await;
+        VariantStorage::update(&storage.products, false).await;
 
         Ok(summary)
     }
@@ -203,10 +212,8 @@ impl ProductStorage {
     pub async fn reparse_product(product_id: &str) -> Result<ProductUpdate, String> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
-        product
-            .section
-            .try_parser()
-            .ok_or_else(|| "The parsers are still starting".to_string())?;
+        product.section.try_parser().ok_or_else(|| "The parsers are still starting".to_string())?;
+        
         let old_section = product.section;
         let changes = Self::reparse(product);
         let update = ProductUpdate {
@@ -215,8 +222,9 @@ impl ProductStorage {
         };
 
         if !update.changes.is_empty() {
-            let affected_sections = HashSet::from([old_section, update.product.section]);
-            Self::save_sections(&storage, &affected_sections).await?;
+            let sections = HashSet::from([old_section, update.product.section]);
+            Self::save(&storage, sections.into_iter().collect(), false).await;
+            VariantStorage::update(&storage.products, false).await;
         }
 
         Ok(update)
@@ -231,25 +239,11 @@ impl ProductStorage {
         product.record_changes(&old, false)
     }
 
-    async fn save_sections(
-        storage: &ProductStorage,
-        sections: &HashSet<Section>,
-    ) -> Result<(), String> {
-        for section in sections {
-            let products: HashMap<String, Product> = storage
-                .products
-                .iter()
-                .filter(|(_, product)| product.section == *section)
-                .map(|(id, product)| (id.clone(), product.clone()))
-                .collect();
-            FileLoader::save_to_file(&format!("data/{section}.json"), &products).await?;
-        }
-        Ok(())
-    }
-
     pub async fn add_note(product_id: &str, note: String) -> Result<ProductUpdate, String> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let section = product.section;
+        
         let old = product.clone();
         product.notes.push(note);
         let changes = product.record_changes(&old, false);
@@ -257,8 +251,8 @@ impl ProductStorage {
             product: product.clone(),
             changes,
         };
-        drop(storage);
-        Self::save().await;
+        
+        Self::save(&storage, vec![section], false).await;
         Ok(update)
     }
 
@@ -276,27 +270,30 @@ impl ProductStorage {
     pub async fn approve(product_id: &str) -> Result<Product, String> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let section = product.section;
+        
         product.approved = true;
         let product = product.clone();
-        drop(storage);
-        Self::save().await;
+        
+        Self::save(&storage, vec![section], false).await;
         Ok(product)
     }
 
-    /// Moves an active product into the removed-products archive. The move is
-    /// rolled back in memory if saving fails.
     pub async fn remove(product_id: &str) -> Result<Product, String> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let mut product = storage.products.remove(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let section = product.section;
+
         product.removed_at = Some(Utc::now());
         storage.removed_products.push(product.clone());
 
-        drop(storage);
-        Self::save().await;
+        Self::save(&storage, vec![section], true).await;
+        VariantStorage::update(&storage.products, false).await;
+        
         Ok(product)
     }
 
-    pub async fn synchronize(
+    pub async fn update(
         mut products: Vec<Product>,
         sections: &[Section],
         sites: &[&'static str],
@@ -313,14 +310,8 @@ impl ProductStorage {
             let is_in_scope = (sections.is_empty() || sections.contains(&existing.section))
                 && (sites.is_empty() || sites.contains(&existing.site.as_str()));
             let missing = is_in_scope && !new_product_urls.contains(&existing.url);
-            if !missing {
-                return true;
-            }
 
-            if !scan_scopes.attempted.contains(&scope) {
-                return true;
-            }
-            if scan_scopes.failed.contains(&scope) {
+            if !missing || !scan_scopes.attempted.contains(&scope) || scan_scopes.failed.contains(&scope) {
                 return true;
             }
 
@@ -356,6 +347,7 @@ impl ProductStorage {
                 product.history = existing.history.clone();
                 product.notes = existing.notes.clone();
                 product.approved = existing.approved;
+                product.views = existing.views;
                 product.added_at = existing.added_at;
 
                 let changes = product.record_changes(existing, true);
@@ -379,6 +371,7 @@ impl ProductStorage {
     }
 
     pub async fn commit(report: &ScanReport) {
+        let mut sections = HashSet::new();
         let products = report
             .added_items
             .iter()
@@ -389,9 +382,15 @@ impl ProductStorage {
                     .iter()
                     .map(|(product, _)| product.clone()),
             )
-            .map(|product| (product.id.clone(), product));
-        PRODUCT_STORAGE.write().await.products.extend(products);
-        Self::save().await
+            .map(|product| {
+                sections.insert(product.section);
+                (product.id.clone(), product)
+            });
+        
+        let mut storage = PRODUCT_STORAGE.write().await;
+        storage.products.extend(products);
+        
+        Self::save(&storage, sections.into_iter().collect(), true).await
     }
 
     pub fn get_storage() -> &'static Lazy<RwLock<ProductStorage>> {

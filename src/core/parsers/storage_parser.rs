@@ -33,7 +33,7 @@ impl SectionParser for StorageParser {
                 false => format!("{number}GB")
             };
 
-            product.filter_ids.insert("storage_size".to_string(), size);
+            product.filter_ids.insert("storage".to_string(), size);
         }
 
         let title = product.title.to_uppercase().replace(",", ".");

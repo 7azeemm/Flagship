@@ -1,9 +1,9 @@
 ## Phase 0 — Foundation
 
-- [ ]  Complete Parsers
-- [ ]  Fix Grouping Mode
-- [ ]  Code Cleanup
-- [ ]  Image Validation
+- [X]  Complete Parsers
+- [X]  Fix Grouping Mode
+- [X]  Code Cleanup
+- [X]  Image Validation
 - [ ]  New-category detector in retailer sites
 
 ## Phase 1 — Discord Bot & Logging
@@ -13,11 +13,11 @@
 - [X]  Logging new/removed/edited products into a channel
 - [X]  Rich Discord catalog-scan reports
 
-## Phase 2 — Component Storage
+## Phase 2 — Variant Storage
 
-- [ ]  Storage for price history, availability and more
-- [ ]  Combined fields (as example: Laptop Section + GPU + RAM)
-- [ ]  Charts endpoint
+- [X]  Storage for price history, availability and more
+- [X]  Combined fields (as example: Laptop Section + GPU + RAM)
+- [X]  Charts
 
 ## Phase 3 — User Accounts & Paid Features
 

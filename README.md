@@ -4,7 +4,14 @@
 
 Mythos brings together product data from Tunisian retailers as the foundation for a broader shopping platform: price-history graphs, product trackers and alerts, a marketplace, PC building tools, and more.
 
-This repository currently contains the **Rust data collection and API backend**. The customer-facing website and the broader platform features are still on the roadmap.
+This repository contains the **Rust data collection and API backend** and a responsive
+catalog website with light/dark themes, category navigation, product details, and
+simple and structured filters. Accounts, charts, statistics, and alerts are still on
+the roadmap.
+
+To browse saved products without starting the scraper or Discord bot, first run
+`npm ci` and `npm run build` inside `website/`, then run
+`cargo run --locked -- --serve-only` from the root and open http://127.0.0.1:3000.
 
 ## What is here today
 
@@ -16,13 +23,13 @@ This repository currently contains the **Rust data collection and API backend**.
 - JSON product exports, page and description caches, and scraping-cycle reports.
 
 > [!IMPORTANT]
-> The current development path in `ProductManager::fetch_sites` returns cached pages before reaching the live scraper. A fresh checkout without `pages_cache.json` can therefore serve an empty catalogue. The product-file loading code in `ProductStorage::load` is also commented out. This is a development backend, not a ready-to-deploy tracking service.
+> Catalog-only mode loads saved products from `data/<Section>.json`. A fresh checkout without product data shows an empty catalog. Parser and grouping accuracy are still being refined; the website does not correct inconsistent product records or provide tracking and alert services.
 
 ## Platform roadmap
 
 | Area | Direction |
 | --- | --- |
-| Product discovery | A searchable website with richer product details and comparisons |
+| Product discovery | Richer comparisons and product insights beyond the current catalog |
 | Graphs and analytics | Price-history charts and availability trends |
 | Trackers | Watchlists, price-drop alerts, restock alerts, and advanced queries |
 | PC builder | Tools for choosing components and planning a build |
@@ -35,12 +42,12 @@ These are planned capabilities, not a list of features already available in this
 
 | Location | Responsibility |
 | --- | --- |
-| [src/web_scraper/sites](src/web_scraper/sites) | Retailer-specific collection logic |
-| [src/web_scraper/parsers](src/web_scraper/parsers) | Category parsing and normalization |
+| [src/core/retailers](src/core/retailers) | Retailer-specific collection logic |
+| [src/core/parsers](src/core/parsers) | Category parsing and normalization |
 | [config/sections.json](config/sections.json) | Category rules, filters, and grouping fields |
 | [config/datasets](config/datasets) | Reference data used during parsing |
-| [src/web_scraper/manager.rs](src/web_scraper/manager.rs) | Collection, parsing, caching, and update cycles |
-| [src/storage.rs](src/storage.rs) | In-memory product storage, updates, and JSON exports |
+| [src/core/scanner.rs](src/core/scanner.rs) | Collection, parsing, caching, and update cycles |
+| [src/core/storage.rs](src/core/storage.rs) | In-memory product storage, updates, and JSON exports |
 | [src/api](src/api) | HTTP routes, queries, filters, and responses |
 
 The data flow is retailer adapters or cached pages → normalization and change detection → product storage → API responses. Products are exported to `data/<Section>.json`; cycle reports go to `reports/`.
@@ -50,7 +57,7 @@ The data flow is retailer adapters or cached pages → normalization and change 
 ### Requirements
 
 - A recent stable Rust toolchain supporting the Rust 2024 edition.
-- Playwright's Chromium browser and its system dependencies, compatible with the `playwright-rs` version in [Cargo.toml](Cargo.toml). The application initializes Chromium even when using cached data.
+- Playwright's Chromium browser and its system dependencies, compatible with the `playwright-rs` version in [Cargo.toml](Cargo.toml), when running the scraper. Catalog-only mode does not initialize Chromium.
 - Local development data if you want to exercise the current cached-page path.
 
 ```bash
@@ -62,7 +69,7 @@ cargo run --locked
 
 The Cargo package is still named `PriceTracker`; the project is now called **Mythos**. Run commands from the repository root so relative configuration and data paths resolve correctly.
 
-The server currently binds to `0.0.0.0:3000`. Use it in a trusted local environment: CORS is permissive, and the current router has no authentication layer. If Chromium is missing, install the browser revision required by the pinned Playwright integration before starting again.
+The normal server binds to `0.0.0.0:3000`; catalog-only mode binds to `127.0.0.1:3000`. The website makes same-origin API requests, and permissive CORS is disabled. The catalog is read-only and has no account authentication. For deployment, use an HTTPS reverse proxy; see [website/README.md](website/README.md).
 
 ### Try the API
 

@@ -4,6 +4,8 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+pub static STRUCTURED_FILTERS: &[&str] = &["cpu", "gpu", "model"];
+
 #[derive(Debug, Serialize)]
 pub struct FilterGroup {
     pub key: String,
@@ -88,7 +90,7 @@ fn collapse_single_child_groups(options: &mut [FilterValue]) {
 
     // For top keys only
     for node in options.iter_mut() {
-        if node.children.len() == 1 {
+        if node.count == 0 && node.children.len() == 1 {
             if node.label == node.children[0].label || node.id == "Others" && node.children[0].id == "Others/Others" {
                 *node = node.children.pop().unwrap();
             }
@@ -101,7 +103,7 @@ fn collapse_children(children: &mut Vec<FilterValue>) {
         collapse_children(&mut child.children);
     }
     for child in children.iter_mut() {
-        if child.children.len() == 1 && child.label.contains(' ') {
+        if child.count == 0 && child.children.len() == 1 && child.label.contains(' ') {
             *child = child.children.pop().unwrap();
         }
     }
@@ -151,15 +153,6 @@ fn finalize_counts(options: &mut [FilterValue]) {
     for node in options.iter_mut() {
         finalize_counts(&mut node.children);
         let children_total: usize = node.children.iter().map(|c| c.count).sum();
-        // Check if node is a group and has direct matches
-        if node.count > 0 && !node.children.is_empty() {
-            eprintln!(
-                "Filter node `{}` has {} direct match(es) AND {} children.",
-                node.id,
-                node.count,
-                node.children.len()
-            );
-        }
         node.count += children_total;
     }
 }
@@ -237,12 +230,14 @@ pub fn product_matches_key(product: &Product, key: &str, selected_ids: &[String]
         .get(key)
         .map(String::as_str)
         .unwrap_or("Others/Others");
-    selected_ids.iter().any(|sel| {
-        value == sel
-            || (value.len() > sel.len()
-            && value.starts_with(sel.as_str())
-            && value.as_bytes()[sel.len()] == b'/')
-    })
+    // The most specific rule wins. !path excludes a child of a selected parent.
+    selected_ids.iter()
+        .filter(|rule| {
+            let path = rule.strip_prefix('!').unwrap_or(rule);
+            value == path || value.strip_prefix(path).is_some_and(|rest| rest.starts_with('/'))
+        })
+        .max_by_key(|rule| rule.trim_start_matches('!').len())
+        .is_some_and(|rule| !rule.starts_with('!'))
 }
 
 pub fn build_all_filters(
@@ -254,7 +249,7 @@ pub fn build_all_filters(
     let mut groups = Vec::with_capacity(keys.len());
 
     for key in keys {
-        let structured = vec!["cpu", "gpu", "model"].contains(&key.as_str());
+        let structured = STRUCTURED_FILTERS.contains(&key.as_str());
         let scoped = scoped_products(products, selections, key);
         let group = build_filter_group(key, &label_from_key(key, structured), &scoped);
         groups.push(group);

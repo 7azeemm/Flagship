@@ -1,0 +1,36 @@
+{
+  "name": "mythos-website",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "tsc --noEmit",
+    "format": "prettier --write src scripts public/theme.js index.html *.json vite.config.ts README.md",
+    "format:check": "prettier --check src scripts public/theme.js index.html *.json vite.config.ts README.md",
+    "test:smoke": "node scripts/smoke.mjs",
+    "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts"
+  },
+  "dependencies": {
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "prettier": "^3.9.6",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}

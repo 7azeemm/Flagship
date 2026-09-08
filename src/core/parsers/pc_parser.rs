@@ -222,7 +222,7 @@ impl SectionParser for PCParser {
 
         if let Some(memory) = memory {
             let memory_size = format!("{memory}GB");
-            product.filter_ids.insert("memory_size".to_string(), memory_size.clone());
+            product.filter_ids.insert("memory".to_string(), memory_size.clone());
 
             let mut found_type = false;
             for memory_type in vec!["DDR3", "DDR4", "DDR5"] {
@@ -245,7 +245,7 @@ impl SectionParser for PCParser {
                 false => format!("{storage}GB"),
             };
 
-            product.filter_ids.insert("storage_size".to_string(), storage_size.clone());
+            product.filter_ids.insert("storage".to_string(), storage_size.clone());
             product.components.insert("storage".to_string(), if text.contains("NVME") {
                 format!("{storage_size} NVME")
             } else if text.contains("SSD") {

@@ -6,3 +6,4 @@ pub mod sections;
 pub mod storage;
 pub mod retailers;
 pub mod tracking;
+pub mod variant;

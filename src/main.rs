@@ -11,6 +11,7 @@ use core::scanner::CatalogScanner;
 use core::sections::SectionConfig;
 use core::storage::ProductStorage;
 use core::tracking::error_tracker::ErrorTracker;
+use core::variant::VariantStorage;
 use dotenv::dotenv;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,7 @@ async fn main() {
     SectionConfig::load().await;
     ProductStorage::load().await;
     CatalogScanner::schedule().await;
+    VariantStorage::load().await;
 
     let api_listener = TcpListener::bind("0.0.0.0:3000").await.expect("Failed to bind API port");
     server::run(api_listener).await.expect("Failed to start server");

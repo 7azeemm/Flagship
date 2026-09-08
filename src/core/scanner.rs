@@ -4,6 +4,7 @@ use crate::core::product::{Product, ProductDescription};
 use crate::core::retailers::{RETAILERS, Retailer};
 use crate::core::sections::Section;
 use crate::core::storage::{ProductStorage};
+use crate::core::variant::VariantStorage;
 use crate::core::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::core::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::core::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
@@ -234,9 +235,10 @@ impl CatalogScanner {
             report.metrics.moved_sections += usize::from(Self::normalize_product_section(product));
         }
 
-        ProductStorage::synchronize(products, sections, retailers, report).await;
+        ProductStorage::update(products, sections, retailers, report).await;
         self.parse_changed_products(report).await;
         ProductStorage::commit(report).await;
+        VariantStorage::update(&ProductStorage::get_storage().read().await.products, true).await;
         self.save_caches().await;
 
         Ok(())
@@ -369,7 +371,7 @@ impl CatalogScanner {
         report.metrics.duplicates_removed = old_count - all_products.len();
         tracing::info!(duplicates = old_count - all_products.len(), "Deduplicated scraped products");
 
-        println!(
+        tracing::info!(
             "Successfully Fetched {} products in {:.2?}",
             all_products.len(),
             start_time.elapsed()
@@ -465,7 +467,7 @@ impl CatalogScanner {
         for (product, _) in &mut report.edited_items {
             product.section.parser().parse(product);
         }
-        println!(
+        tracing::info!(
             "Parsed {} changed products in {:.2?}",
             report.added_items.len() + report.edited_items.len(),
             start_time.elapsed()

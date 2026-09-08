@@ -110,6 +110,13 @@ impl Section {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupField {
+    pub key: String,
+    #[serde(default)]
+    pub required: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SectionConfig {
@@ -123,7 +130,7 @@ pub struct SectionConfig {
     pub add_brands_by_models: Vec<Vec<String>>,
     pub filters: Vec<String>,
     pub components: Vec<String>,
-    pub group: Vec<String>,
+    pub group: Vec<GroupField>,
     pub main_field: Option<String>,
 }
 

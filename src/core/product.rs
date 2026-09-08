@@ -23,6 +23,7 @@ pub struct Product {
     pub components: HashMap<String, String>,
     pub notes: Vec<String>,
     pub approved: bool,
+    pub views: u64,
     pub history: Value,
     pub updated_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
@@ -58,6 +59,7 @@ impl Product {
             components: Default::default(),
             notes: Default::default(),
             approved: false,
+            views: 0,
             history: Default::default(),
             updated_at: None,
             removed_at: None,
@@ -82,6 +84,7 @@ impl Product {
             change(&mut changes, "components", &self.components, &new.components);
             change(&mut changes, "notes", &self.notes, &new.notes);
             change(&mut changes, "approved", &self.approved, &new.approved);
+            change(&mut changes, "views", &self.views, &new.views);
             change(&mut changes, "history", &self.history, &new.history);
             change(&mut changes, "added_at", &self.added_at, &new.added_at);
             change(&mut changes, "updated_at", &self.updated_at, &new.updated_at);

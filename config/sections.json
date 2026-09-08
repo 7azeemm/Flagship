@@ -11,14 +11,50 @@
     "replace_words": [
       ["Penitum", "Pentium"]
     ],
-    "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
-    "components": ["cpu", "gpu", "memory", "storage"]
+    "filters": ["cpu", "gpu", "memory", "memory_type", "storage"],
+    "components": ["cpu", "gpu", "memory", "storage"],
+    "group": [
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": false
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "GamingPC",
     "min_price": 200,
-    "filters": ["cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size"],
-    "components": ["cpu", "gpu", "memory", "storage"]
+    "filters": ["cpu", "gpu", "memory", "memory_type", "gpu_memory", "storage"],
+    "components": ["cpu", "gpu", "memory", "storage"],
+    "group": [
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": true
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "AllInOnePC",
@@ -26,15 +62,55 @@
       ["MiniPC", "mini|barebone"]
     ],
     "filters": [
-      "brand", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size", "resolution", "refresh_rate"
+      "brand", "cpu", "gpu", "memory", "memory_type", "storage", "display_size", "resolution", "refresh_rate"
     ],
     "components": ["brand", "display", "cpu", "gpu", "memory", "storage"],
-    "main_field": "brand"
+    "main_field": "brand",
+    "group": [
+      {
+        "key": "brand",
+        "required": true
+      },
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": true
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "MiniPC",
-    "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
-    "components": ["cpu", "gpu", "memory", "storage"]
+    "filters": ["cpu", "gpu", "memory", "memory_type", "storage"],
+    "components": ["cpu", "gpu", "memory", "storage"],
+    "group": [
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": true
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "Laptop",
@@ -50,11 +126,33 @@
       ["HP15", "HP 15"], ["HP14", "HP 14"]
     ],
     "filters": [
-      "model", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size",
+      "model", "cpu", "gpu", "memory", "memory_type", "storage", "display_size",
       "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
-    "main_field": "model"
+    "main_field": "model",
+    "group": [
+      {
+        "key": "model",
+        "required": true
+      },
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": false
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "GamingLaptop",
@@ -80,12 +178,33 @@
       ["Lenovo", "Legion"], ["Dell", "Alienware"], ["HP", "Victus"]
     ],
     "filters": [
-      "model", "cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size",
+      "model", "cpu", "gpu", "memory", "memory_type", "gpu_memory", "storage",
       "display_size", "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
-    "group": ["model", "cpu", "gpu"],
-    "main_field": "model"
+    "main_field": "model",
+    "group": [
+      {
+        "key": "model",
+        "required": true
+      },
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "gpu",
+        "required": true
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "MacBook",
@@ -93,8 +212,22 @@
       ["MiniPC", "mini|mac studio"],
       ["AllInOnePC", "imac"]
     ],
-    "filters": ["cpu", "memory_size", "storage_size", "display_size"],
-    "components": ["display", "cpu", "memory", "storage"]
+    "filters": ["cpu", "memory", "storage", "display_size"],
+    "components": ["display", "cpu", "memory", "storage"],
+    "group": [
+      {
+        "key": "cpu",
+        "required": true
+      },
+      {
+        "key": "memory",
+        "required": false
+      },
+      {
+        "key": "storage",
+        "required": false
+      }
+    ]
   },
   {
     "id": "Monitor",
@@ -138,7 +271,13 @@
     ],
     "filters": ["cpu", "socket", "memory_support", "core_count"],
     "components": ["cpu"],
-    "main_field": "cpu"
+    "main_field": "cpu",
+    "group": [
+      {
+        "key": "cpu",
+        "required": true
+      }
+    ]
   },
   {
     "id": "GPU",
@@ -167,7 +306,12 @@
     "filters": ["gpu", "memory_size", "memory_type", "cores", "bus_interface"],
     "components": ["gpu"],
     "main_field": "gpu",
-    "group": ["gpu"]
+    "group": [
+      {
+        "key": "gpu",
+        "required": true
+      }
+    ]
   },
   {
     "id": "Memory",
@@ -388,7 +532,13 @@
       [" Play10 ", " Play 10 "], ["Honors ", "Honor "], [" Go1 ", " Go 1 "], [" Go2 ", " Go 2 "]
     ],
     "filters": ["model"],
-    "main_field": "model"
+    "main_field": "model",
+    "group": [
+      {
+        "key": "model",
+        "required": true
+      }
+    ]
   },
   {
     "id": "Tablet",
