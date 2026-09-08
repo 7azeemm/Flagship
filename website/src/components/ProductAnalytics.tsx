@@ -4,12 +4,53 @@ import { parseChart, request } from '../lib/api';
 import { productHistoryChart } from '../lib/productHistory';
 import { money } from '../lib/catalog';
 
+const RANGES = [
+  ['7d', '7D'],
+  ['30d', '1M'],
+  ['90d', '3M'],
+  ['180d', '6M'],
+  ['1y', '1Y'],
+  ['all', 'All'],
+] as const;
+
 const date = (timestamp: number) =>
   new Date(timestamp).toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'short',
     year: '2-digit',
   });
+
+const dateTime = (timestamp: number) =>
+  new Date(timestamp).toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+type PriceRating = {
+  label: string;
+  tone: 'exceptional' | 'great' | 'good' | 'typical' | 'high';
+};
+
+export function classifyPrice(current: number, average: number): PriceRating {
+  const difference = ((current - average) / average) * 100;
+  if (difference <= -15) return { label: 'Exceptional Price', tone: 'exceptional' };
+  if (difference <= -8) return { label: 'Great Price', tone: 'great' };
+  if (difference <= -3) return { label: 'Good Price', tone: 'good' };
+  if (difference <= 8) return { label: 'Typical Price', tone: 'typical' };
+  return { label: 'High Price', tone: 'high' };
+}
+
+function comparisonText(current: number, average: number) {
+  const difference = ((current - average) / average) * 100;
+  if (Math.abs(difference) < 0.05) return 'At the 90-day average';
+  return `${difference < 0 ? '↓' : '↑'} ${Math.abs(difference).toFixed(1)}% ${
+    difference < 0 ? 'below' : 'above'
+  } 90-day average`;
+}
+
 export function HistoryChart({
   points,
   availability = false,
@@ -18,143 +59,192 @@ export function HistoryChart({
   availability?: boolean;
 }) {
   const id = useId();
-  const [selected, setSelected] = useState<number | null>(null);
   const [active, setActive] = useState<number | null>(null);
-  const values = points.map((p) => (availability ? p.in_stock_count : p.lowest_price));
-  const valid = values.filter((v): v is number => v !== null);
+  const values = points.map((point) => (availability ? point.in_stock_count : point.lowest_price));
+  const valid = values.filter((value): value is number => value !== null);
   if (!valid.length)
     return (
       <div className="history-empty">
         No {availability ? 'availability' : 'price'} observations in this period.
       </div>
     );
-  const times = points.map((p) => Date.parse(p.timestamp));
-  const start = times[0],
-    end = times.at(-1)!;
-  const low = availability
-    ? 0
-    : Math.max(
-        0,
-        Math.min(...valid) -
-          Math.max(4, Math.max(...valid) * 0.03, (Math.max(...valid) - Math.min(...valid)) * 0.15),
-      );
-  const high = Math.max(
-    availability ? 4 : low + 1,
-    Math.max(...valid) +
-      (availability
-        ? 0
-        : Math.max(4, Math.max(...valid) * 0.03, (Math.max(...valid) - Math.min(...valid)) * 0.15)),
-  );
-  const x = (i: number) => (end === start ? 352 : 64 + ((times[i] - start) / (end - start)) * 576);
-  const y = (v: number) => 190 - ((v - low) / (high - low)) * 160;
-  let path = '';
-  values.forEach((v, i) => {
-    if (v === null) return;
-    path += i && values[i - 1] !== null ? ` H ${x(i)} V ${y(v)}` : ` M ${x(i)} ${y(v)}`;
+
+  const times = points.map((point) => Date.parse(point.timestamp));
+  const start = times[0];
+  const end = times.at(-1)!;
+  const lowest = Math.min(...valid);
+  const highest = availability
+    ? Math.max(1, ...points.map((point) => point.offer_count))
+    : Math.max(...valid);
+  const padding = availability ? 0 : Math.max(4, highest * 0.03, (highest - lowest) * 0.15);
+  const low = availability ? 0 : Math.max(0, lowest - padding);
+  const high = Math.max(availability ? 1 : low + 1, highest + padding);
+  const ticks =
+    availability && high <= 4
+      ? Array.from({ length: high + 1 }, (_, value) => value)
+      : [0, 1, 2, 3, 4].map((tick) => low + ((high - low) * tick) / 4);
+  const x = (index: number) =>
+    end === start ? 352 : 64 + ((times[index] - start) / (end - start)) * 576;
+  const y = (value: number) => 190 - ((value - low) / (high - low)) * 160;
+  const segments: Array<Array<{ index: number; value: number }>> = [];
+  values.forEach((value, index) => {
+    if (value === null) return;
+    if (index === 0 || values[index - 1] === null) segments.push([]);
+    segments.at(-1)!.push({ index, value });
   });
-  const index = Math.min(active ?? selected ?? points.length - 1, points.length - 1);
+  const segmentPath = (segment: Array<{ index: number; value: number }>) => {
+    const first = segment[0];
+    if (segment.length === 1) {
+      const center = x(first.index);
+      return `M ${Math.max(64, center - 8)} ${y(first.value)} L ${Math.min(640, center + 8)} ${y(first.value)}`;
+    }
+    return segment.slice(1).reduce(
+      (path, point, index) => {
+        const previous = segment[index];
+        const middle = (x(previous.index) + x(point.index)) / 2;
+        return `${path} C ${middle} ${y(previous.value)}, ${middle} ${y(point.value)}, ${x(point.index)} ${y(point.value)}`;
+      },
+      `M ${x(first.index)} ${y(first.value)}`,
+    );
+  };
+  const path = segments.map(segmentPath).join(' ');
+  const area = segments
+    .map((segment) => {
+      const first = segment[0];
+      const last = segment.at(-1)!;
+      const firstX = segment.length === 1 ? Math.max(64, x(first.index) - 8) : x(first.index);
+      const lastX = segment.length === 1 ? Math.min(640, x(last.index) + 8) : x(last.index);
+      return `${segmentPath(segment)} L ${lastX} 190 L ${firstX} 190 Z`;
+    })
+    .join(' ');
+
+  const activePoint = active === null ? null : points[active];
+  const activeValue = active === null ? null : values[active];
+  const activeX = active === null ? 0 : x(active);
+  const activeY = activeValue === null ? 190 : y(activeValue);
+  const accessibleLabel = (point: VariantChartPoint, value: number | null) =>
+    availability
+      ? `${dateTime(Date.parse(point.timestamp))}: ${point.in_stock_count} of ${point.offer_count} offers in stock`
+      : `${dateTime(Date.parse(point.timestamp))}: ${value === null ? 'unavailable' : `${money(value)} TND`}${
+          point.lowest_price_retailer ? ` at ${point.lowest_price_retailer}` : ''
+        }`;
+
   return (
-    <div className="history-chart">
+    <div className="history-chart" onPointerLeave={() => setActive(null)}>
       <svg
         viewBox="0 0 670 232"
         role="img"
         aria-labelledby={id}
-        onPointerLeave={() => setActive(null)}
         onPointerMove={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           const target = ((event.clientX - rect.left) / rect.width) * 670;
           setActive(
             times.reduce(
-              (best, _, i) => (Math.abs(x(i) - target) < Math.abs(x(best) - target) ? i : best),
+              (best, _, index) =>
+                Math.abs(x(index) - target) < Math.abs(x(best) - target) ? index : best,
               0,
             ),
           );
         }}
       >
         <title id={id}>
-          {`${availability ? 'In-stock offers' : 'Recorded price in TND'} over time. Use the observation slider for exact values.`}
+          {availability
+            ? 'Number of in-stock offers over time'
+            : 'Lowest in-stock price over time, in TND'}
         </title>
-        {[0, 1, 2, 3, 4].map((t) => {
-          const v = low + ((high - low) * t) / 4;
+        <defs>
+          <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={availability ? '#10b981' : '#818cf8'} stopOpacity=".3" />
+            <stop
+              offset="100%"
+              stopColor={availability ? '#10b981' : '#818cf8'}
+              stopOpacity=".02"
+            />
+          </linearGradient>
+        </defs>
+        <path d={area} fill={`url(#${id}-fill)`} />
+        {ticks.map((value) => {
           return (
-            <g key={t}>
-              <line x1="64" x2="640" y1={y(v)} y2={y(v)} className="chart-grid" />
-              <text x="54" y={y(v) + 4} textAnchor="end">
-                {availability ? Number(v.toFixed(1)) : money(v)}
+            <g key={value}>
+              <line x1="64" x2="640" y1={y(value)} y2={y(value)} className="chart-grid" />
+              <text x="54" y={y(value) + 4} textAnchor="end">
+                {availability ? Math.round(value) : money(value)}
               </text>
             </g>
           );
         })}
         <path
           d={path}
-          className={availability ? 'availability-line' : 'price-line'}
+          className="chart-series-line"
+          stroke={availability ? '#059669' : '#6366f1'}
           fill="none"
-          strokeWidth="2.5"
+          strokeWidth="3.25"
+          strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {values.map(
-          (value, i) =>
-            value !== null &&
-            (i === 0 || values[i - 1] === null) && (
-              <circle key={i} cx={x(i)} cy={y(value)} r="4" className="chart-dot" />
-            ),
+        {active !== null && (
+          <>
+            <line x1={activeX} x2={activeX} y1="24" y2="190" className="chart-cursor" />
+            {activeValue !== null && (
+              <circle
+                cx={activeX}
+                cy={activeY}
+                r="4.5"
+                className="chart-dot"
+                fill={availability ? '#059669' : '#6366f1'}
+              />
+            )}
+          </>
         )}
-        <line x1={x(index)} x2={x(index)} y1="24" y2="190" className="chart-cursor" />
-        {values[index] !== null && (
-          <circle cx={x(index)} cy={y(values[index]!)} r="4" className="chart-dot" />
-        )}
-        {(start === end ? [0.5] : [0, 0.5, 1]).map((t) => (
+        {points.map((point, index) => (
+          <circle
+            key={`${point.timestamp}-${index}`}
+            cx={x(index)}
+            cy={values[index] === null ? 190 : y(values[index]!)}
+            r="10"
+            className="chart-hit-target"
+            tabIndex={0}
+            aria-label={accessibleLabel(point, values[index])}
+            onFocus={() => setActive(index)}
+            onBlur={() => setActive(null)}
+          />
+        ))}
+        {(start === end ? [0.5] : [0, 0.5, 1]).map((tick) => (
           <text
-            key={t}
-            x={64 + 576 * t}
+            key={tick}
+            x={64 + 576 * tick}
             y="218"
-            textAnchor={t === 0 ? 'start' : t === 1 ? 'end' : 'middle'}
+            textAnchor={tick === 0 ? 'start' : tick === 1 ? 'end' : 'middle'}
           >
-            {end - start < 86400000 && start !== end
-              ? new Date(start + (end - start) * t).toLocaleTimeString('en-GB', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : date(start + (end - start) * t)}
+            {date(start + (end - start) * tick)}
           </text>
         ))}
       </svg>
-      <div className="chart-readout">
-        <span>{date(times[index])} · {new Date(times[index]).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-        <strong>
-          {values[index] === null
-            ? 'Unavailable'
-            : availability
-              ? `${values[index]} of ${points[index].offer_count} offers in stock`
-              : `${money(values[index]!)} TND`}
-        </strong>
-      </div>
+      {activePoint && (
+        <div
+          className={`chart-tooltip ${activeX > 500 ? 'chart-tooltip-left' : ''}`}
+          style={{ left: `${(activeX / 670) * 100}%`, top: `${(activeY / 232) * 100}%` }}
+          role="status"
+        >
+          <span>{dateTime(times[active!])}</span>
+          <strong>
+            {availability
+              ? `${activePoint.in_stock_count} of ${activePoint.offer_count} in stock`
+              : activeValue === null
+                ? 'Unavailable'
+                : `${money(activeValue)} TND`}
+          </strong>
+          <small>
+            {availability
+              ? `${activePoint.retailer_count} retailer${activePoint.retailer_count === 1 ? '' : 's'}`
+              : activePoint.lowest_price_retailer || 'Retailer unavailable'}
+          </small>
+        </div>
+      )}
       {points.length === 1 && (
         <p className="chart-single-observation">
           One recorded observation. More updates are needed to show a trend.
         </p>
-      )}
-      {points.length > 1 && (
-        <label className="observation-control">
-          <span>
-            Drag to explore · {index + 1} of {points.length} observations
-          </span>
-          <input
-            className="observation-slider"
-            aria-label={availability ? 'Availability observation' : 'Price observation'}
-            type="range"
-            step="1"
-            min="0"
-            max={points.length - 1}
-            value={index}
-            aria-valuetext={`${date(times[index])}: ${values[index] ?? 'Unavailable'}${availability ? ' in stock' : ' TND'}`}
-            onChange={(e) => {
-              setActive(null);
-              setSelected(Number(e.target.value));
-            }}
-          />
-          {points.length === 2 && <span>Only two observations: the handle snaps between the two ends.</span>}
-        </label>
       )}
     </div>
   );
@@ -168,29 +258,25 @@ export function ProductAnalytics({
   initialChart: VariantChart | null;
   endpoint: string;
   product: Product;
+  products?: Product[];
 }) {
   const [chart, setChart] = useState(
     () => initialChart || productHistoryChart(product, '90d', 'auto'),
   );
   const [range, setRange] = useState(initialChart?.range || '90d');
-  const [interval, setInterval] = useState('auto');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
+
   useEffect(() => {
-    if (
-      initialChart &&
-      range === (initialChart?.range || '90d') &&
-      interval === 'auto' &&
-      revision === 0
-    ) {
+    if (initialChart && range === (initialChart.range || '90d') && revision === 0) {
       setChart(initialChart);
       setLoading(false);
       setError('');
       return;
     }
     if (!initialChart) {
-      setChart(productHistoryChart(product, range, interval));
+      setChart(productHistoryChart(product, range, 'auto'));
       setLoading(false);
       setError('');
       return;
@@ -198,7 +284,10 @@ export function ProductAnalytics({
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    void request(`${endpoint}?${new URLSearchParams({ range, interval })}`, controller.signal)
+    void request(
+      `${endpoint}?${new URLSearchParams({ range, interval: 'auto' })}`,
+      controller.signal,
+    )
       .then((raw) => {
         if (controller.signal.aborted) return;
         const result = parseChart((raw as { chart?: unknown }).chart);
@@ -207,13 +296,21 @@ export function ProductAnalytics({
       })
       .catch((cause) => {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : 'Chart unavailable.');
+          setError(cause instanceof Error ? cause.message : 'Charts unavailable.');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [endpoint, range, interval, revision, initialChart, product]);
+  }, [endpoint, range, revision, initialChart, product]);
+
+  const current = chart?.summary.current_price;
+  const average90 = chart?.summary.ninety_day_average;
+  const rating =
+    typeof current === 'number' && typeof average90 === 'number' && average90 > 0
+      ? classifyPrice(current, average90)
+      : null;
+
   return (
     <aside className="detail-analytics" aria-label="Product analytics">
       <div className="analytics-heading">
@@ -223,99 +320,96 @@ export function ProductAnalytics({
           <p>
             {chart?.scope === 'product'
               ? 'Price and availability recorded for this retailer listing.'
-              : 'Lowest in-stock price across matching listings; individual retailer prices may differ.'}
+              : 'Lowest in-stock price across matching retailer listings.'}
           </p>
         </div>
-        <div className="chart-controls">
-          <label>
-            Period
-            <select value={range} onChange={(e) => setRange(e.target.value)}>
-              {[
-                ['30d', '30 days'],
-                ['90d', '90 days'],
-                ['180d', '6 months'],
-                ['1y', '1 year'],
-                ['all', 'All time'],
-              ].map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Interval
-            <select value={interval} onChange={(e) => setInterval(e.target.value)}>
-              {[
-                ['auto', 'Automatic'],
-                ['scan', 'Each change'],
-                ['day', 'Daily'],
-                ['week', 'Weekly'],
-              ].map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
       </div>
-      <details className="chart-guide">
-        <summary>How to read these charts</summary>
-        <p>Period selects how far back to look. Interval controls the detail: Each change shows individual observations; Daily and Weekly keep the last observation in each day or week. Automatic chooses an interval for the selected period.</p>
-        <p>Drag the bar below a chart, click its track, or use the arrow keys to select an observation and see its date and value. It moves in recorded steps. With two observations it snaps between the ends; with one, there is no slider. It does not zoom the chart.</p>
-      </details>
-      {loading && <p role="status">Updating charts…</p>}
+
+      {rating && typeof current === 'number' && typeof average90 === 'number' && (
+        <div className="price-classification" data-tone={rating.tone}>
+          <span className="price-rating-dot" aria-hidden="true" />
+          <div>
+            <strong>{rating.label}</strong>
+            <span>{comparisonText(current, average90)}</span>
+          </div>
+          <small>Compared with {money(average90)} TND average over 90 days</small>
+        </div>
+      )}
+
+      <div className="chart-stats">
+        {[
+          [chart?.scope === 'product' ? 'Current price' : 'Current lowest', current],
+          ['Lowest', chart?.summary.period_low],
+          ['Average', chart?.summary.average_price],
+          ['Highest', chart?.summary.period_high],
+        ].map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>
+              {typeof value === 'number' ? money(value) : '—'} <small>TND</small>
+            </strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="chart-toolbar">
+        <div className="range-tabs" aria-label="Chart range">
+          {RANGES.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={range === value}
+              onClick={() => setRange(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span>Interval: automatic</span>
+      </div>
+
+      {loading && (
+        <p role="status" className="chart-status">
+          Updating charts…
+        </p>
+      )}
       {error ? (
         <p role="alert">
           {error}{' '}
-          <button className="text-button" onClick={() => setRevision((v) => v + 1)}>
+          <button className="text-button" onClick={() => setRevision((value) => value + 1)}>
             Retry
           </button>
         </p>
       ) : (
-        <div aria-busy={loading} className={`analytics-body ${loading ? 'analytics-loading' : ''}`}>
-          <div className="chart-stats">
-            {[
-              [
-                chart?.scope === 'product' ? 'Current price' : 'Current lowest',
-                chart?.summary.current_price,
-              ],
-              ['Period low', chart?.summary.period_low],
-              ['All-time low', chart?.summary.all_time_low],
-              ['Average observation', chart?.summary.average_price],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <strong>
-                  {typeof value === 'number' ? money(value) : '—'} <small>TND</small>
-                </strong>
-              </div>
-            ))}
-          </div>
+        <div
+          aria-busy={loading}
+          className={`analytics-charts ${loading ? 'analytics-loading' : ''}`}
+        >
           <section className="history-panel">
             <div className="history-heading">
-              <h3>Price history</h3>
-              <span>TND · {chart?.interval || interval}</span>
+              <div>
+                <h3>Lowest price</h3>
+                <p>Cheapest in-stock offer</p>
+              </div>
+              <span>TND</span>
             </div>
-            <HistoryChart key={`${range}-${interval}-price`} points={chart?.points || []} />
+            <HistoryChart key={`${range}-price`} points={chart?.points || []} />
           </section>
           <section className="history-panel">
             <div className="history-heading">
-              <h3>Availability history</h3>
+              <div>
+                <h3>Availability</h3>
+                <p>Offers currently in stock</p>
+              </div>
               <span>In-stock offers</span>
             </div>
-            <HistoryChart
-              key={`${range}-${interval}-stock`}
-              points={chart?.points || []}
-              availability
-            />
+            <HistoryChart key={`${range}-stock`} points={chart?.points || []} availability />
           </section>
         </div>
       )}
       <p className="detail-disclaimer">
-        Daily and weekly charts show the last observation in each interval. Confirm prices and
-        availability with the retailer.
+        Hover or focus a chart point for exact price, retailer, and availability details. Confirm
+        prices and stock with the retailer.
       </p>
     </aside>
   );

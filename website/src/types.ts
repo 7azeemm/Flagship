@@ -1,6 +1,7 @@
 export interface Category {
   id: string;
   name: string;
+  url: string;
 }
 export interface ServerInfo {
   categories: Record<string, Category[]>;
@@ -43,8 +44,10 @@ export type CatalogItem =
 export interface VariantChartPoint {
   timestamp: string;
   lowest_price: number | null;
+  lowest_price_retailer: string | null;
   offer_count: number;
   in_stock_count: number;
+  retailer_count: number;
 }
 export interface VariantChart {
   scope?: 'product' | 'variant';
@@ -55,8 +58,10 @@ export interface VariantChart {
   summary: {
     current_price: number | null;
     period_low: number | null;
+    period_high: number | null;
     all_time_low: number | null;
     average_price: number | null;
+    ninety_day_average: number | null;
   };
 }
 export interface FilterValue {

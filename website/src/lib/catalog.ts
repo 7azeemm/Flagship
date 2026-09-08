@@ -223,10 +223,10 @@ export function sectionInfoKey(query: CatalogQuery) {
       .map(([key, ids]) => [key, [...ids].sort()]),
   ]);
 }
-export function apiQueryParams(query: CatalogQuery, metadata: boolean, groupFields: string[] = []) {
+export function apiQueryParams(query: CatalogQuery, metadata: boolean) {
   const params = queryParams(query, metadata);
   params.delete('group_by');
   if (query.grouped)
-    (query.groupBy ?? groupFields).forEach((key) => params.append('group_by', key));
+    (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
   return params;
 }

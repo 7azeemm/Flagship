@@ -7,17 +7,22 @@ const get = async (path) => {
   return response.json();
 };
 const info = await get('/api/info');
-assert.deepEqual(Object.keys(info.categories), [
+const categories = info.categories || info;
+assert.deepEqual(Object.keys(categories), [
   'Computers',
   'Components',
   'Peripherals',
   'Consoles',
   'Smartphones & TVs',
 ]);
-const ids = Object.values(info.categories)
+const urls = Object.values(categories)
   .flat()
-  .map((category) => category.id);
-assert.equal(new Set(ids).size, ids.length);
+  .map((category) => {
+    assert.equal(typeof category.name, 'string');
+    assert.equal(typeof category.url, 'string');
+    return category.url;
+  });
+assert.equal(new Set(urls).size, urls.length);
 
 // Requires a populated saved GamingLaptop catalog.
 const initial = await get('/api/GamingLaptop/products?send_section_info=true');
@@ -82,13 +87,21 @@ for (const path of ['/api/products?search=RTX', '/products?search=RTX', '/search
   assert([400, 404].includes(response.status), 'Removed global search: ' + path);
 }
 const fields = initial.section_info.group_by;
-const grouped = await get('/api/GamingLaptop/products?' + new URLSearchParams([
-  ['grouping_mode', 'true'], ...fields.map((field) => ['group_by', field.key]),
-]));
+const grouped = await get(
+  '/api/GamingLaptop/products?' +
+    new URLSearchParams([
+      ['grouping_mode', 'true'],
+      ...fields.map((field) => ['group_by', field.key]),
+    ]),
+);
 assert(grouped.total_items < grouped.total_products, 'Optional fields group saved components');
-const requiredOnly = await get('/api/GamingLaptop/products?' + new URLSearchParams([
-  ['grouping_mode', 'true'], ...fields.filter((field) => field.required).map((field) => ['group_by', field.key]),
-]));
+const requiredOnly = await get(
+  '/api/GamingLaptop/products?' +
+    new URLSearchParams([
+      ['grouping_mode', 'true'],
+      ...fields.filter((field) => field.required).map((field) => ['group_by', field.key]),
+    ]),
+);
 assert(requiredOnly.total_items <= grouped.total_items, 'Optional fields refine groups');
 const variant = grouped.items.find((item) => item.type === 'variant');
 assert(variant, 'Grouped cards include a variant');

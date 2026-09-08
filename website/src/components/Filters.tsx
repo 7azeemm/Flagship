@@ -28,9 +28,7 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
   const [allRetailers, setAllRetailers] = useState(false);
   const groupFields = base?.group_by || [];
   const selectedGroupFields = groupFields
-    .filter(
-      (field) => field.required || query.groupBy === null || query.groupBy.includes(field.key),
-    )
+    .filter((field) => field.required || query.groupBy?.includes(field.key))
     .map((field) => field.key);
   const sites = [...new Set([...(base?.sites || []), ...query.site])].sort();
   const visibleSites = allRetailers
@@ -61,7 +59,6 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
             <span>Group offers</span>
             <strong>{query.grouped ? 'On' : 'Off'}</strong>
           </button>
-          <p className="group-help">Compare matching configurations across retailers.</p>
           <div
             className="group-fields"
             aria-label="Group products by"
@@ -94,38 +91,40 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           </div>
         </section>
       )}
-      <form
-        className="catalog-search filter-search"
-        role="search"
-        onSubmit={(event) => {
-          event.preventDefault();
-          update({ search: search.trim() });
-        }}
-      >
-        <Search size={15} />
-        <input
-          aria-label="Search this category"
-          placeholder="Search this category…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        {search && (
-          <button
-            type="button"
-            className="search-clear"
-            aria-label="Clear search"
-            onClick={() => {
-              setSearch('');
-              update({ search: '' });
-            }}
-          >
-            <X size={14} />
+      <div className="filter-search-section">
+        <form
+          className="catalog-search filter-search"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            update({ search: search.trim() });
+          }}
+        >
+          <Search size={15} />
+          <input
+            aria-label="Search this category"
+            placeholder="Search this category…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="search-clear"
+              aria-label="Clear search"
+              onClick={() => {
+                setSearch('');
+                update({ search: '' });
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+          <button type="submit" className="search-submit" aria-label="Search category">
+            <Search size={14} />
           </button>
-        )}
-        <button type="submit" className="search-submit" aria-label="Search category">
-          <Search size={14} />
-        </button>
-      </form>
+        </form>
+      </div>
       {base && (
         <section className="filter-section">
           <h3>

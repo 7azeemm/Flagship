@@ -83,8 +83,8 @@ test('response validation rejects malformed data and accepts empty catalogs', ()
   assert.throws(() => parsePage({ products: [], total_pages: '1' }));
   assert.throws(() => parseServerInfo({ categories: { Components: [123] } }));
   const categories = {
-    Computers: [{ id: 'Laptop', name: 'Laptops' }],
-    Components: [{ id: 'CPU', name: 'Processors' }],
+    Computers: [{ id: 'Laptop', name: 'Laptops', url: '/Laptop' }],
+    Components: [{ id: 'CPU', name: 'Processors', url: '/CPU' }],
   };
   assert.deepEqual(parseServerInfo({ categories }).categories, categories);
   assert.deepEqual(Object.keys(parseServerInfo({ categories }).categories), [
@@ -161,6 +161,10 @@ test('metadata identity ignores pagination, sorting and grouping but tracks sele
     apiQueryParams({ ...query, grouped: true, groupBy: ['cpu', 'gpu'] }, false).getAll('group_by'),
     ['cpu', 'gpu'],
   );
+  assert.deepEqual(
+    apiQueryParams({ ...query, grouped: true, groupBy: null }, false).getAll('group_by'),
+    [],
+  );
 });
 test('grouped API summaries do not require a removed name field', () => {
   const page = parsePage({
@@ -235,8 +239,44 @@ test('individual charts reconstruct price changes and respect period and interva
 });
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ProductAnalytics } from '../components/ProductAnalytics';
-test('product page renders both chart SVGs when the API chart is null', () => {
+import { classifyPrice, ProductAnalytics } from '../components/ProductAnalytics';
+import { ProductDialog } from '../components/ProductDialog';
+
+test('product details hide empty components and show listings only for multi-product variants', () => {
+  const product = parseProduct({
+    id: 'a',
+    title: 'Product A',
+    site: 'Shop A',
+    price: 120,
+    status: 'InStock',
+    components: {},
+  });
+  const render = (products: (typeof product)[], endpoint: string) =>
+    renderToStaticMarkup(
+      createElement(ProductDialog, {
+        products,
+        chart: null,
+        fields: ['cpu'],
+        endpoint,
+        onClose: () => {},
+      }),
+    );
+  const single = render([product], '/products/a');
+  assert.doesNotMatch(single, /<h2>Components<\/h2>/);
+  assert.doesNotMatch(single, /detail-listings/);
+  assert.doesNotMatch(render([product], '/variants/a'), /detail-listings/);
+  const grouped = render(
+    [product, { ...product, id: 'b', title: 'Product B', site: 'Shop B' }],
+    '/variants/a',
+  );
+  assert.match(grouped, /detail-listings/);
+  assert.match(grouped, /<b>Shop B<\/b> · Product B/);
+  assert.match(
+    render([{ ...product, components: { cpu: 'Core i5' } }], '/products/a'),
+    /<h2>Components<\/h2>/,
+  );
+});
+test('product page renders the requested price and availability charts without sliders', () => {
   const product = parseProduct({
     id: 'dell',
     title: 'Dell Vostro',
@@ -247,11 +287,86 @@ test('product page renders both chart SVGs when the API chart is null', () => {
   const html = renderToStaticMarkup(
     createElement(ProductAnalytics, { initialChart: null, endpoint: '/products/dell', product }),
   );
-  assert.match(html, /class="price-line"/);
-  assert.match(html, /class="availability-line"/);
-  assert.match(html, / d="[^"]* H /);
+  assert.equal((html.match(/<svg/g) || []).length, 2);
+  assert.match(html, /linearGradient/);
+  assert.match(html, /Lowest price/);
+  assert.match(html, /Availability/);
+  assert.match(html, /Typical Price/);
+  assert.match(html, />7D</);
+  assert.match(html, />All</);
+  assert.doesNotMatch(html, /type="range"/);
+  assert.match(html, / d="[^"]* C /);
   assert.doesNotMatch(html, /No price observations/);
   assert.match(html, /Price and availability recorded for this retailer listing/);
+});
+
+test('price labels use five tiers against the 90-day average', () => {
+  assert.equal(classifyPrice(84, 100).label, 'Exceptional Price');
+  assert.equal(classifyPrice(91, 100).label, 'Great Price');
+  assert.equal(classifyPrice(96, 100).label, 'Good Price');
+  assert.equal(classifyPrice(100, 100).label, 'Typical Price');
+  assert.equal(classifyPrice(109, 100).label, 'High Price');
+});
+
+test('file-based categories preserve filtered links sharing a section', () => {
+  const info = parseServerInfo({
+    Components: [
+      { name: 'Laptop Memory', url: 'Memory?filters=%7B%22platform%22%3A%5B%22Laptop%22%5D%7D' },
+      { name: 'Desktop Memory', url: 'Memory?filters=%7B%22platform%22%3A%5B%22Desktop%22%5D%7D' },
+    ],
+  });
+  assert.equal(info.categories.Components.length, 2);
+  assert.equal(info.categories.Components[0].id, 'Memory');
+  assert.deepEqual(
+    readQuery(new URL(info.categories.Components[0].url, 'https://mythos.test')).filters,
+    { platform: ['Laptop'] },
+  );
+  assert.deepEqual(
+    readQuery(new URL(info.categories.Components[1].url, 'https://mythos.test')).filters,
+    { platform: ['Desktop'] },
+  );
+  assert.throws(() => parseServerInfo({ Bad: [{ name: 'External', url: '//example.com' }] }));
+  assert.throws(() => parseServerInfo({ Bad: [{ name: 'Script', url: 'javascript:alert(1)' }] }));
+});
+
+import { retailerHistory } from './retailerHistory';
+test('retailer comparison uses the lowest available offer and preserves stock gaps', () => {
+  const now = Date.parse('2026-09-08T00:00:00Z');
+  const first = parseProduct({
+    id: 'a',
+    title: 'A',
+    site: 'Shop',
+    price: 120,
+    status: 'InStock',
+    added_at: '2026-09-01T00:00:00Z',
+    history: [
+      { field: 'price', timestamp: '2026-09-03T00:00:00Z', old_value: 100, new_value: 120 },
+      {
+        field: 'status',
+        timestamp: '2026-09-02T00:00:00Z',
+        old_value: 'OutOfStock',
+        new_value: 'InStock',
+      },
+    ],
+  });
+  const second = { ...first, id: 'b', price: 150, history: [] };
+  const alone = retailerHistory([first], 'all', 'scan', now)[0];
+  assert.equal(alone.points[0].lowest_price, null);
+  assert.equal(alone.low, 100);
+  assert.equal(alone.high, 120);
+  const combined = retailerHistory([first, second], 'all', 'scan', now)[0];
+  assert.equal(combined.points[0].lowest_price, 150);
+  assert.equal(combined.current, 120);
+  assert.equal(combined.low, 100);
+  assert.equal(combined.high, 150);
+  const unavailable = retailerHistory(
+    [{ ...first, status: 'OutOfStock', history: [] }],
+    'all',
+    'scan',
+    now,
+  )[0];
+  assert.equal(unavailable.current, null);
+  assert.equal(unavailable.low, null);
 });
 
 test('category search and grouping defaults survive shared URLs', () => {

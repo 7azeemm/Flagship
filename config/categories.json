@@ -1,0 +1,168 @@
+{
+  "Computers": [
+    {
+      "name": "Office PCs",
+      "url": "PC"
+    },
+    {
+      "name": "Gaming PCs",
+      "url": "GamingPC"
+    },
+    {
+      "name": "All-In-One PCs",
+      "url": "AllInOnePC"
+    },
+    {
+      "name": "Mini PCs",
+      "url": "MiniPC"
+    },
+    {
+      "name": "Laptops",
+      "url": "Laptop"
+    },
+    {
+      "name": "Gaming Laptops",
+      "url": "GamingLaptop"
+    },
+    {
+      "name": "MacBooks",
+      "url": "MacBook"
+    }
+  ],
+  "Components": [
+    {
+      "name": "Processors",
+      "url": "CPU"
+    },
+    {
+      "name": "Graphics Cards",
+      "url": "GPU"
+    },
+    {
+      "name": "Desktop Memory",
+      "url": "Memory?filters=%7B%22platform%22%3A%5B%22Desktop%22%5D%7D"
+    },
+    {
+      "name": "Laptop Memory",
+      "url": "Memory?filters=%7B%22platform%22%3A%5B%22Laptop%22%5D%7D"
+    },
+    {
+      "name": "SSD & NVMe",
+      "url": "Storage?filters=%7B\"storage_type\"%3A%5B\"NVME\"%2C\"SSD\"%5D%7D"
+    },
+    {
+      "name": "HDD",
+      "url": "Storage?filters=%7B\"storage_type\"%3A%5B\"HDD\"%5D%7D"
+    },
+    {
+      "name": "Motherboards",
+      "url": "Motherboard"
+    },
+    {
+      "name": "Power Supplies",
+      "url": "PowerSupply"
+    },
+    {
+      "name": "CPU Coolers",
+      "url": "Cooler"
+    },
+    {
+      "name": "Cases",
+      "url": "Case"
+    },
+    {
+      "name": "Upgrade Kits",
+      "url": "UpgradeKit"
+    }
+  ],
+  "Peripherals": [
+    {
+      "name": "Monitors",
+      "url": "Monitor"
+    },
+    {
+      "name": "Mouses",
+      "url": "Mouse"
+    },
+    {
+      "name": "Gaming Mouses",
+      "url": "Mouse?filters=%7B\"type\"%3A%5B\"Gaming\"%5D%7D"
+    },
+    {
+      "name": "Keyboards",
+      "url": "Keyboard"
+    },
+    {
+      "name": "Gaming Keyboards",
+      "url": "Keyboard?filters=%7B\"type\"%3A%5B\"Gaming\"%5D%7D"
+    },
+    {
+      "name": "Headphones",
+      "url": "Headphones"
+    },
+    {
+      "name": "MousePads",
+      "url": "MousePad"
+    },
+    {
+      "name": "Gaming Chairs",
+      "url": "GamingChair"
+    },
+    {
+      "name": "Accessory Bundles",
+      "url": "AccessoriesCombo"
+    }
+  ],
+  "Consoles": [
+    {
+      "name": "PS5",
+      "url": "Console?filters=%7B\"platform\"%3A%5B\"PlayStation+5\"%5D%7D"
+    },
+    {
+      "name": "PS4",
+      "url": "Console?filters=%7B\"platform\"%3A%5B\"PlayStation+4\"%5D%7D"
+    },
+    {
+      "name": "Xbox",
+      "url": "Console?filters=%7B\"platform\"%3A%5B\"Xbox\"%5D%7D"
+    },
+    {
+      "name": "Nintendo Switch",
+      "url": "Console?filters=%7B\"platform\"%3A%5B\"Nintendo+Switch\"%2C\"Nintendo+Switch+Lite\"%5D%7D"
+    },
+    {
+      "name": "Controllers",
+      "url": "Controller"
+    },
+    {
+      "name": "Games",
+      "url": "ConsoleGame"
+    },
+    {
+      "name": "Console Accessories",
+      "url": "ConsoleAccessories"
+    }
+  ],
+  "Smartphones & TVs": [
+    {
+      "name": "Smartphones",
+      "url": "Smartphone"
+    },
+    {
+      "name": "Tablets",
+      "url": "Tablet"
+    },
+    {
+      "name": "Smartwatches",
+      "url": "Smartwatch"
+    },
+    {
+      "name": "TVs",
+      "url": "Television"
+    },
+    {
+      "name": "Others",
+      "url": "Others"
+    }
+  ]
+}

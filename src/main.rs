@@ -1,8 +1,9 @@
 pub mod api;
+pub mod core;
 pub mod discord;
 pub mod utils;
-pub mod core;
 
+use crate::api::endpoints::info;
 use crate::api::server;
 use crate::utils::logger::setup_logging;
 use crate::utils::serde_ext::JsonExt;
@@ -20,7 +21,9 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
-    unsafe { std::env::set_var("RUST_LOG", "info,playwright_rs=off"); }
+    unsafe {
+        std::env::set_var("RUST_LOG", "info,playwright_rs=off");
+    }
 
     println!("Starting...");
     dotenv().ok();
@@ -30,6 +33,7 @@ async fn main() {
     ErrorTracker::load().await;
     WebClient::init().await;
 
+    info::load_categories().await;
     SectionConfig::load().await;
     ProductStorage::load().await;
     CatalogScanner::schedule().await;

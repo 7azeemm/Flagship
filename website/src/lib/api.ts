@@ -93,8 +93,10 @@ export function parseChart(value: unknown): VariantChart | null {
   if (
     !nullableNumber(value.summary.current_price) ||
     !nullableNumber(value.summary.period_low) ||
+    !nullableNumber(value.summary.period_high) ||
     !nullableNumber(value.summary.all_time_low) ||
-    !nullableNumber(value.summary.average_price)
+    !nullableNumber(value.summary.average_price) ||
+    !nullableNumber(value.summary.ninety_day_average)
   )
     return null;
   const points = value.points.map((point: unknown) => {
@@ -104,14 +106,18 @@ export function parseChart(value: unknown): VariantChart | null {
       !Number.isFinite(Date.parse(point.timestamp)) ||
       !nullableNumber(point.lowest_price) ||
       !number(point.offer_count) ||
-      !number(point.in_stock_count)
+      !number(point.in_stock_count) ||
+      !number(point.retailer_count) ||
+      (point.lowest_price_retailer !== null && typeof point.lowest_price_retailer !== 'string')
     )
       throw invalid();
     return {
       timestamp: point.timestamp,
       lowest_price: point.lowest_price as number | null,
+      lowest_price_retailer: point.lowest_price_retailer as string | null,
       offer_count: point.offer_count,
       in_stock_count: point.in_stock_count,
+      retailer_count: point.retailer_count,
     };
   });
   return {
@@ -230,24 +236,23 @@ export async function request(path: string, signal: AbortSignal): Promise<unknow
   }
 }
 export function parseServerInfo(value: unknown): ServerInfo {
-  if (!record(value) || !record(value.categories)) throw invalid();
-  const ids = new Set<string>();
+  if (!record(value)) throw invalid();
+  const source = record(value.categories) ? value.categories : value;
+  const urls = new Set<string>();
   const categories = Object.fromEntries(
-    Object.entries(value.categories).map(([parent, children]) => {
+    Object.entries(source).map(([parent, children]) => {
       if (!Array.isArray(children)) throw invalid();
       return [
         parent,
         children.map((child: unknown) => {
-          if (
-            !record(child) ||
-            typeof child.id !== 'string' ||
-            !/^[A-Za-z]+$/.test(child.id) ||
-            typeof child.name !== 'string' ||
-            ids.has(child.id)
-          )
-            throw invalid();
-          ids.add(child.id);
-          return { id: child.id, name: child.name };
+          if (!record(child) || typeof child.name !== 'string') throw invalid();
+          const path = typeof child.url === 'string' ? child.url : child.id;
+          if (typeof path !== 'string' || !/^\/?[A-Za-z]+(?:\?[^#]*)?$/.test(path)) throw invalid();
+          const url = new URL(`/${path.replace(/^\//, '')}`, 'https://mythos.local');
+          const href = url.pathname + url.search;
+          if (urls.has(href)) throw invalid();
+          urls.add(href);
+          return { id: url.pathname.slice(1), name: child.name, url: href };
         }),
       ];
     }),

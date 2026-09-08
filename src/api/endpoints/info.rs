@@ -1,88 +1,33 @@
 use crate::api::error::ApiResult;
-use crate::core::sections::Section;
+use crate::utils::file_loader::FileLoader;
 use axum::Json;
 use indexmap::IndexMap;
-use serde::Serialize;
+use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 
-#[derive(Serialize)]
+static SERVER_INFO: OnceCell<ServerInfo> = OnceCell::new();
+static CATEGORIES_PATH: &str = "config/categories.json";
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ServerInfo {
-    pub categories: IndexMap<&'static str, Vec<Category>>,
+    #[serde(flatten)]
+    pub categories: IndexMap<String, Vec<Category>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Category {
-    pub id: Section,
-    pub name: &'static str,
+    pub name: String,
+    pub url: String,
 }
 
-pub async fn get_info() -> ApiResult<Json<ServerInfo>> {
-    Ok(Json(server_info()))
+pub async fn get_info<'a>() -> ApiResult<Json<&'a ServerInfo>> {
+    Ok(Json(SERVER_INFO.get().unwrap()))
 }
 
-fn server_info() -> ServerInfo {
-    use Section::*;
-    let groups: [(&str, Vec<(Section, &str)>); 5] = [
-        (
-            "Computers",
-            vec![
-                (PC, "Desktop PCs"),
-                (GamingLaptop, "Gaming Laptops"),
-                (Laptop, "Laptops"),
-                (GamingPC, "Gaming PCs"),
-                (MacBook, "MacBooks"),
-                (AllInOnePC, "All-In-One PCs"),
-                (MiniPC, "Mini PCs"),
-            ],
-        ),
-        (
-            "Components",
-            vec![
-                (CPU, "Processors"),
-                (GPU, "Graphics Cards"),
-                (Memory, "Memory"),
-                (Storage, "Storage"),
-                (Motherboard, "Motherboards"),
-                (PowerSupply, "Power Supplies"),
-                (Cooler, "CPU Coolers"),
-                (Case, "Cases"),
-                (UpgradeKit, "Upgrade kits"),
-            ],
-        ),
-        (
-            "Peripherals",
-            vec![
-                (Monitor, "Monitors"),
-                (Mouse, "Mouses"),
-                (Keyboard, "Keyboards"),
-                (Headphones, "Headphones"),
-                (MousePad, "Mouse Pads"),
-                (GamingChair, "Gaming Chairs"),
-                (AccessoriesCombo, "Accessory Bundles"),
-            ],
-        ),
-        (
-            "Consoles",
-            vec![
-                (Console, "Consoles"),
-                (Controller, "Controllers"),
-                (ConsoleGame, "Console Games"),
-                (ConsoleAccessories, "Console Accessories")
-            ],
-        ),
-        (
-            "Smartphones & TVs",
-            vec![
-                (Smartphone, "Smartphones"),
-                (Tablet, "Tablets"),
-                (Smartwatch, "Smartwatches"),
-                (Television, "Televisions"),
-                (Others, "Other products"),
-            ],
-        ),
-    ];
-    ServerInfo {
-        categories: groups.into_iter().map(|(group, items)| 
-            (group, items.into_iter().map(|(id, name)| Category { id, name }).collect())
-        ).collect(),
-    }
+pub async fn load_categories() {
+    SERVER_INFO
+        .set(ServerInfo {
+            categories: FileLoader::load_or_default(CATEGORIES_PATH).await.expect("Failed to load categories"),
+        })
+        .expect("Failed to set ServerInfo");
 }

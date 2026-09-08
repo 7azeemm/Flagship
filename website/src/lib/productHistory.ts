@@ -13,8 +13,10 @@ export function productHistoryChart(
   const snapshot = (timestamp: number): VariantChartPoint => ({
     timestamp: new Date(timestamp).toISOString(),
     lowest_price: price,
+    lowest_price_retailer: product.site,
     offer_count: 1,
     in_stock_count: stock,
+    retailer_count: 1,
   });
   const events = product.history
     .filter((event): event is Record<string, unknown> => !!event && typeof event === 'object')
@@ -43,10 +45,14 @@ export function productHistoryChart(
   history.push({
     timestamp: new Date(now).toISOString(),
     lowest_price: product.price,
+    lowest_price_retailer: product.site,
     offer_count: 1,
     in_stock_count: product.status === 'InStock' ? 1 : 0,
+    retailer_count: 1,
   });
-  const days = ({ '30d': 30, '90d': 90, '180d': 180, '1y': 365 } as Record<string, number>)[range];
+  const days = (
+    { '7d': 7, '30d': 30, '90d': 90, '180d': 180, '1y': 365 } as Record<string, number>
+  )[range];
   const since = days ? now - days * 86400000 : -Infinity;
   const points = history.filter((p) => Date.parse(p.timestamp) >= since);
   const baseline = history.filter((p) => Date.parse(p.timestamp) < since).at(-1);
@@ -66,6 +72,9 @@ export function productHistoryChart(
     buckets.set(date.toISOString().slice(0, 10), point);
   }
   const prices = points.map((p) => p.lowest_price!);
+  const ninetyDayPrices = history
+    .filter((point) => Date.parse(point.timestamp) >= now - 90 * 86400000)
+    .map((point) => point.lowest_price!);
   return {
     scope: 'product',
     range,
@@ -75,8 +84,12 @@ export function productHistoryChart(
     summary: {
       current_price: product.price,
       period_low: Math.min(...prices),
+      period_high: Math.max(...prices),
       all_time_low: Math.min(...history.map((p) => p.lowest_price!)),
       average_price: Math.trunc(prices.reduce((a, b) => a + b, 0) / prices.length),
+      ninety_day_average: Math.trunc(
+        ninetyDayPrices.reduce((a, b) => a + b, 0) / ninetyDayPrices.length,
+      ),
     },
   };
 }

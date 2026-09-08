@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   ChevronDown,
@@ -12,7 +12,8 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { ServerInfo } from '../types';
-import { sectionLabel } from '../lib/catalog';
+import { readQuery, sectionLabel } from '../lib/catalog';
+import '../header.css';
 
 export function Brand() {
   return (
@@ -25,64 +26,125 @@ export function Brand() {
 
 export function Header({
   section,
+  filters,
   categories,
   onSection,
   onAbout,
 }: {
   section: string;
+  filters: Record<string, string[]>;
   categories: ServerInfo['categories'];
-  onSection: (section: string) => void;
+  onSection: (url: string) => void;
   onAbout: () => void;
 }) {
   const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'dark');
   const [open, setOpen] = useState<string | null>(null);
-  const root = useRef<HTMLElement>(null);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelClose = () => {
-    if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    closeTimer.current = null;
-  };
-  useEffect(() => cancelClose, []);
   const [hidden, setHidden] = useState(false);
-  useEffect(() => {
-    let previousY = Math.max(0, window.scrollY);
-    let resizingUntil = 0;
-    const onResize = () => {
-      previousY = Math.max(0, window.scrollY);
-      resizingUntil = performance.now() + 200;
-      setHidden(false);
-    };
-    const onScroll = () => {
-      const y = Math.max(0, window.scrollY);
-      if (performance.now() < resizingUntil) {
-        previousY = y;
-        return;
-      }
-      const delta = y - previousY;
-      if (y < 130) {
-        setHidden(false);
-      } else if (Math.abs(delta) >= 8) {
-        setHidden(delta > 0);
-        if (delta > 0) setOpen(null);
-      } else {
-        return;
-      }
-      previousY = y;
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('resize', onResize);
-    };
-  }, []);
+  const [left, setLeft] = useState(12);
+  const root = useRef<HTMLElement>(null);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastScrollY = useRef(window.scrollY);
+  const scrollDistance = useRef(0);
+  const cancelClose = () => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  const close = () => {
+    cancelClose();
+    setOpen(null);
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    timer.current = setTimeout(() => {
+      if (!panel.current?.contains(document.activeElement)) setOpen(null);
+    }, 180);
+  };
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) setOpen(null);
     };
     document.addEventListener('pointerdown', outside);
-    return () => document.removeEventListener('pointerdown', outside);
+    return () => {
+      cancelClose();
+      document.removeEventListener('pointerdown', outside);
+    };
   }, []);
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        const next = Math.max(0, window.scrollY);
+        const delta = next - lastScrollY.current;
+        const headerHeight = root.current?.offsetHeight || 0;
+        if (Math.sign(delta) !== Math.sign(scrollDistance.current)) scrollDistance.current = 0;
+        scrollDistance.current += delta;
+        if (next <= headerHeight) {
+          scrollDistance.current = 0;
+          setHidden(false);
+        } else if (scrollDistance.current > 12) {
+          setHidden(true);
+          setOpen(null);
+          scrollDistance.current = 0;
+        } else if (scrollDistance.current < -12) {
+          setHidden(false);
+          scrollDistance.current = 0;
+        }
+        lastScrollY.current = next;
+        frame = 0;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const position = () => {
+      const bounds = root.current?.getBoundingClientRect();
+      const anchor = trigger.current?.getBoundingClientRect();
+      if (bounds && anchor)
+        setLeft(
+          Math.max(
+            12,
+            Math.min(
+              anchor.left - bounds.left,
+              bounds.width - (panel.current?.offsetWidth || 320) - 12,
+            ),
+          ),
+        );
+    };
+    position();
+    window.addEventListener('resize', position);
+    const scroller = root.current?.querySelector('.masthead-scroll');
+    scroller?.addEventListener('scroll', position);
+    return () => {
+      window.removeEventListener('resize', position);
+      scroller?.removeEventListener('scroll', position);
+    };
+  }, [open]);
+  const active = (url: string) => {
+    const target = readQuery(new URL(url, window.location.origin));
+    return (
+      target.section === section &&
+      Object.entries(target.filters).every(
+        ([key, values]) =>
+          values.length === filters[key]?.length &&
+          values.every((value) => filters[key].includes(value)),
+      )
+    );
+  };
+  const navigate = (event: React.MouseEvent<HTMLAnchorElement>, url: string) => {
+    if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+      event.preventDefault();
+      close();
+      onSection(url);
+    }
+  };
   const changeTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
@@ -99,139 +161,55 @@ export function Header({
         getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
       );
   };
+  const children = open ? categories[open] || [] : [];
   return (
-    <header className={`site-header ${hidden ? 'is-hidden' : ''}`} ref={root}
-      onPointerEnter={cancelClose}
-      onPointerLeave={(event) => {
-        if (event.pointerType === 'mouse') {
-          cancelClose();
-          closeTimer.current = setTimeout(() => setOpen(null), 250);
+    <header
+      className={`masthead ${hidden ? 'masthead-hidden' : ''}`}
+      ref={root}
+      onFocusCapture={() => setHidden(false)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) close();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') {
+          close();
+          trigger.current?.focus();
         }
-      }}>
-      <div className="header-inner">
+      }}
+    >
+      <div className="masthead-row">
         <a
+          className="masthead-brand"
           href="/GamingLaptop"
           aria-label="Mythos home"
-          onClick={(event) => {
-            if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
-              event.preventDefault();
-              setOpen(null);
-              onSection('GamingLaptop');
-            }
-          }}
+          onClick={(event) => navigate(event, '/GamingLaptop')}
         >
-          <Brand />
+          <img src="/favicon.svg" alt="" width="30" height="30" />
+          <span>
+            mythos<b>.</b>
+          </span>
         </a>
-        <div className="header-navigation">
-        <nav
-          className="header-categories"
-          aria-label="Product categories"
-        >
-          {Object.entries(categories).map(([parent, children], index) => {
-            const expanded = open === parent;
-            const active = children.some((child) => child.id === section);
-            const menuId = `category-menu-${index}`;
-            return (
-              <div
-                className="header-category"
-                key={parent}
-                onPointerEnter={(event) => {
-                  cancelClose();
-                  if (event.pointerType === 'mouse') setOpen(parent);
-                }}
-                onBlur={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget)) setOpen(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    setOpen(null);
-                    event.currentTarget
-                      .querySelector<HTMLButtonElement>('.category-trigger')
-                      ?.focus();
-                  }
-                }}
-              >
-                <button
-                  className={`category-trigger ${active ? 'active' : ''}`}
-                  aria-expanded={expanded}
-                  aria-controls={menuId}
-                  onClick={() => setOpen(expanded ? null : parent)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      setOpen(parent);
-                      requestAnimationFrame(() =>
-                        document
-                          .getElementById(menuId)
-                          ?.querySelector<HTMLAnchorElement>('a')
-                          ?.focus(),
-                      );
-                    }
-                  }}
-                >
-                  {parent}
-                  <ChevronDown size={14} />
-                </button>
-                {expanded && (
-                  <div className="mega-menu" id={menuId} onPointerEnter={cancelClose}>
-                    <div className="mega-heading">
-                      <span>{parent}</span>
-                      <span>{children.length} categories</span>
-                    </div>
-                    <div
-                      className="mega-links"
-                      style={{
-                        gridTemplateColumns: `repeat(${Math.ceil(children.length / 4)}, minmax(180px, 1fr))`,
-                      }}
-                    >
-                      {children.map((child) => (
-                        <a
-                          key={child.id}
-                          href={`/${child.id}`}
-                          aria-current={child.id === section ? 'page' : undefined}
-                          onClick={(event) => {
-                            if (
-                              !event.ctrlKey &&
-                              !event.metaKey &&
-                              !event.shiftKey &&
-                              !event.altKey
-                            ) {
-                              event.preventDefault();
-                              setOpen(null);
-                              onSection(child.id);
-                            }
-                          }}
-                        >
-                          <span>{child.name}</span>
-                          <ArrowUpRight size={14} />
-                        </a>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
-        <div className="future-navigation" aria-label="Upcoming features">
-          <button className="future-link" disabled title="Coming soon">
+        <div className="masthead-upcoming" aria-label="Upcoming features">
+          <button disabled title="Coming soon">
             <Wrench size={14} />
             PC Builder
-            <small>Soon</small>
           </button>
-          <button className="future-link" disabled title="Coming soon">
+          <button disabled title="Coming soon">
             <Store size={14} />
             Marketplace
-            <small>Soon</small>
           </button>
         </div>
-        </div>
-        <div className="header-right">
-          <button className="header-icon" disabled aria-label="Account" title="Account coming soon">
+        <div className="masthead-actions">
+          <button
+            className="masthead-optional"
+            disabled
+            aria-label="Account"
+            title="Account coming soon"
+          >
             <UserRound size={17} />
           </button>
           <button
-            className="header-icon"
+            className="masthead-optional"
             disabled
             aria-label="Wishlist"
             title="Wishlist coming soon"
@@ -239,25 +217,98 @@ export function Header({
             <Heart size={17} />
           </button>
           <button
-            className="header-icon theme-button"
             role="switch"
             aria-checked={theme === 'dark'}
             aria-label={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
-            title={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
             onClick={changeTheme}
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button className="header-about" onClick={onAbout} title="About Mythos">
-            <Info size={15} />
-            <span>About</span>
+          <button className="masthead-optional" onClick={onAbout} aria-label="About Mythos">
+            <Info size={17} />
           </button>
         </div>
       </div>
+      <div className="masthead-category-row">
+        <div className="masthead-scroll">
+          <nav className="masthead-categories" aria-label="Product categories">
+            {Object.entries(categories).map(([parent, items], index) => (
+              <button
+                key={parent}
+                id={`masthead-trigger-${index}`}
+                className={`masthead-trigger ${items.some((child) => active(child.url)) ? 'active' : ''}`}
+                aria-expanded={open === parent}
+                aria-controls={open === parent ? 'masthead-menu' : undefined}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === 'mouse') {
+                    cancelClose();
+                    trigger.current = event.currentTarget;
+                    setOpen(parent);
+                  }
+                }}
+                onPointerLeave={(event) => {
+                  if (event.pointerType === 'mouse') scheduleClose();
+                }}
+                onClick={(event) => {
+                  trigger.current = event.currentTarget;
+                  cancelClose();
+                  const touch =
+                    'pointerType' in event.nativeEvent &&
+                    event.nativeEvent.pointerType === 'touch';
+                  setOpen(open === parent && (event.detail === 0 || touch) ? null : parent);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    trigger.current = event.currentTarget;
+                    setOpen(parent);
+                    requestAnimationFrame(() => panel.current?.querySelector('a')?.focus());
+                  }
+                }}
+              >
+                {parent}
+                <ChevronDown size={13} />
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>
+      {open && (
+        <div
+          ref={panel}
+          id="masthead-menu"
+          className={`masthead-menu ${children.length > 6 ? 'masthead-menu-wide' : ''}`}
+          style={{
+            left,
+            width: Math.min(720, Math.max(290, Math.ceil(children.length / 4) * 220)),
+          }}
+          aria-labelledby={trigger.current?.id}
+          onPointerEnter={cancelClose}
+          onPointerLeave={(event) => {
+            if (event.pointerType === 'mouse') scheduleClose();
+          }}
+        >
+          <div
+            className="masthead-links"
+            style={{ gridTemplateRows: `repeat(${Math.min(children.length, 4)}, minmax(40px, auto))` }}
+          >
+            {children.map((child) => (
+              <a
+                href={child.url}
+                key={child.url}
+                aria-current={active(child.url) ? 'page' : undefined}
+                onClick={(event) => navigate(event, child.url)}
+              >
+                <span>{child.name}</span>
+                <ArrowUpRight size={14} />
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
-
 export function Footer({
   onSection,
   onAbout,

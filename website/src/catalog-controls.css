@@ -1,4 +1,13 @@
 /* Final control styles shared by the catalog and product detail. */
+.filters-content .filter-search-section { border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 16px 0; margin-top: 16px; }
+.filters-content .filter-search-section .filter-search { margin: 0; }
+.filters-content .filter-search-section + .filter-section { border-top: 0; }
+.filters-content .grouping-section {
+  padding-bottom: 8px;
+}
+.filters-content .grouping-section + .filter-search-section {
+  margin-top: 8px;
+}
 /* Logo, categories, upcoming features, and account controls share one row. */
 .site-header .header-inner {
   display: grid;
@@ -44,6 +53,17 @@
 }
 .filters-content .filter-search .search-submit svg {
   display: block;
+}
+.filters-content .filter-section summary,
+.filters-content .checkbox-row {
+  font-size: 12px;
+}
+.filters-content .tree-options .checkbox-row {
+  font-size: 11px;
+  line-height: 1.2;
+}
+.filters-content .tree-options .filter-count {
+  font-size: 10px;
 }
 .grouping-section button.group-toggle {
   display: flex;

@@ -99,6 +99,7 @@ export default function App() {
       <Header
         categories={categories}
         section={query.section}
+        filters={query.filters}
         onSection={chooseSection}
         onAbout={() => setAbout(true)}
       />

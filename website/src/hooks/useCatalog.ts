@@ -45,7 +45,6 @@ export function useCatalog() {
             `${`/${category.id}/products`}?${apiQueryParams(
               query,
               metadataKey.current !== sectionInfoKey(query),
-              cache.current.get(query.section)?.group_by.map((field) => field.key),
             )}`,
             controller.signal,
           ),
@@ -91,7 +90,8 @@ export function useCatalog() {
     error,
     update,
     retry: () => setRevision((value) => value + 1),
-    changeSection: (section: string) => update(defaultQuery(section)),
+    changeSection: (url: string) =>
+      update(readQuery(new URL(url.replace(/^\/?/, '/'), window.location.origin))),
     reset: () =>
       update({
         ...defaultQuery(query.section),

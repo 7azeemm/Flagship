@@ -22,6 +22,7 @@ impl SectionParser for ConsoleParser {
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
 
+        //todo: move portal to accessories
         let console = if RegexCache::custom_match("!=pack&PlayStation 5|PS5&portable|portal|portatif", text) {
             "PlayStation Portal"
         } else if upper.contains("PLAYSTATION 5") || upper.contains("PS5") {
@@ -31,11 +32,7 @@ impl SectionParser for ConsoleParser {
         } else if upper.contains("XBOX") {
             "Xbox"
         } else if upper.contains("NINTENDO") || upper.contains("SWITCH") {
-            if upper.contains("LITE") {
-                "Nintendo Switch Lite"
-            } else {
-                "Nintendo Switch"
-            }
+            if upper.contains("LITE") { "Nintendo Switch Lite" } else { "Nintendo Switch" }
         } else {
             "Others"
         };

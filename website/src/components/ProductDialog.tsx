@@ -67,7 +67,9 @@ export function ProductDialog({
               {stockLabels[selected.status] || 'Availability unknown'}
             </span>
           </div>
-          <h2 id="product-overview-title" tabIndex={-1}>{selected.title}</h2>
+          <h2 id="product-overview-title" tabIndex={-1}>
+            {selected.title}
+          </h2>
           <Price product={selected} />
           <div className="detail-description">
             <h3>Description</h3>
@@ -88,16 +90,18 @@ export function ProductDialog({
         </section>
 
         <section className="detail-information" aria-label="Product specifications and information">
-          <div className="detail-panel">
-            <div className="detail-panel-heading">
-              <Package size={17} />
-              <div>
-                <h2>Components</h2>
-                <p>Configuration reported by the retailer</p>
+          {fields.some((field) => selected.components[field]?.trim()) && (
+            <div className="detail-panel">
+              <div className="detail-panel-heading">
+                <Package size={17} />
+                <div>
+                  <h2>Components</h2>
+                  <p>Configuration reported by the retailer</p>
+                </div>
               </div>
+              <Specifications product={selected} fields={fields} />
             </div>
-            <Specifications product={selected} fields={fields} />
-          </div>
+          )}
 
           <div className="detail-panel product-record">
             <div className="detail-panel-heading">
@@ -144,28 +148,30 @@ export function ProductDialog({
               </div>
             </dl>
           </div>
-        <div className="future-insights">
-          <section>
-            <Activity size={18} />
-            <div>
-              <h3>Performance</h3>
-              <p>Benchmarks and comparisons coming later.</p>
-            </div>
-            <span>Planned</span>
-          </section>
-          <section>
-            <Star size={18} />
-            <div>
-              <h3>Ratings</h3>
-              <p>Reviews and rating breakdowns coming later.</p>
-            </div>
-            <span>Planned</span>
-          </section>
-        </div>
+          <div className="future-insights">
+            <section>
+              <Activity size={18} />
+              <div>
+                <h3>Performance</h3>
+                <p>Benchmarks and comparisons coming later.</p>
+              </div>
+              <span>Planned</span>
+            </section>
+            <section>
+              <Star size={18} />
+              <div>
+                <h3>Ratings</h3>
+                <p>Reviews and rating breakdowns coming later.</p>
+              </div>
+              <span>Planned</span>
+            </section>
+          </div>
         </section>
-        {offers.length > 0 && (
+        {offers.length > 1 && endpoint.startsWith('/variants/') && (
           <section className="offer-list detail-panel detail-listings">
-            <h2>{offers.length} retailer {offers.length === 1 ? 'listing' : 'listings'}</h2>
+            <h2>
+              {offers.length} retailer {offers.length === 1 ? 'listing' : 'listings'}
+            </h2>
             <p>Check each retailer’s configuration before choosing.</p>
             {offers.map((offer) => (
               <button
@@ -177,13 +183,17 @@ export function ProductDialog({
                   setZoom(false);
                   requestAnimationFrame(() => {
                     dialog?.scrollTo({ top: 0, behavior: 'instant' });
-                    dialog?.querySelector<HTMLElement>('#product-overview-title')?.focus({ preventScroll: true });
+                    dialog
+                      ?.querySelector<HTMLElement>('#product-overview-title')
+                      ?.focus({ preventScroll: true });
                   });
                 }}
                 aria-pressed={selected.id === offer.id}
               >
                 <span>
-                  {offer.site}
+                  <span className="offer-title" title={`${offer.site} · ${offer.title}`}>
+                    <b>{offer.site}</b> · {offer.title}
+                  </span>
                   <small>{stockLabels[offer.status] || 'Availability unknown'}</small>
                 </span>
                 <strong>{money(offer.price)} DT</strong>
@@ -193,21 +203,31 @@ export function ProductDialog({
           </section>
         )}
         <ProductChangeHistory key={selected.id} product={selected} />
-        <ProductAnalytics initialChart={chart} endpoint={endpoint} product={selected} />
+        <ProductAnalytics
+          initialChart={chart}
+          endpoint={endpoint}
+          product={selected}
+          products={products}
+        />
       </div>
     </Dialog>
   );
 }
 
-
 function ProductChangeHistory({ product }: { product: Product }) {
   const events = product.history
-    .filter((event): event is Record<string, unknown> => !!event && typeof event === 'object' && !Array.isArray(event))
+    .filter(
+      (event): event is Record<string, unknown> =>
+        !!event && typeof event === 'object' && !Array.isArray(event),
+    )
     .filter((event) => typeof event.field === 'string')
-    .sort((a, b) => (Date.parse(String(b.timestamp)) || 0) - (Date.parse(String(a.timestamp)) || 0));
+    .sort(
+      (a, b) => (Date.parse(String(b.timestamp)) || 0) - (Date.parse(String(a.timestamp)) || 0),
+    );
   const value = (field: string, raw: unknown): string => {
     if (raw === null || raw === undefined || raw === '') return 'Not recorded';
-    if ((field === 'price' || field === 'original_price') && typeof raw === 'number') return `${money(raw)} DT`;
+    if ((field === 'price' || field === 'original_price') && typeof raw === 'number')
+      return `${money(raw)} DT`;
     if (field === 'status' && typeof raw === 'string') return stockLabels[raw] || raw;
     if (typeof raw === 'object') return JSON.stringify(raw);
     return String(raw);
@@ -216,18 +236,34 @@ function ProductChangeHistory({ product }: { product: Product }) {
     <section className="detail-panel product-change-history" aria-label="Product history">
       <div className="detail-panel-heading">
         <History size={17} />
-        <div><h2>Product history</h2><p>Recorded changes for the selected {product.site} listing · newest first</p></div>
+        <div>
+          <h2>Product history</h2>
+          <p>Recorded changes for the selected {product.site} listing · newest first</p>
+        </div>
       </div>
       {events.length ? (
         <ol className="product-timeline">
           {events.map((event, index) => (
             <li key={index}>
-              <div><strong>{fieldLabel(String(event.field))}</strong><time>{formatDate(typeof event.timestamp === 'string' ? event.timestamp : null)}</time></div>
-              <p><span>{value(String(event.field), event.old_value)}</span><span aria-label="changed to"> → </span><strong>{value(String(event.field), event.new_value)}</strong></p>
+              <div>
+                <strong>{fieldLabel(String(event.field))}</strong>
+                <time>
+                  {formatDate(typeof event.timestamp === 'string' ? event.timestamp : null)}
+                </time>
+              </div>
+              <p>
+                <span>{value(String(event.field), event.old_value)}</span>
+                <span aria-label="changed to"> → </span>
+                <strong>{value(String(event.field), event.new_value)}</strong>
+              </p>
             </li>
           ))}
         </ol>
-      ) : <p className="muted">No changes recorded yet. Price, availability, and other product updates will appear here.</p>}
+      ) : (
+        <p className="muted">
+          No changes recorded yet. Price, availability, and other product updates will appear here.
+        </p>
+      )}
     </section>
   );
 }
