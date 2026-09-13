@@ -1,73 +1,205 @@
-use crate::core::retailers::{Retailer, RetailerConfig};
+use std::str::FromStr;
+use crate::core::product::{Product, ProductStatus};
+use crate::core::retailers::{parse_price, Retailer, RetailerConfig, RetailerConfigBuilder};
 use crate::core::sections::Section;
-use crate::utils::web_client::WebClientType;
+use crate::core::tracking::scan_metrics::PageMetrics;
+use crate::core::tracking::scan_report::{PageReport, ScrapeError};
+use crate::core::tracking::scrape_error::{FetchError, ProductParseError, ScrapeErrorKind};
+use crate::utils::web_client::{USER_AGENT, WebClientType};
+use axum::http::HeaderMap;
 use once_cell::sync::Lazy;
-use scraper::Selector;
+use reqwest::Client;
+use serde::Deserialize;
+use std::time::{Duration, Instant};
+use serde_json::Value;
+use crate::utils::serde_ext::JsonExt;
 
-static CONFIG: RetailerConfig = RetailerConfig {
-    name: "BestBuyTunisie",
-    web_client_type: WebClientType::HttpClient,
-    nav_sel: Lazy::new(|| Selector::parse("div.items-center button").unwrap()),
-    product_sel: Lazy::new(|| Selector::parse("div.w-full div.bg-white").unwrap()),
-    title_sel: Lazy::new(|| Selector::parse("div.p-4 a[href]").unwrap()),
-    image_sel: Lazy::new(|| Selector::parse("a.block img[alt]").unwrap()),
-    price_sel: Lazy::new(|| Selector::parse("span.font-extrabold").unwrap()),
-    original_price_sel: Lazy::new(|| Selector::parse("span.line-through").unwrap()),
-    price_sel_2: None,
-    status_sel: Some(Lazy::new(|| Selector::parse("span.text-[10px]").unwrap())),
-    desc_sel: None,
-    page_desc_sel: Some(Lazy::new(|| Selector::parse("div.prose").unwrap())),
-    empty_page_sel: None,
-    sections: &[
-        (Section::PC, "https://bestbuytunisie.tn/vente/informatique/ordinateur-de-bureau/pc-de-bureau-tunisie"),
-        (Section::AllInOnePC, "https://bestbuytunisie.tn/vente/informatique/ordinateur-de-bureau/pc-tout-en-un-tunisie"),
-        (Section::AllInOnePC, "https://bestbuytunisie.tn/vente/imac-tunisie"),
-        (Section::Laptop, "https://bestbuytunisie.tn/vente/pc-portable-tunisie"),
-        (Section::MacBook, "https://bestbuytunisie.tn/vente/mac-tunisie"),
-        (Section::CPU, "https://bestbuytunisie.tn/vente/processeur-tunisie"),
-        (Section::GPU, "https://bestbuytunisie.tn/vente/gaming/composant-pc-gamer/carte-graphique-tunisie"),
-        (Section::Memory, "https://bestbuytunisie.tn/vente/gaming/composant-pc-gamer/barrette-memoire-tunisie"),
-        (Section::Storage, "https://bestbuytunisie.tn/vente/disque-dur-interne-tunisie"),
-        (Section::Storage, "https://bestbuytunisie.tn/vente/disque-dur-ssd-tunisie"),
-        (Section::Storage, "https://bestbuytunisie.tn/vente/gaming/composant-pc-gamer/disque-dur-ssdhddmvme-tunisie"),
-        (Section::Motherboard, "https://bestbuytunisie.tn/vente/gaming/composant-pc-gamer/carte-mere-pc-tunisie"),
-        (Section::Cooler, "https://bestbuytunisie.tn/vente/refroidissement-tunisie"),
-        (Section::PowerSupply, "https://bestbuytunisie.tn/vente/gaming/composant-pc-gamer/bloc-dalimentation-tunisie"),
-        (Section::Case, "https://bestbuytunisie.tn/vente/boitier-pc-gamer-tunisie"),
-        (Section::Mouse, "https://bestbuytunisie.tn/vente/souris-tunisie"),
-        (Section::Mouse, "https://bestbuytunisie.tn/vente/souris-gaming-tunisie"),
-        (Section::Keyboard, "https://bestbuytunisie.tn/vente/clavier-gaming-tunisie"),
-        (Section::Keyboard, "https://bestbuytunisie.tn/vente/informatique/accessoires-ordinateur/clavier-tunisie"),
-        (Section::MousePad, "https://bestbuytunisie.tn/vente/tapis-de-souris-tunisie"),
-        (Section::MousePad, "https://bestbuytunisie.tn/vente/gaming/accessoires-gaming/tapis-de-souris-gamer-tunisie"),
-        (Section::Headphones, "https://bestbuytunisie.tn/vente/micro-casques-tunisie"),
-        (Section::Headphones, "https://bestbuytunisie.tn/vente/airpuds-tunisie"),
-        (Section::Headphones, "https://bestbuytunisie.tn/vente/casque-gaming-tunisie"),
-        (Section::GamingChair, "https://bestbuytunisie.tn/vente/chaise-gaming-tunisie"),
-        (Section::AccessoriesCombo, "https://bestbuytunisie.tn/vente/ensemble-clavier-souris-tunisie"),
-        (Section::Monitor, "https://bestbuytunisie.tn/vente/ecran-tunisie"),
-        (Section::Console, "https://bestbuytunisie.tn/vente/nintendo-switch-tunisie"),
-        (Section::Console, "https://bestbuytunisie.tn/vente/ps4-tunisie"),
-        (Section::Console, "https://bestbuytunisie.tn/vente/ps5-tunisie"),
-        (Section::ConsoleGame, "https://bestbuytunisie.tn/vente/jeux-video-tunisie"),
-        (Section::Controller, "https://bestbuytunisie.tn/vente/manette-de-jeu-tunisie"),
-        (Section::Smartphone, "https://bestbuytunisie.tn/vente/telephonie-et-tablette/smartphone-mobile/smartphones-tunisie"),
-        (Section::Smartphone, "https://bestbuytunisie.tn/vente/iphone-tunisie"),
-        (Section::Tablet, "https://bestbuytunisie.tn/vente/tablettes-android-tunisie"),
-        (Section::Tablet, "https://bestbuytunisie.tn/vente/ipad-tunisie"),
-        (Section::Smartwatch, "https://bestbuytunisie.tn/vente/montre-connectee-tunisie"),
-        (Section::Television, "https://bestbuytunisie.tn/vente/televiseur-tunisie"),
-    ],
-};
+static HTTP_CLIENT: Lazy<Client> = Lazy::new(||
+    Client::builder()
+        .user_agent(USER_AGENT)
+        .default_headers({
+            let mut headers = HeaderMap::new();
+            headers.insert("Accept", "application/json".parse().unwrap());
+            headers.insert("Accept-Encoding", "gzip, deflate, br, zstd".parse().unwrap());
+            headers.insert("Accept-Language", "en,en-US;q=0.9,ar;q=0.8,fr;q=0.7,it;q=0.6".parse().unwrap());
+            headers.insert("Content-Type", "application/json".parse().unwrap());
+            headers.insert("Origin", "https://bestbuytunisie.tn/".parse().unwrap());
+            headers.insert("Referer", "https://bestbuytunisie.tn/".parse().unwrap());
+            headers
+        })
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("Failed to build BestBuyTunisie HTTP client")
+);
+
+#[derive(Deserialize)]
+struct APIResponse {
+    data: Vec<BestBuyTunisieProduct>,
+    meta: Value,
+}
+
+#[derive(Deserialize)]
+struct BestBuyTunisieProduct {
+    name: String,
+    slug: String,
+    short_description: String,
+    price: String,
+    old_price: Option<String>,
+    stock_status: String,
+    thumbnail_url: String,
+}
+
+static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
+    RetailerConfigBuilder {
+        web_client_type: WebClientType::HttpClient,
+        name: "BestBuyTunisie",
+        nav_sel: "empty",
+        product_sel: "empty",
+        title_sel: "empty",
+        image_sel: "empty",
+        price_sel: "empty",
+        original_price_sel: "empty",
+        page_desc_sel: "empty",
+        page_images_sel: "empty",
+        status_sel: None,
+        desc_sel: None,
+        empty_page_sel: None,
+        secondary_price_sel: None,
+        sections: &[
+            (Section::PC, "pc-de-bureau"),
+            (Section::AllInOnePC, "pc-tout-en-un"),
+            (Section::AllInOnePC, "imac"),
+            (Section::Laptop, "pc-portable"),
+            (Section::MacBook, "mac"),
+            (Section::CPU, "processeur"),
+            (Section::GPU, "carte-graphique"),
+            (Section::Memory, "barrette-memoire"),
+            (Section::Storage, "disque-dur-interne"),
+            (Section::Storage, "disque-dur-ssd"),
+            (Section::Storage, "disque-dur-ssdhddmvme"),
+            (Section::Motherboard, "carte-mere-pc"),
+            (Section::Cooler, "refroidissement"),
+            (Section::PowerSupply, "bloc-dalimentation"),
+            (Section::Case, "boitier-pc-gamer"),
+            (Section::Mouse, "souris"),
+            (Section::Mouse, "souris-gaming"),
+            (Section::Keyboard, "clavier-gaming"),
+            (Section::Keyboard, "clavier"),
+            (Section::MousePad, "tapis-de-souris"),
+            (Section::MousePad, "tapis-de-souris-gamer"),
+            (Section::Headphones, "micro-casques"),
+            (Section::Headphones, "airpuds"),
+            (Section::Headphones, "casque-gaming"),
+            (Section::GamingChair, "chaise-gaming"),
+            (Section::AccessoryBundle, "ensemble-clavier-souris"),
+            (Section::Monitor, "ecran"),
+            (Section::Console, "nintendo-switch"),
+            (Section::Console, "ps4"),
+            (Section::Console, "ps5"),
+            (Section::Game, "jeux-video"),
+            (Section::Controller, "manette-de-jeu"),
+            (Section::Smartphone, "smartphones"),
+            (Section::Smartphone, "iphone"),
+            (Section::Tablet, "tablettes-android"),
+            (Section::Tablet, "ipad"),
+            (Section::Smartwatch, "montre-connectee"),
+            (Section::Television, "televiseur"),
+        ],
+    }.build()
+);
 
 pub struct BestBuyTunisie;
 
+#[async_trait::async_trait]
 impl Retailer for BestBuyTunisie {
     fn config(&self) -> &RetailerConfig {
         &CONFIG
     }
 
-    fn format_url(&self, url: &str, page: i32) -> String {
-        format!("{url}page/{page}/")
+    async fn fetch_api(&self, link: &str, section: Section) -> Option<(PageReport, Vec<Product>)> {
+        println!("Sending API request to BestBuyTunisie for `{link}`");
+        let started_at = Instant::now();
+        let mut metrics = PageMetrics::default();
+
+        let (products, errors) = match fetch_api(link, section, &mut metrics).await {
+            Ok((p, e)) => (p, e),
+            Err(err) => (vec![], vec![err])
+        };
+
+        Some((
+            PageReport {
+                url: link.to_string(),
+                retailer: self.name().to_string(),
+                section,
+                metrics,
+                products: products.len(),
+                duration: started_at.elapsed(),
+                attempts: 0,
+                errors: errors
+                    .into_iter()
+                    .map(|e| ScrapeError::new(e, section, self.name(), link))
+                    .collect(),
+            }, products
+        ))
     }
+}
+
+async fn fetch_api(
+    category: &str,
+    section: Section,
+    metrics: &mut PageMetrics,
+) -> Result<(Vec<Product>, Vec<ScrapeErrorKind>), ScrapeErrorKind> {
+    let per_page = 500;
+    let url = format!("https://api.toutproduits.com/api/v1/products?category={category}&per_page={per_page}");
+    let body = HTTP_CLIENT
+        .get(&url)
+        .send().await
+        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?
+        .text().await
+        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?;
+    metrics.html_bytes += body.len() as u64;
+    
+    let resp = serde_json::from_str::<APIResponse>(&body).map_err(|err| ScrapeErrorKind::ParseFailed {
+        url: Some(url.clone()),
+        error: ProductParseError::Other { message: err.to_string() },
+    })?;
+
+    let mut errors = Vec::new();
+    let mut products_list = Vec::new();
+
+    if resp.meta.get_i64("last_page").unwrap_or(1) != 1 {
+        tracing::warn!("BestBuyTunisie `{category}` category has more than {per_page} products");
+    }
+
+    for product in resp.data {
+        match parse_product(product, section) {
+            Ok(product) => products_list.push(product),
+            Err(err) => errors.push(ScrapeErrorKind::ParseFailed {
+                url: None,
+                error: err
+            })
+        }
+    }
+
+    Ok((products_list, errors))
+}
+
+fn parse_product(product: BestBuyTunisieProduct, section: Section) -> Result<Product, ProductParseError> {
+    let url = format!("https://bestbuytunisie.tn/{}-tunisie", product.slug);
+    let status = ProductStatus::from_str(&product.stock_status)?;
+    let price = parse_price(&product.price)?;
+    let old_price = product.old_price.map(|p| parse_price(&p)).transpose()?;
+
+    Ok(Product::new(
+        CONFIG.name,
+        url,
+        product.name,
+        section,
+        product.short_description,
+        product.thumbnail_url.replace("\\", ""),
+        vec![],
+        status,
+        price,
+        old_price,
+    ))
 }

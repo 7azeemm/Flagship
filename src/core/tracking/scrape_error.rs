@@ -62,9 +62,7 @@ impl ProductParseError {
     fn fingerprint(&self) -> String {
         match self {
             Self::MissingElement { field } => format!("missing_element:{field}"),
-            Self::MissingAttribute { field, attribute } => {
-                format!("missing_attribute:{field}:{attribute}")
-            }
+            Self::MissingAttribute { field, attribute } => format!("missing_attribute:{field}:{attribute}"),
             Self::MissingImageUrl => "missing_image_url".into(),
             Self::InvalidUrl(error) => format!("invalid_url:{}", error.fingerprint()),
             Self::InvalidPrice { .. } => "invalid_price".into(),
@@ -75,28 +73,25 @@ impl ProductParseError {
 }
 
 #[derive(Clone, Debug, Error, Serialize, Deserialize)]
-pub enum DescriptionError {
-    #[error("Description selector is not configured")]
-    SelectorMissing,
-    #[error("Description request failed: {message}")]
+pub enum ProductFetchError {
+    #[error("Product fetch request failed: {message}")]
     FetchFailed { message: String },
     #[error("Product page no longer exists")]
     ProductMissing,
-    #[error("Description was not found on the product page")]
-    MissingContent,
+    #[error("{field} was missing on the product page")]
+    ContentMissing { field: String},
 }
 
-impl DescriptionError {
+impl ProductFetchError {
     pub fn skip_product(&self) -> bool {
         matches!(self, Self::ProductMissing)
     }
 
-    fn fingerprint(&self) -> &'static str {
+    fn fingerprint(&self) -> String {
         match self {
-            Self::SelectorMissing => "selector_missing",
-            Self::FetchFailed { .. } => "fetch_failed",
-            Self::ProductMissing => "product_missing",
-            Self::MissingContent => "missing_content",
+            Self::FetchFailed { .. } => "fetch_failed".into(),
+            Self::ProductMissing => "product_missing".into(),
+            Self::ContentMissing { field } => format!("content_missing:{field}"),
         }
     }
 }
@@ -109,10 +104,10 @@ pub enum ScrapeErrorKind {
         url: Option<String>,
         error: ProductParseError,
     },
-    DescriptionFetchFailed {
+    ProductFetchFailed {
         url: String,
         title: String,
-        error: DescriptionError,
+        error: ProductFetchError,
     },
 }
 
@@ -122,7 +117,7 @@ impl ScrapeErrorKind {
             Self::FetchFailed(_) => "Fetch failed",
             Self::PageCountParseFailed(_) => "Page count failed",
             Self::ParseFailed { .. } => "Product parse failed",
-            Self::DescriptionFetchFailed { .. } => "Description failed",
+            Self::ProductFetchFailed { .. } => "Product fetch failed",
         }
     }
 
@@ -131,7 +126,7 @@ impl ScrapeErrorKind {
             Self::FetchFailed(error) => error.to_string(),
             Self::PageCountParseFailed(error) => error.to_string(),
             Self::ParseFailed { error, .. } => error.to_string(),
-            Self::DescriptionFetchFailed { error, .. } => error.to_string(),
+            Self::ProductFetchFailed { error, .. } => error.to_string(),
         }
     }
 
@@ -139,23 +134,17 @@ impl ScrapeErrorKind {
         match self {
             Self::FetchFailed(FetchError::Request { .. }) => "fetch:request".into(),
             Self::FetchFailed(FetchError::EmptyProductPage) => "fetch:empty_page".into(),
-            Self::PageCountParseFailed(PaginationError::MissingValue) => {
-                "pagination:missing_value".into()
-            }
-            Self::PageCountParseFailed(PaginationError::InvalidValue { .. }) => {
-                "pagination:invalid_value".into()
-            }
+            Self::PageCountParseFailed(PaginationError::MissingValue) => "pagination:missing_value".into(),
+            Self::PageCountParseFailed(PaginationError::InvalidValue { .. }) => "pagination:invalid_value".into(),
             Self::ParseFailed { error, .. } => format!("product:{}", error.fingerprint()),
-            Self::DescriptionFetchFailed { error, .. } => {
-                format!("description:{}", error.fingerprint())
-            }
+            Self::ProductFetchFailed { error, .. } => format!("product_fetch:{}", error.fingerprint()),
         }
     }
 
     pub fn target_url(&self) -> Option<&str> {
         match self {
             Self::ParseFailed { url, .. } => url.as_deref(),
-            Self::DescriptionFetchFailed { url, .. } => Some(url),
+            Self::ProductFetchFailed { url, .. } => Some(url),
             _ => None,
         }
     }

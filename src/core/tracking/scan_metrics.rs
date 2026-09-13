@@ -23,15 +23,15 @@ impl ScanMetrics {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PageMetrics {
-    pub description_cache_hits: usize,
-    pub description_requests: usize,
+    pub cache_hits: usize,
+    pub product_page_requests: usize,
     pub html_bytes: u64,
 }
 
 impl PageMetrics {
     pub fn add(&mut self, other: &Self) {
-        self.description_cache_hits += other.description_cache_hits;
-        self.description_requests += other.description_requests;
+        self.cache_hits += other.cache_hits;
+        self.product_page_requests += other.product_page_requests;
         self.html_bytes += other.html_bytes;
     }
 }

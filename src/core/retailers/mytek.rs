@@ -1,75 +1,77 @@
 use crate::core::product::{Product, ProductStatus};
-use crate::core::retailers::utils::parse_price;
-use crate::core::retailers::{Retailer, RetailerConfig};
+use crate::core::retailers::{Retailer, RetailerConfig, RetailerConfigBuilder, parse_price};
 use crate::core::sections::Section;
 use crate::core::tracking::scrape_error::ProductParseError;
 use crate::utils::scraper_ext::ElementRefExt;
 use crate::utils::web_client::WebClientType;
 use once_cell::sync::Lazy;
-use scraper::{ElementRef, Selector};
+use scraper::ElementRef;
 use std::str::FromStr;
 
-static CONFIG: RetailerConfig = RetailerConfig {
-    name: "Mytek",
-    web_client_type: WebClientType::HttpClient,
-    nav_sel: Lazy::new(|| Selector::parse("nav.custom-pagination ul.pagination li.page-item").unwrap()),
-    product_sel: Lazy::new(|| Selector::parse("div#product-list-container div#seo-product-data div[data-id]").unwrap()),
-    title_sel: Lazy::new(|| Selector::parse("").unwrap()),
-    image_sel: Lazy::new(|| Selector::parse("").unwrap()),
-    price_sel: Lazy::new(|| Selector::parse("").unwrap()),
-    original_price_sel: Lazy::new(|| Selector::parse("").unwrap()),
-    price_sel_2: None,
-    status_sel: Some(Lazy::new(|| Selector::parse("").unwrap())),
-    desc_sel: Some(Lazy::new(|| Selector::parse("").unwrap())),
-    page_desc_sel: None,
-    empty_page_sel: None,
-    sections: &[
-        (Section::PC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/pc-de-bureau.html"),
-        (Section::GamingPC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/ordinateur-gamer.html"),
-        (Section::GamingPC, "https://www.mytek.tn/gaming/composant-pc-gamer/pack-gaming.html"),
-        (Section::AllInOnePC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/imac.html"),
-        (Section::AllInOnePC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/pc-tout-en-un.html"),
-        (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-portable.html"),
-        (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-portable-pro.html"),
-        (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/ultrabook.html"),
-        (Section::GamingLaptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-gamer.html"),
-        (Section::MacBook, "https://www.mytek.tn/informatique/ordinateurs-portables/mac.html"),
-        (Section::Monitor, "https://www.mytek.tn/informatique/ordinateur-de-bureau/ecran.html"),
-        (Section::Monitor, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/ecran-gamer.html"),
-        (Section::CPU, "https://www.mytek.tn/informatique/composants-informatique/processeur.html"),
-        (Section::GPU, "https://www.mytek.tn/informatique/composants-informatique/carte-graphique.html"),
-        (Section::Memory, "https://www.mytek.tn/gaming/composant-pc-gamer/barrette-memoire-gamer.html"),
-        (Section::Memory, "https://www.mytek.tn/informatique/composants-informatique/barrettes-memoire.html"),
-        (Section::Storage, "https://www.mytek.tn/informatique/stockage/disque-dur.html"),
-        (Section::Motherboard, "https://www.mytek.tn/informatique/composants-informatique/carte-mere.html"),
-        (Section::Cooler, "https://www.mytek.tn/gaming/composant-pc-gamer/refroidisseur-processeur-gamer.html"),
-        (Section::PowerSupply, "https://www.mytek.tn/gaming/composant-pc-gamer/alimentation-pc-gamer.html"),
-        (Section::PowerSupply, "https://www.mytek.tn/informatique/composants-informatique/bloc-d-alimentation.html"),
-        (Section::Case, "https://www.mytek.tn/informatique/composants-informatique/boitier.html"),
-        (Section::Case, "https://www.mytek.tn/gaming/composant-pc-gamer/boitier-pc-gamer.html"),
-        (Section::Mouse, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/souris-gamer.html"),
-        (Section::Keyboard, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/clavier-gamer.html"),
-        (Section::MousePad, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/tapis-de-souris-gamer.html"),
-        (Section::Headphones, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/micro-casque-gamer.html"),
-        (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/casque-kit.html"),
-        (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/ecouteurs.html"),
-        (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/earbuds.html"),
-        (Section::GamingChair, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/siege-gaming.html"),
-        (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/playstation.html"),
-        (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/xbox.html"),
-        (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/nintendo.html"),
-        (Section::Controller, "https://www.mytek.tn/gaming/accessoires-de-jeux/manettes.html"),
-        (Section::ConsoleGame, "https://www.mytek.tn/gaming/accessoires-de-jeux/jeux-video.html"),
-        (Section::ConsoleAccessories, "https://www.mytek.tn/gaming/accessoires-de-jeux/accessoires-jeux-de-course.html"),
-        (Section::ConsoleAccessories, "https://www.mytek.tn/gaming/accessoires-de-jeux/casque-de-realite-virtuelle.html"),
-        (Section::Smartphone, "https://www.mytek.tn/smartphone.html"),
-        (Section::Smartphone, "http://www.mytek.tn/telephonie-tunisie/smartphone-mobile-tunisie/iphone.html"),
-        (Section::Tablet, "https://www.mytek.tn/informatique/tablettes-tactiles/tablettes-android.html"),
-        (Section::Tablet, "https://www.mytek.tn/informatique/tablettes-tactiles/ipad.html"),
-        (Section::Smartwatch, "https://www.mytek.tn/telephonie-tunisie/smartwatch/montre-connectee.html"),
-        (Section::Television, "https://www.mytek.tn/image-son/televiseurs/tv-led.html"),
-    ],
-};
+static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
+    RetailerConfigBuilder {
+        web_client_type: WebClientType::HttpClient,
+        name: "Mytek",
+        nav_sel: "nav.custom-pagination ul.pagination li.page-item",
+        product_sel: "div#product-list-container div#seo-product-data div[data-id]",
+        title_sel: "empty",
+        image_sel: "empty",
+        price_sel: "empty",
+        original_price_sel: "empty",
+        page_desc_sel: "div[itemprop=description]",
+        page_images_sel: "div#seo-gallery-data span[data-image]",
+        status_sel: None,
+        desc_sel: None,
+        empty_page_sel: None,
+        secondary_price_sel: None,
+        sections: &[
+            (Section::PC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/pc-de-bureau.html"),
+            (Section::GamingPC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/ordinateur-gamer.html"),
+            (Section::GamingPC, "https://www.mytek.tn/gaming/composant-pc-gamer/pack-gaming.html"),
+            (Section::AllInOnePC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/imac.html"),
+            (Section::AllInOnePC, "https://www.mytek.tn/informatique/ordinateur-de-bureau/pc-tout-en-un.html"),
+            (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-portable.html"),
+            (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-portable-pro.html"),
+            (Section::Laptop, "https://www.mytek.tn/informatique/ordinateurs-portables/ultrabook.html"),
+            (Section::GamingLaptop, "https://www.mytek.tn/informatique/ordinateurs-portables/pc-gamer.html"),
+            (Section::MacBook, "https://www.mytek.tn/informatique/ordinateurs-portables/mac.html"),
+            (Section::Monitor, "https://www.mytek.tn/informatique/ordinateur-de-bureau/ecran.html"),
+            (Section::Monitor, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/ecran-gamer.html"),
+            (Section::CPU, "https://www.mytek.tn/informatique/composants-informatique/processeur.html"),
+            (Section::GPU, "https://www.mytek.tn/informatique/composants-informatique/carte-graphique.html"),
+            (Section::Memory, "https://www.mytek.tn/gaming/composant-pc-gamer/barrette-memoire-gamer.html"),
+            (Section::Memory, "https://www.mytek.tn/informatique/composants-informatique/barrettes-memoire.html"),
+            (Section::Storage, "https://www.mytek.tn/informatique/stockage/disque-dur.html"),
+            (Section::Motherboard, "https://www.mytek.tn/informatique/composants-informatique/carte-mere.html"),
+            (Section::Cooler, "https://www.mytek.tn/gaming/composant-pc-gamer/refroidisseur-processeur-gamer.html"),
+            (Section::PowerSupply, "https://www.mytek.tn/gaming/composant-pc-gamer/alimentation-pc-gamer.html"),
+            (Section::PowerSupply, "https://www.mytek.tn/informatique/composants-informatique/bloc-d-alimentation.html"),
+            (Section::Case, "https://www.mytek.tn/informatique/composants-informatique/boitier.html"),
+            (Section::Case, "https://www.mytek.tn/gaming/composant-pc-gamer/boitier-pc-gamer.html"),
+            (Section::Mouse, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/souris-gamer.html"),
+            (Section::Keyboard, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/clavier-gamer.html"),
+            (Section::MousePad, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/tapis-de-souris-gamer.html"),
+            (Section::Headphones, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/micro-casque-gamer.html"),
+            (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/casque-kit.html"),
+            (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/ecouteurs.html"),
+            (Section::Headphones, "https://www.mytek.tn/image-son/son-numerique/earbuds.html"),
+            (Section::GamingChair, "https://www.mytek.tn/gaming/peripheriques-et-accessoires-gamers/siege-gaming.html"),
+            (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/playstation.html"),
+            (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/xbox.html"),
+            (Section::Console, "https://www.mytek.tn/gaming/console-de-jeux/nintendo.html"),
+            (Section::Controller, "https://www.mytek.tn/gaming/accessoires-de-jeux/manettes.html"),
+            (Section::Game, "https://www.mytek.tn/gaming/accessoires-de-jeux/jeux-video.html"),
+            (Section::ConsoleAccessories, "https://www.mytek.tn/gaming/accessoires-de-jeux/accessoires-jeux-de-course.html"),
+            (Section::ConsoleAccessories, "https://www.mytek.tn/gaming/accessoires-de-jeux/casque-de-realite-virtuelle.html"),
+            (Section::Smartphone, "https://www.mytek.tn/smartphone.html"),
+            (Section::Smartphone, "https://www.mytek.tn/telephonie-tunisie/smartphone-mobile-tunisie/iphone.html"),
+            (Section::Tablet, "https://www.mytek.tn/informatique/tablettes-tactiles/tablettes-android.html"),
+            (Section::Tablet, "https://www.mytek.tn/informatique/tablettes-tactiles/ipad.html"),
+            (Section::Smartwatch, "https://www.mytek.tn/telephonie-tunisie/smartwatch/montre-connectee.html"),
+            (Section::Television, "https://www.mytek.tn/image-son/televiseurs/tv-led.html"),
+        ],
+    }.build()
+);
 
 pub struct Mytek;
 
@@ -91,15 +93,10 @@ impl Retailer for Mytek {
         };
 
         let image = element.select_attr("data-image", "image").map(|s| format!("https://www.mytek.tn/media/catalog/product{s}"))?;
+        let description = Some(element.select_attr("data-description", "description")?).unwrap_or_default();
+        let status = ProductStatus::from_str(&status)?;
 
-        let description = match section.requires_desc() {
-            true => Some(element.select_attr("data-description", "description")?),
-            false => None,
-        };
-
-        let status = ProductStatus::from_str(&status).map_err(|_| ProductParseError::UnknownStatus { value: status })?;
-
-        Ok(Product::new(self.name(), url, title, section, description, image, status, price, original_price))
+        Ok(Product::new(self.name(), url, title, section, description, image, vec![], status, price, original_price))
     }
 
     fn format_url(&self, url: &str, page: i32) -> String {

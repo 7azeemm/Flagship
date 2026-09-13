@@ -2,7 +2,7 @@ use crate::api::error::ApiError::InvalidQuery;
 use crate::api::error::ApiResult;
 use crate::api::filters::{FilterGroup, build_all_filters, product_matches_key};
 use crate::core::product::{Product, ProductStatus};
-use crate::core::sections::{Section, GroupField};
+use crate::core::sections::{GroupField, Section};
 use crate::core::storage::ProductStorage;
 use crate::core::variant::{VariantCatalogRecord, VariantStorage};
 use axum::{Json, extract::Path};
@@ -62,9 +62,16 @@ pub struct ProductSummary {
 impl ProductSummary {
     fn from_product(product: Product) -> Self {
         Self {
-            id: product.id, url: product.url, title: product.title, site: product.site, section: product.section,
-            image: product.image, status: product.status, price: product.price,
-            original_price: product.original_price, components: product.components,
+            id: product.id,
+            url: product.url,
+            title: product.title,
+            site: product.retailer,
+            section: product.section,
+            image: product.image,
+            status: product.status,
+            price: product.price,
+            original_price: product.original_price,
+            components: product.components,
         }
     }
 }
@@ -85,15 +92,16 @@ pub struct VariantSummary {
 impl VariantSummary {
     fn from_variant(variant: VariantCatalogRecord, offers: Vec<Product>) -> Option<Self> {
         let in_stock = offers.iter().filter(|product| product.status == ProductStatus::InStock).collect::<Vec<_>>();
-        let representative = in_stock.iter().copied().min_by_key(|product| product.price)
-            .or_else(|| offers.iter().min_by_key(|product| product.price))?;
+        let representative = in_stock.iter().copied().min_by_key(|product| product.price).or_else(|| offers.iter().min_by_key(|product| product.price))?;
         Some(VariantSummary {
-            id: variant.id, section: variant.section,
-            image: representative.image.clone(), price: representative.price,
+            id: variant.id,
+            section: variant.section,
+            image: representative.image.clone(),
+            price: representative.price,
             original_price: representative.original_price,
             components: representative.components.clone(),
             offer_count: offers.len(),
-            retailer_count: offers.iter().map(|product| &product.site).collect::<HashSet<_>>().len(),
+            retailer_count: offers.iter().map(|product| &product.retailer).collect::<HashSet<_>>().len(),
             in_stock_count: in_stock.len(),
         })
     }
@@ -102,7 +110,7 @@ impl VariantSummary {
 #[derive(Serialize, Debug)]
 pub struct SectionInfo {
     pub filters: Vec<FilterGroup>,
-    pub sites: Vec<String>,
+    pub sites: Vec<String>,//todo: with count
     pub components: Vec<String>,
     pub components_by_section: HashMap<String, Vec<String>>,
     pub group_by: Vec<GroupField>,
@@ -139,11 +147,7 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Pric
         .map_err(|error| InvalidQuery(error.to_string()))?
         .unwrap_or_default();
 
-    let mut products: Vec<Product> = ProductStorage::get_storage().read().await.products
-        .values()
-        .filter(|product| product.section == section)
-        .cloned().
-        collect();
+    let mut products: Vec<Product> = ProductStorage::get_storage().read().await.products.values().filter(|product| product.section == section).cloned().collect();
 
     let stable_bounds = category_bounds(&products);
     products.retain(|product| matches_basic(product, &params));
@@ -158,7 +162,7 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Pric
             group_by: config.group.clone(),
             filters: build_all_filters(section, &products, &filters),
         }),
-        None => None
+        None => None,
     };
 
     products.retain(|product| filters.iter().all(|(key, ids)| ids.is_empty() || product_matches_key(product, key, ids)));
@@ -174,10 +178,7 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Pric
         if params.group_by.iter().any(|key| !config.group.iter().any(|field| &field.key == key)) {
             return Err(InvalidQuery("Unsupported grouping field".into()));
         }
-        let fields: Vec<String> = config.group.iter()
-            .filter(|field| field.required || params.group_by.contains(&field.key))
-            .map(|field| field.key.clone())
-            .collect();
+        let fields: Vec<String> = config.group.iter().filter(|field| field.required || params.group_by.contains(&field.key)).map(|field| field.key.clone()).collect();
         if fields.is_empty() {
             return Err(InvalidQuery("Select at least one grouping field".into()));
         }
@@ -223,7 +224,7 @@ fn validate_query(params: &PriceQuery) -> ApiResult<()> {
 }
 
 fn category_bounds(products: &[Product]) -> (Vec<String>, i32, i32) {
-    let sites = products.iter().map(|p| p.site.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+    let sites = products.iter().map(|p| p.retailer.clone()).collect::<BTreeSet<_>>().into_iter().collect();
     let min = products.iter().map(|p| p.price).min().unwrap_or(0);
     let max = products.iter().map(|p| p.price).max().unwrap_or(0);
     (sites, min, max)
@@ -233,15 +234,16 @@ fn matches_basic(product: &Product, params: &PriceQuery) -> bool {
     if let Some(search) = &params.search {
         let search = search.to_lowercase();
         let (excluded, text) = search.strip_prefix("!=").map_or((false, search.as_str()), |text| (true, text));
-        let matched = product.title.to_lowercase().contains(text) || product.description.as_deref().unwrap_or("").to_lowercase().contains(text);
+        let matched = product.title.to_lowercase().contains(text) || product.description.to_lowercase().contains(text);
         if matched == excluded {
             return false;
         }
     }
-    if !params.site.is_empty() && !params.site.contains(&product.site) {
+    if !params.site.is_empty() && !params.site.contains(&product.retailer) {
         return false;
     }
-    if !params.stock.is_empty() && !params.stock.iter().any(|stock| {
+    if !params.stock.is_empty()
+        && !params.stock.iter().any(|stock| {
             let stock = if stock == "OnArrive" { "Arriving" } else { stock.as_str() };
             stock == product.status.to_string()
         })

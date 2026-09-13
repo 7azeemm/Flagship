@@ -47,7 +47,7 @@ pub fn product(product: &Product, kind: ProductChangeKind, changes: &[Value]) ->
 
     let mut embed = CreateEmbed::new()
         .author(CreateEmbedAuthor::new(truncate(
-            &format!("{label} · {}", product.site),
+            &format!("{label} · {}", product.retailer),
             256,
         )))
         .title(truncate(
@@ -102,8 +102,8 @@ pub fn product(product: &Product, kind: ProductChangeKind, changes: &[Value]) ->
         );
     }
 
-    if let Some(description) = product.description.as_deref().filter(|value| !value.trim().is_empty()) {
-        for part in split_text(&truncate(description.trim(), 1800), 900, 2).into_iter() {
+    if !product.description.is_empty() {
+        for part in split_text(&truncate(&product.description, 1800), 900, 2).into_iter() {
             embed = embed.field(
                 "Description:",
                 part,
@@ -242,7 +242,7 @@ pub fn scan(summary: &ScanSummary) -> Vec<CreateEmbed> {
         .field("Changes", format!("**+{}** added\n**~{}** updated\n**−{}** removed", summary.added, summary.edited, summary.removed), true)
         .field("Page health", format!("**{successful_pages}** without errors\n**{}** with errors · {failure_rate:.1}%\n**{}** request attempts", summary.failed_pages, summary.attempts), true)
         .field("Scan processing", format!("**{}** duplicates removed\n**{}** moved sections\n**{:.0} MiB** decoded HTML", metrics.duplicates_removed, metrics.moved_sections, metrics.pages.html_bytes as f64 / 1_048_576.0, ), true)
-        .field("Descriptions", format!("**{}** cached\n**{}** fetch requests", metrics.pages.description_cache_hits, metrics.pages.description_requests), true)
+        .field("Product Info Cache", format!("**{}** cached\n**{}** fetch requests", metrics.pages.cache_hits, metrics.pages.product_page_requests), true)
         .field("Errors", format!("**{}** errors in this scan\n**{}** unresolved errors tracked overall\n**{}** new · **{}** came back · **{}** cleared\n{}", summary.scrape_errors, summary.error_health.active, summary.error_health.newly_active, summary.error_health.reactivated, summary.error_health.resolved, review_counts(&summary.error_health)), true)
         .field(format!("Failed scopes · {}", summary.failed_scopes.len()), failed_scope_list(summary), false)
         .field("Changes by retailer", list_changes(&summary.change_sites), true)

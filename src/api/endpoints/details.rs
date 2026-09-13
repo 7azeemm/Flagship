@@ -145,7 +145,7 @@ fn validate_chart_query(query: &ChartQuery) -> ApiResult<()> {
 
 fn build_variant_chart(variant: &Variant, query: &ChartQuery, products: &HashMap<String, Product>) -> VariantChart {
     build_chart(&variant.history, &variant.data, query, "variant", |snapshot| {
-        snapshot.lowest_price_product_id.as_ref().and_then(|id| products.get(id)).map(|product| product.site.clone())
+        snapshot.lowest_price_product_id.as_ref().and_then(|id| products.get(id)).map(|product| product.retailer.clone())
     })
 }
 
@@ -192,7 +192,7 @@ fn build_product_chart(product: &Product, query: &ChartQuery) -> VariantChart {
     history.push(state);
     history.reverse();
 
-    build_chart(&history, &current, query, "product", |_| Some(product.site.clone()))
+    build_chart(&history, &current, query, "product", |_| Some(product.retailer.clone()))
 }
 
 fn build_chart<F>(history: &[VariantSnapshot], current: &VariantSnapshot, query: &ChartQuery, scope: &'static str, retailer_for: F) -> VariantChart

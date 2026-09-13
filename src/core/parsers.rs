@@ -1,4 +1,4 @@
-pub mod console_game_parser;
+pub mod game_parser;
 pub mod console_parser;
 pub mod gpu_parser;
 pub mod headphones_parser;
@@ -76,23 +76,18 @@ pub trait SectionParser: Send + Sync {
         deduplicated.join(" ").trim().to_string()
     }
 
-    fn lookup_dataset(&self, product: &mut Product, title: &str) {
+    fn lookup_dataset(&self, product: &mut Product, cleaned_title: &str) {
         if self.dataset().nodes.is_empty() {
             return;
         }
-
-        let text = product
-            .description
-            .clone()
-            .map(|desc| format!("{title} {desc}"))
-            .unwrap_or(title.to_string())
-            .to_uppercase();
 
         let memory_size = match product.section {
             Section::GPU => product.filter_ids.get("memory_size").map(|s| s.replace("GB", "")),
             _ => None,
         };
 
+        let text = format!("{cleaned_title} | {}", product.description).to_uppercase();
+        
         if let Some(result) = self.search_in_dataset(&text, memory_size.as_ref()) {
             if let Some(field) = &self.config().main_field {
                 product.components.insert(field.to_string(), result.label);

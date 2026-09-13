@@ -2,7 +2,6 @@ use crate::core::dataset::Dataset;
 use crate::core::parsers::SectionParser;
 use crate::core::product::Product;
 use crate::core::sections::SectionConfig;
-use crate::utils::regex_cache::RegexCache;
 use std::sync::Arc;
 
 pub struct ConsoleParser {
@@ -22,12 +21,9 @@ impl SectionParser for ConsoleParser {
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
 
-        //todo: move portal to accessories
-        let console = if RegexCache::custom_match("!=pack&PlayStation 5|PS5&portable|portal|portatif", text) {
-            "PlayStation Portal"
-        } else if upper.contains("PLAYSTATION 5") || upper.contains("PS5") {
+        let console = if upper.contains("PS5") {
             "PlayStation 5"
-        } else if upper.contains("PLAYSTATION 4") || upper.contains("PS4") {
+        } else if upper.contains("PS4") {
             "PlayStation 4"
         } else if upper.contains("XBOX") {
             "Xbox"

@@ -5,12 +5,12 @@ use crate::core::sections::SectionConfig;
 use crate::utils::regex_cache::RegexCache;
 use std::sync::Arc;
 
-pub struct ConsoleGameParser {
+pub struct GameParser {
     pub config: Arc<SectionConfig>,
     pub dataset: Dataset,
 }
 
-impl SectionParser for ConsoleGameParser {
+impl SectionParser for GameParser {
     fn config(&self) -> Arc<SectionConfig> {
         self.config.clone()
     }
@@ -22,18 +22,18 @@ impl SectionParser for ConsoleGameParser {
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
 
-        let platform = if upper.contains("PLAYSTATION 5") || upper.contains("PS5") {
+        let platform = if upper.contains("PS5") {
             "PlayStation 5"
-        } else if upper.contains("PLAYSTATION 4") || upper.contains("PS4") {
+        } else if upper.contains("PS4") {
             "PlayStation 4"
-        } else if upper.contains("PLAYSTATION 3") || upper.contains("PS3") {
+        } else if upper.contains("PS3") {
             "PlayStation 3"
         } else if upper.contains("XBOX") {
             "Xbox"
-        } else if RegexCache::custom_match("PC", &upper) {
-            "PC"
         } else if upper.contains("NINTENDO") || upper.contains("SWITCH") {
             "Nintendo Switch"
+        } else if RegexCache::matches("\\bPC\\b", &upper) {
+            "PC"
         } else {
             "Others"
         };

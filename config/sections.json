@@ -387,7 +387,7 @@
     "move_rules": [
       ["Others", "lenovo|hp|dell"],
       ["Case", "Boitier"],
-      ["AccessoriesCombo", "pack"]
+      ["AccessoryBundle", "pack"]
     ],
     "replace_words": [
       ["Inter-Tech", "InterTech"], ["Inter Tech", "InterTech"], ["Aercool", "AeroCool"], ["Cooler Master"]
@@ -419,7 +419,7 @@
       ["ConsoleAccessories", "volant|boite"],
       ["Controller", "manette"],
       ["GamingChair", "Chaise"],
-      ["AccessoriesCombo", "pack|combo|ensemble||souris&clavier|casque"],
+      ["AccessoryBundle", "pack|combo|ensemble||souris&clavier|casque"],
       ["MousePad", "tapis"],
       ["Keyboard", "clavier"],
       ["Headphones", "casque"]
@@ -434,7 +434,7 @@
     "id": "Keyboard",
     "move_rules": [
       ["Others", "Étiquette|Etiquette|panneau|streamdeck|portable|android|macbook|ThinkPad|Scarab||touches&!=gamer"],
-      ["AccessoriesCombo", "pack|combo|ensemble||clavier&souris|tapis|casque"],
+      ["AccessoryBundle", "pack|combo|ensemble||clavier&souris|tapis|casque"],
       ["MousePad", "tapis"],
       ["Mouse", "souris"],
       ["Headphones", "casque"]
@@ -448,14 +448,14 @@
   {
     "id": "MousePad",
     "move_rules": [
-      ["AccessoriesCombo", "pack|combo|ensemble"]
+      ["AccessoryBundle", "pack|combo|ensemble"]
     ]
   },
   {
     "id": "Headphones",
     "move_rules": [
       ["Others", "touches|nettoyage|lunette|power bank|haut"],
-      ["AccessoriesCombo", "pack|combo|ensemble||clavier&souris"]
+      ["AccessoryBundle", "pack|combo|ensemble||clavier&souris"]
     ],
     "filters": ["type"]
   },
@@ -466,7 +466,7 @@
     ]
   },
   {
-    "id": "AccessoriesCombo",
+    "id": "AccessoryBundle",
     "move_rules": [
       ["PC", "PC"],
       ["Monitor", "ecran"],
@@ -477,7 +477,7 @@
   {
     "id": "UpgradeKit",
     "move_rules": [
-      ["AccessoriesCombo", "Clavier&Souris"]
+      ["AccessoryBundle", "Clavier&Souris"]
     ]
   },
   {
@@ -485,8 +485,11 @@
     "move_rules": [
       ["Others", "imprimante|console de jeu"],
       ["Controller", "manette&!=pack|sony|xbox||joy-con&!=console"],
-      ["ConsoleAccessories", "volant|dock|game stick&!=pack"],
+      ["ConsoleAccessories", "!=pack&volant|dock|game stick||!=pack&PlayStation 5|PS5&Portable|Portal|Portatif"],
       ["ConsoleGame", "jeu Nintendo Switch||jeux|jeu&PS5|PS4|PC|Nintendo&!=console"]
+    ],
+    "replace_words": [
+      ["PlayStation ", "PS"], ["Play Station ", "PS"]
     ],
     "filters": ["platform"],
     "min_price": 400
@@ -506,13 +509,15 @@
       ["Controller", "manette|mannette|manettes"],
       ["ConsoleAccessories", "volant"]
     ],
+    "replace_words": [
+      ["PlayStation ", "PS"], ["Play Station ", "PS"]
+    ],
     "filters": ["platform"]
   },
   {
     "id": "ConsoleAccessories",
     "move_rules": [
       ["Others", "led|Câble d’Extension"],
-      ["Console", "portable"],
       ["Controller", "manette|mannette|manettes&!=chargeur|support|station|module"]
     ]
   },

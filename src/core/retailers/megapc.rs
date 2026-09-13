@@ -1,22 +1,22 @@
-use std::time::{Duration, Instant};
+use crate::core::product::{CachedProductInfo, Product, ProductStatus};
+use crate::core::retailers::{Retailer, RetailerConfig, RetailerConfigBuilder};
+use crate::core::scanner::CACHED_PRODUCT_INFO;
+use crate::core::sections::Section;
+use crate::core::tracking::scan_metrics::PageMetrics;
+use crate::core::tracking::scan_report::{PageReport, ScrapeError, ScrapeErrorKind};
+use crate::core::tracking::scrape_error::{FetchError, ProductFetchError, ProductParseError};
+use crate::utils::serde_ext::JsonExt;
+use crate::utils::web_client::{USER_AGENT, WebClientType};
 use axum::http::HeaderMap;
 use chrono::Utc;
 use futures::TryFutureExt;
-use crate::core::retailers::{Retailer, RetailerConfig};
-use crate::core::sections::Section;
-use crate::utils::web_client::{WebClientType, USER_AGENT};
 use once_cell::sync::Lazy;
 use reqwest::Client;
-use scraper::{Html, Selector};
+use scraper::Html;
 use serde::Deserialize;
-use serde_json::{json, Value};
-use urlencoding::{decode, encode};
-use crate::core::product::{Product, ProductDescription, ProductStatus};
-use crate::core::scanner::{DESCRIPTION_CACHE, PAGE_CACHE};
-use crate::core::tracking::scan_metrics::PageMetrics;
-use crate::core::tracking::scan_report::{PageReport, ScrapeError, ScrapeErrorKind};
-use crate::core::tracking::scrape_error::{FetchError, ProductParseError};
-use crate::utils::serde_ext::JsonExt;
+use serde_json::{Value, json};
+use std::time::{Duration, Instant};
+use urlencoding::encode;
 
 static HTTP_CLIENT: Lazy<Client> = Lazy::new(||
     Client::builder()
@@ -38,7 +38,7 @@ static HTTP_CLIENT: Lazy<Client> = Lazy::new(||
 
 #[derive(Deserialize)]
 struct APIResponse {
-    products: Vec<MegaPCProduct>
+    products: Vec<MegaPCProduct>,
 }
 
 #[derive(Deserialize)]
@@ -52,68 +52,71 @@ struct MegaPCProduct {
     #[serde(rename = "commande48H")]
     on_request: bool,
     lien: String,
-    gallerie: Value
+    gallerie: Value,
 }
 
-static CONFIG: RetailerConfig = RetailerConfig {
-    name: "MegaPC",
-    web_client_type: WebClientType::Browser,
-    nav_sel: Lazy::new(|| Selector::parse("button.rounded-md.bg-gray-200").unwrap()),
-    product_sel: Lazy::new(|| Selector::parse("article.product-card").unwrap()),
-    title_sel: Lazy::new(|| Selector::parse("a[href]").unwrap()),
-    image_sel: Lazy::new(|| Selector::parse("div.card-img-container img").unwrap()),
-    price_sel: Lazy::new(|| Selector::parse("span.inline-block").unwrap()),
-    original_price_sel: Lazy::new(|| Selector::parse("del.text-sm").unwrap()),
-    price_sel_2: None,
-    status_sel: None,
-    desc_sel: None,
-    page_desc_sel: Some(Lazy::new(|| Selector::parse("div.productView-info").unwrap())),
-    empty_page_sel: None,
-    sections: &[
-        (Section::PC, "ORDINATEURS/BAREBONE"),
-        (Section::PC, "ORDINATEURS/PRO PC"),
-        (Section::PC, "AI WORKSTATIONS/AI-READY POWERHOUSES"),
-        (Section::GamingPC, "ORDINATEURS/PC GAMER"),
-        (Section::GamingPC, "ORDINATEURS/LEGENDARY"),
-        (Section::GamingPC, "ORDINATEURS/FULL SETUP"),
-        (Section::GamingPC, "ORDINATEURS/CUSTOM BUILD"),
-        (Section::AllInOnePC, "ORDINATEURS/PC TOUT EN UN"),
-        (Section::Laptop, "PC PORTABLE/PC PORTABLE PRO"),
-        (Section::Laptop, "AI WORKSTATIONS/AI-READY LAPTOPS"),
-        (Section::GamingLaptop, "PC PORTABLE/PC PORTABLE GAMER"),
-        (Section::GamingLaptop, "PC PORTABLE/FULL SETUP PC PORTABLE"),
-        (Section::Monitor, "ECRANS/ECRANS GAMING"),
-        (Section::Monitor, "ECRANS/ECRANS PRO"),
-        (Section::CPU, "COMPOSANTS/PROCESSEUR"),
-        (Section::GPU, "COMPOSANTS/CARTE GRAPHIQUE"),
-        (Section::Memory, "COMPOSANTS/BARETTE MÉMOIRE"),
-        (Section::Storage, "STOCKAGE/DISQUE-SSD"),
-        (Section::Storage, "STOCKAGE/DISQUE-NVME"),
-        (Section::Storage, "STOCKAGE/DISQUE-HDD"),
-        (Section::Motherboard, "COMPOSANTS/CARTE MÈRE"),
-        (Section::Cooler, "COMPOSANTS/REFROIDISSEMENT"),
-        (Section::PowerSupply, "COMPOSANTS/ALIMENTATION"),
-        (Section::Case, "COMPOSANTS/BOITIER"),
-        (Section::Mouse, "ACCESSOIRES/SOURIS"),
-        (Section::Keyboard, "ACCESSOIRES/CLAVIER"),
-        (Section::MousePad, "ACCESSOIRES/TAPIS"),
-        (Section::Headphones, "ACCESSOIRES/CASQUE"),
-        (Section::Headphones, "SMARTPHONE ACCESSOIRES/EARBUDS"),
-        (Section::GamingChair, "ACCESSOIRES/CHAISE GAMING"),
-        (Section::AccessoriesCombo, "ACCESSOIRES/COMBO"),
-        (Section::UpgradeKit, "COMPOSANTS/KIT UPGRADE PC"),
-        (Section::Console, "CONSOLES/PLAYSTATION"),
-        (Section::Console, "CONSOLES/NINTENDO"),
-        (Section::Controller, "ACCESSOIRES/MANETTE"),
-        (Section::ConsoleAccessories, "CONSOLES/ACCESSOIRES CONSOLES"),
-        (Section::ConsoleAccessories, "ACCESSOIRES/VOLANT"),
-        (Section::Smartphone, "SMARTPHONE/IPHONE"),
-        (Section::Smartphone, "SMARTPHONE/ANDROID"),
-        (Section::Tablet, "TABLETTE/ANDROID TABLETTE"),
-        (Section::Smartwatch, "SMARTPHONE ACCESSOIRES/SMARTWATCH"),
-        (Section::Television, "IMAGE & SON/SMART TV"),
-    ],
-};
+static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
+    RetailerConfigBuilder {
+        web_client_type: WebClientType::HttpClient,
+        name: "MegaPC",
+        nav_sel: "empty",
+        product_sel: "empty",
+        title_sel: "empty",
+        image_sel: "empty",
+        price_sel: "empty",
+        original_price_sel: "empty",
+        page_desc_sel: "empty",
+        page_images_sel: "empty",
+        status_sel: None,
+        desc_sel: None,
+        empty_page_sel: None,
+        secondary_price_sel: None,
+        sections: &[
+            (Section::PC, "ORDINATEURS/BAREBONE"),
+            (Section::PC, "ORDINATEURS/PRO PC"),
+            (Section::PC, "AI WORKSTATIONS/AI-READY POWERHOUSES"),
+            (Section::GamingPC, "ORDINATEURS/PC GAMER"),
+            (Section::GamingPC, "ORDINATEURS/LEGENDARY"),
+            (Section::GamingPC, "ORDINATEURS/FULL SETUP"),
+            (Section::GamingPC, "ORDINATEURS/CUSTOM BUILD"),
+            (Section::AllInOnePC, "ORDINATEURS/PC TOUT EN UN"),
+            (Section::Laptop, "PC PORTABLE/PC PORTABLE PRO"),
+            (Section::Laptop, "AI WORKSTATIONS/AI-READY LAPTOPS"),
+            (Section::GamingLaptop, "PC PORTABLE/PC PORTABLE GAMER"),
+            (Section::GamingLaptop, "PC PORTABLE/FULL SETUP PC PORTABLE"),
+            (Section::Monitor, "ECRANS/ECRANS GAMING"),
+            (Section::Monitor, "ECRANS/ECRANS PRO"),
+            (Section::CPU, "COMPOSANTS/PROCESSEUR"),
+            (Section::GPU, "COMPOSANTS/CARTE GRAPHIQUE"),
+            (Section::Memory, "COMPOSANTS/BARETTE MÉMOIRE"),
+            (Section::Storage, "STOCKAGE/DISQUE-SSD"),
+            (Section::Storage, "STOCKAGE/DISQUE-NVME"),
+            (Section::Storage, "STOCKAGE/DISQUE-HDD"),
+            (Section::Motherboard, "COMPOSANTS/CARTE MÈRE"),
+            (Section::Cooler, "COMPOSANTS/REFROIDISSEMENT"),
+            (Section::PowerSupply, "COMPOSANTS/ALIMENTATION"),
+            (Section::Case, "COMPOSANTS/BOITIER"),
+            (Section::Mouse, "ACCESSOIRES/SOURIS"),
+            (Section::Keyboard, "ACCESSOIRES/CLAVIER"),
+            (Section::MousePad, "ACCESSOIRES/TAPIS"),
+            (Section::Headphones, "ACCESSOIRES/CASQUE"),
+            (Section::Headphones, "SMARTPHONE ACCESSOIRES/EARBUDS"),
+            (Section::GamingChair, "ACCESSOIRES/CHAISE GAMING"),
+            (Section::AccessoryBundle, "ACCESSOIRES/COMBO"),
+            (Section::UpgradeKit, "COMPOSANTS/KIT UPGRADE PC"),
+            (Section::Console, "CONSOLES/PLAYSTATION"),
+            (Section::Console, "CONSOLES/NINTENDO"),
+            (Section::Controller, "ACCESSOIRES/MANETTE"),
+            (Section::ConsoleAccessories, "CONSOLES/ACCESSOIRES CONSOLES"),
+            (Section::ConsoleAccessories, "ACCESSOIRES/VOLANT"),
+            (Section::Smartphone, "SMARTPHONE/IPHONE"),
+            (Section::Smartphone, "SMARTPHONE/ANDROID"),
+            (Section::Tablet, "TABLETTE/ANDROID TABLETTE"),
+            (Section::Smartwatch, "SMARTPHONE ACCESSOIRES/SMARTWATCH"),
+            (Section::Television, "IMAGE & SON/SMART TV"),
+        ],
+    }.build()
+);
 
 pub struct MegaPC;
 
@@ -123,8 +126,8 @@ impl Retailer for MegaPC {
         &CONFIG
     }
 
-    async fn check_api(&self, link: &str, section: Section) -> Option<(PageReport, Vec<Product>)> {
-        tracing::info!("Sending API request to MegaPC for `{link}`");
+    async fn fetch_api(&self, link: &str, section: Section) -> Option<(PageReport, Vec<Product>)> {
+        println!("Sending API request to MegaPC for `{link}`");
         let started_at = Instant::now();
         let mut metrics = PageMetrics::default();
 
@@ -154,7 +157,7 @@ impl Retailer for MegaPC {
 async fn fetch_api(
     link: &str,
     section: Section,
-    metrics: &mut PageMetrics
+    metrics: &mut PageMetrics,
 ) -> Result<(Vec<Product>, Vec<ScrapeErrorKind>), ScrapeErrorKind> {
     let (category, sub_category) = link.split_once('/').unwrap();
 
@@ -173,15 +176,15 @@ async fn fetch_api(
                 "valeurAttribute1":[]
             }))
         .send().await
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string()}))?
+        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?
         .text().await
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string()}))?;
+        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?;
 
     metrics.html_bytes += body.len() as u64;
 
     let products = serde_json::from_str::<APIResponse>(&body).map_err(|err| ScrapeErrorKind::ParseFailed {
         url: Some(link.to_string()),
-        error: ProductParseError::Other { message: err.to_string() }
+        error: ProductParseError::Other { message: err.to_string() },
     })?.products;
 
     let mut errors = Vec::new();
@@ -189,18 +192,30 @@ async fn fetch_api(
     let products = {
         let mut list = Vec::new();
         for product in products {
-            let image_link = product.gallerie.get_array("urlPhoto").unwrap().first().unwrap().as_str().unwrap();
             let url = format!("https://megapc.tn/shop/product/{}/{}", encode(link), product.lien);
 
-            let description = match section.requires_desc() {
-                true => match get_description(category, sub_category, &product.lien, metrics).await {
-                    Ok(desc) => Some(desc),
-                    Err(err) => {
-                        errors.push(err);
-                        None
-                    }
-                },
-                false => None
+            let gallery = product.gallerie.get_array("urlPhoto").cloned().unwrap_or_default();
+            let images: Vec<String> = gallery.iter()
+                .map(|v| format!("https://static.gi-ga.tech/{}", v.as_str().unwrap_or_default()))
+                .collect();
+            let Some(preview_image) = images.first().cloned() else {
+                errors.push(ScrapeErrorKind::ParseFailed {
+                    url: Some(url.clone()),
+                    error: ProductParseError::MissingElement { field: "image".to_string() }
+                });
+                continue
+            };
+
+            let description = match fetch_product_page(&url, category, sub_category, &product.lien, metrics).await {
+                Ok(desc) => Some(desc),
+                Err(err) => {
+                    errors.push(ScrapeErrorKind::ProductFetchFailed {
+                        url: url.to_string(),
+                        title: product.title,
+                        error: err
+                    });
+                    continue
+                }
             };
 
             list.push(Product::new(
@@ -208,15 +223,16 @@ async fn fetch_api(
                 url,
                 product.title,
                 section,
-                description,
-                format!("https://static.gi-ga.tech/{image_link}"),
+                description.unwrap_or_default(),
+                preview_image,
+                images,
                 match (product.on_arrive, product.on_request) {
                     (false, false) => ProductStatus::InStock,
-                    (false, true) => ProductStatus::OnRequest,
-                    (true, _) => ProductStatus::OnArrive,
+                    (false, true) => ProductStatus::OnDemand,
+                    (true, _) => ProductStatus::Arriving,
                 },
                 product.new_price.unwrap_or(product.price),
-                if product.new_price.is_some() { Some(product.price) } else { None }
+                if product.new_price.is_some() { Some(product.price) } else { None },
             ))
         }
         list
@@ -225,49 +241,46 @@ async fn fetch_api(
     Ok((products, errors))
 }
 
-async fn get_description(
+async fn fetch_product_page(
+    product_url: &str,
     category: &str,
     sub_category: &str,
     lien: &str,
     metrics: &mut PageMetrics,
-) -> Result<String, ScrapeErrorKind> {
-    let category = decode(category).unwrap();
-    let sub_category = decode(sub_category).unwrap();
+) -> Result<String, ProductFetchError> {
     let url = format!("https://megapc.tn/_next/data/build-1779382291697/shop/product/{category}/{sub_category}/{lien}.json");
 
-    if let Some(cached) = DESCRIPTION_CACHE.read().await.get(&url) {
-        metrics.description_cache_hits += 1;
+    if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(product_url) {
+        metrics.cache_hits += 1;
         return Ok(cached.description.clone());
     }
 
-    metrics.description_requests += 1;
+    metrics.product_page_requests += 1;
     let body = HTTP_CLIENT
         .get(&url)
         .send().await
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string()}))?
+        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?
         .text().await
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string()}))?;
+        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?;
     metrics.html_bytes += body.len() as u64;
 
-    let string: String = serde_json::from_str::<Value>(&body)
-        .map_err(|err| ScrapeErrorKind::ParseFailed {
-            url: Some(url.clone()),
-            error: ProductParseError::Other { message: err.to_string() }
-        })?
+    let string = serde_json::from_str::<Value>(&body)
+        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?
         .get_str("pageProps/product/miniDescription_fr")
-        .ok_or_else(|| ScrapeErrorKind::ParseFailed {
-            url: Some(url.clone()),
-            error: ProductParseError::MissingElement { field: "product description".to_string() }
-        })?
-        .to_string();
+        .map(|s| s.to_string());
 
-    let description = Html::parse_document(&string).root_element().text().collect::<String>();
+    let Some(description) = string else {
+        return Ok("".to_string());
+    };
 
-    DESCRIPTION_CACHE.write().await.insert(
-        url.to_string(),
-        ProductDescription {
-            description: description.clone(),
+    let description = Html::parse_document(&description).root_element().text().collect::<String>();
+
+    CACHED_PRODUCT_INFO.write().await.insert(
+        product_url.to_string(),
+        CachedProductInfo {
             timestamp: Utc::now(),
+            description: description.clone(),
+            images: vec![],
         },
     );
 

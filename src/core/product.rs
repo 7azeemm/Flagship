@@ -1,7 +1,8 @@
 use crate::core::sections::Section;
+use crate::core::tracking::scrape_error::ProductParseError;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -12,10 +13,11 @@ pub struct Product {
     pub id: String,
     pub url: String,
     pub title: String,
-    pub site: String,
+    pub retailer: String,
     pub section: Section,
-    pub description: Option<String>,
+    pub description: String,
     pub image: String,
+    pub images: Vec<String>,
     pub status: ProductStatus,
     pub price: i32,
     pub original_price: Option<i32>,
@@ -25,33 +27,33 @@ pub struct Product {
     pub approved: bool,
     pub views: u64,
     pub history: Value,
+    pub added_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
-    pub added_at: DateTime<Utc>,
 }
 
 impl Product {
     pub fn new(
-        site: &str,
+        retailer: &str,
         url: String,
         title: String,
         section: Section,
-        description: Option<String>,
+        description: String,
         image: String,
+        images: Vec<String>,
         status: ProductStatus,
         price: i32,
         original_price: Option<i32>,
     ) -> Self {
-        let image = image.replace("-home_default", "").replace("-product_zoom", "");
-
         Self {
             id: Uuid::new_v4().to_string(),
             url,
             title,
-            site: site.to_string(),
+            retailer: retailer.to_string(),
             section,
             description,
-            image,
+            image: minimize_image_url(image),
+            images: images.into_iter().map(minimize_image_url).collect(),
             status,
             price,
             original_price,
@@ -75,10 +77,11 @@ impl Product {
         change(&mut changes, "price", &self.price, &new.price);
         change(&mut changes, "original_price", &self.original_price, &new.original_price);
         change(&mut changes, "image", &self.image, &new.image);
+        change(&mut changes, "images", &self.images, &new.images);
         if !minimal {
             change(&mut changes, "id", &self.id, &new.id);
             change(&mut changes, "url", &self.url, &new.url);
-            change(&mut changes, "site", &self.site, &new.site);
+            change(&mut changes, "site", &self.retailer, &new.retailer);
             change(&mut changes, "section", &self.section.to_string(), &new.section.to_string());
             change(&mut changes, "filters", &self.filter_ids, &new.filter_ids);
             change(&mut changes, "components", &self.components, &new.components);
@@ -121,47 +124,27 @@ fn change<T: Serialize + PartialEq>(changes: &mut Vec<Value>, field: &str, old: 
 }
 
 #[derive(Clone, Deserialize, Serialize)]
-pub struct ProductDescription {
-    pub description: String,
+pub struct CachedProductInfo {
     pub timestamp: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Specs(Map<String, Value>);
-
-impl Specs {
-    pub fn set(&mut self, key: &str, value: impl Into<Value>) {
-        self.0.insert(key.to_string(), value.into());
-    }
-
-    pub fn get(&self, key: &str) -> Option<&Value> {
-        self.0.get(key)
-    }
-
-    pub fn get_str(&self, key: &str) -> Option<&str> {
-        self.0.get(key)?.as_str()
-    }
-
-    pub fn remove(&mut self, key: &str) {
-        self.0.remove(key);
-    }
+    pub description: String,
+    pub images: Vec<String>
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProductStatus {
     InStock,
     OutOfStock,
-    OnArrive,
-    OnRequest,
+    Arriving,
+    OnDemand,
 }
 
 impl ProductStatus {
     pub fn readable_name(&self) -> String {
         match self {
-            Self::InStock => "In stock",
-            Self::OutOfStock => "Out of stock",
-            Self::OnArrive => "Arriving",
-            Self::OnRequest => "On request",
+            Self::InStock => "In Stock",
+            Self::OutOfStock => "Out of Stock",
+            Self::Arriving => "Arriving",
+            Self::OnDemand => "On Demand",
         }.to_string()
     }
 }
@@ -171,22 +154,22 @@ impl Display for ProductStatus {
         match self {
             ProductStatus::InStock => write!(f, "InStock"),
             ProductStatus::OutOfStock => write!(f, "OutOfStock"),
-            ProductStatus::OnArrive => write!(f, "Arriving"),
-            ProductStatus::OnRequest => write!(f, "OnRequest"),
+            ProductStatus::Arriving => write!(f, "Arriving"),
+            ProductStatus::OnDemand => write!(f, "OnDemand"),
         }
     }
 }
 
 impl FromStr for ProductStatus {
-    type Err = String;
+    type Err = ProductParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let lower = s.to_lowercase();
+        let lower = s.to_lowercase().replace("_", " ");
         let statuses = vec![
             (Self::InStock, vec!["instock", "en stock", "in stock", "ajouter", "disponible", "sale"]),
-            (Self::OutOfStock, vec!["outofstock", "hors stock", "epuisé", "épuisé", "rupture de stock"]),
-            (Self::OnArrive, vec!["onarrive", "en arrivage", "arriving"]),
-            (Self::OnRequest, vec!["onrequest", "sur commande", "surcommande"]),
+            (Self::OutOfStock, vec!["outofstock", "out of stock", "hors stock", "epuisé", "épuisé", "rupture de stock", "en rupture"]),
+            (Self::Arriving, vec!["onarrive", "en arrivage", "arriving", "en arrvage", "incoming"]),
+            (Self::OnDemand, vec!["onrequest", "sur commande", "surcommande", "pre-order", "on demand", "commande"]),
         ];
 
         for (status, keys) in statuses {
@@ -197,6 +180,15 @@ impl FromStr for ProductStatus {
             }
         }
 
-        Err(format!("Unknown Product Status: {}", s))
+        Err(ProductParseError::UnknownStatus { value: s.to_string() })
     }
+}
+
+fn minimize_image_url(url: String) -> String {
+    for key in vec!["-home_default", "-medium_default", "-small_default", "-large_default", "-product_zoom"] {
+        if url.contains(key) {
+            return url.replace(key, "")
+        }
+    }
+    url
 }

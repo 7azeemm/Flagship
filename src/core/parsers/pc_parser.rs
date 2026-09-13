@@ -28,8 +28,8 @@ impl SectionParser for PCParser {
     }
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
-        let desc = product.description.clone().unwrap_or_default().replace("(5G)", "").replace("2.4", "");
-        let text = product.section.config().replace_words(&format!("{text} | {desc}").to_uppercase(), true);
+        let desc = product.description.replace("(5G)", "").replace("2.4", "");
+        let text = product.section.config().replace_uppercase_words(format!("{text} | {desc}").to_uppercase());
         let text = text.replace(" .6\"", ".6\"").replace(".,", ".").replace("GRAPHIQUE", "GRAPHICS")
             .replace("GRAPHIC ", "GRAPHICS ").replace("ᵉ", "E").replace("‑", "-").replace("™", "")
             .replace("®", "").replace("(TM)", "").replace("–", "").replace("PROCESSOR ", "")
@@ -260,7 +260,7 @@ impl SectionParser for PCParser {
 }
 
 fn extract_cpu(text: &str) -> Option<SearchResult> {
-    let text = Section::CPU.config().replace_words(&text, true);
+    let text = Section::CPU.config().replace_uppercase_words(text.to_string());
 
     // Dataset Search
     for node in &Section::CPU.parser().dataset().nodes {
@@ -338,7 +338,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
 }
 
 fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<SearchResult> {
-    let text = Section::GPU.config().replace_words(&text, true);
+    let text = Section::GPU.config().replace_uppercase_words(text.to_string());
     let has_dedicated_gpu = vec!["RTX", "RX", "GTX", " GT "].into_iter().any(|w| text.contains(w));
     let mut gpus: Vec<_> = vec![];
 

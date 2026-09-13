@@ -1,40 +1,44 @@
-use crate::core::parsers::SectionParser;
-use crate::core::product::ProductStatus;
-use crate::core::product::{Product, ProductDescription};
-use crate::core::retailers::{RETAILERS, Retailer};
+use crate::core::product::Product;
+use crate::core::product::{CachedProductInfo, ProductStatus};
+use crate::core::retailers::{Retailer, RETAILERS};
 use crate::core::sections::Section;
-use crate::core::storage::{ProductStorage};
-use crate::core::variant::VariantStorage;
+use crate::core::storage::ProductStorage;
 use crate::core::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::core::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::core::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
+use crate::core::variant::VariantStorage;
 use crate::discord::events::{DiscordEvent, ProductChangeKind, ScanCatalogMetrics, ScanSectionMetric, ScanSiteMetric, ScanSummary, emit};
 use crate::utils::file_loader::FileLoader;
 use crate::utils::regex_cache::RegexCache;
 use crate::utils::web_client::WebClientType;
 use chrono::{Duration, Utc};
-use core::time;
-use futures::{StreamExt, stream};
+use futures::future::join_all;
+use once_cell::sync::Lazy;
 use rand::seq::SliceRandom;
-use std::cmp::Ordering as CmpOrdering;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
-use std::time::Instant;
-use once_cell::sync::Lazy;
+use std::time;
+use std::time::{Duration as StdDuration, Instant};
+use futures::{stream, StreamExt};
+use rand::RngExt;
 use strum::IntoEnumIterator;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tokio::time::sleep;
-use crate::core::retailers::megapc::MegaPC;
 
 static USE_CACHE: bool = false;
 static CATALOG_SCANNER: OnceLock<Arc<CatalogScanner>> = OnceLock::new();
-pub static PAGE_CACHE: Lazy<RwLock<HashMap<String, Product>>> = Lazy::new(|| RwLock::new(HashMap::new()));
-pub static DESCRIPTION_CACHE: Lazy<RwLock<HashMap<String, ProductDescription>>> = Lazy::new(|| RwLock::new(HashMap::new()));
-const DESCRIPTION_CACHE_PATH: &str = "state/descriptions.json";
-const PAGE_CACHE_PATH: &str = "state/page_cache.json";
-const DESCRIPTION_EXPIRATION_DURATION: Duration = Duration::days(30);
-const SCAN_INTERVAL_TIME: Duration = Duration::hours(1);
+static PAGE_CACHE: Lazy<RwLock<HashMap<String, Product>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+pub static CACHED_PRODUCT_INFO: Lazy<RwLock<HashMap<String, CachedProductInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
+const CACHED_PRODUCT_INFO_PATH: &str = "state/cached_product_info.json";
+const PAGE_CACHE_PATH: &str = "state/cache.json";
+const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
+const SCAN_INTERVAL_TIME: Duration = Duration::hours(2);
+const HTTP_RETAILER_CONCURRENCY: usize = 15;
+const BROWSER_RETAILER_CONCURRENCY: usize = 10;
+const MIN_RETAILER_REQUEST_GAP_MS: u64 = 100;
+const MAX_RETAILER_REQUEST_GAP_MS: u64 = 200;
 
 pub struct CatalogScanner {
     scanning: Arc<AtomicBool>,
@@ -92,32 +96,34 @@ impl CatalogScanner {
         if USE_CACHE {
             match FileLoader::load_or_default::<HashMap<String, Product>>(PAGE_CACHE_PATH).await {
                 Ok(cache) => *PAGE_CACHE.write().await = cache,
-                Err(error) => tracing::error!(%error, "Failed to load page cache")
+                Err(error) => tracing::error!(%error, "Failed to load page cache"),
             }
         }
 
-        let mut descriptions = FileLoader::load_or_default::<HashMap<String, ProductDescription>>(DESCRIPTION_CACHE_PATH)
-            .await
-            .unwrap_or_else(|error| {
-                tracing::error!(%error, "Failed to load description cache");
-                HashMap::new()
-            });
-
-        // Remove expired descriptions
-        let now = Utc::now();
-        descriptions.retain(|_, description| {
-            now.signed_duration_since(description.timestamp) <= DESCRIPTION_EXPIRATION_DURATION
+        let mut cached_product_info: HashMap<String, CachedProductInfo> = FileLoader::load_or_default(CACHED_PRODUCT_INFO_PATH).await.unwrap_or_else(|error| {
+            tracing::error!(%error, "Failed to load products info");
+            HashMap::new()
         });
 
-        *DESCRIPTION_CACHE.write().await = descriptions;
+        // Remove expired entries
+        let now = Utc::now();
+        cached_product_info.retain(|_, info| now.signed_duration_since(info.timestamp) <= CACHE_EXPIRATION_DURATION);
+
+        *CACHED_PRODUCT_INFO.write().await = cached_product_info;
     }
 
-    async fn save_caches(&self) {
-        if let Err(error) = FileLoader::save_to_file(PAGE_CACHE_PATH, &ProductStorage::get_storage().read().await.products).await {
+    async fn save_caches(&self, report: &ScanReport) {
+        let products = &ProductStorage::get_storage().read().await.products;
+        if USE_CACHE && let Err(error) = FileLoader::save_to_file(PAGE_CACHE_PATH, &products).await {
             tracing::error!(%error, "Failed to save page cache");
         }
-        if let Err(error) = FileLoader::save_to_file(DESCRIPTION_CACHE_PATH, &*DESCRIPTION_CACHE.read().await).await {
-            tracing::error!(%error, "Failed to save description cache");
+
+        let mut cached_product_info = CACHED_PRODUCT_INFO.write().await;
+        for product in &report.removed_items {
+            cached_product_info.remove(&product.url);
+        }
+        if let Err(error) = FileLoader::save_to_file(CACHED_PRODUCT_INFO_PATH, &*cached_product_info).await {
+            tracing::error!(%error, "Failed to save products info");
         }
     }
 
@@ -128,12 +134,7 @@ impl CatalogScanner {
             .map_err(|_| "A product scan is already running".to_string())
     }
 
-    pub fn spawn(
-        self: &Arc<Self>,
-        sections: Vec<Section>,
-        retailers: Vec<String>,
-        trigger: ScanTrigger,
-    ) -> Result<(), String> {
+    pub fn spawn(self: &Arc<Self>, sections: Vec<Section>, retailers: Vec<String>, trigger: ScanTrigger) -> Result<(), String> {
         let guard = self.reserve()?;
         let scanner = self.clone();
 
@@ -148,22 +149,12 @@ impl CatalogScanner {
         Ok(())
     }
 
-    pub async fn start(
-        &self,
-        sections: Vec<Section>,
-        site_names: Vec<String>,
-        trigger: ScanTrigger,
-    ) -> Result<(), String> {
+    pub async fn start(&self, sections: Vec<Section>, site_names: Vec<String>, trigger: ScanTrigger) -> Result<(), String> {
         let _scan_guard = self.reserve()?;
         self.run(sections, site_names, trigger).await
     }
 
-    async fn run(
-        &self,
-        sections: Vec<Section>,
-        retailers: Vec<String>,
-        trigger: ScanTrigger,
-    ) -> Result<(), String> {
+    async fn run(&self, sections: Vec<Section>, retailers: Vec<String>, trigger: ScanTrigger) -> Result<(), String> {
         let retailers: Vec<&'static str> = RETAILERS
             .iter()
             .map(|site| site.name())
@@ -224,13 +215,8 @@ impl CatalogScanner {
         Ok(())
     }
 
-    async fn execute_scan(
-        &self,
-        sections: &[Section],
-        retailers: &[&'static str],
-        report: &mut ScanReport,
-    ) -> Result<(), String> {
-        let mut products = self.scrape_sites(sections, retailers, report).await;
+    async fn execute_scan(&self, sections: &[Section], retailers: &[&'static str], report: &mut ScanReport) -> Result<(), String> {
+        let mut products = self.scrape(sections, retailers, report).await;
         for product in &mut products {
             report.metrics.moved_sections += usize::from(Self::normalize_product_section(product));
         }
@@ -239,17 +225,12 @@ impl CatalogScanner {
         self.parse_changed_products(report).await;
         ProductStorage::commit(report).await;
         VariantStorage::update(&ProductStorage::get_storage().read().await.products, true).await;
-        self.save_caches().await;
+        self.save_caches(report).await;
 
         Ok(())
     }
 
-    async fn scrape_sites(
-        &self,
-        sections: &[Section],
-        retailers: &[&'static str],
-        report: &mut ScanReport,
-    ) -> Vec<Product> {
+    async fn scrape(&self, sections: &[Section], retailers: &[&'static str], report: &mut ScanReport) -> Vec<Product> {
         let start_time = Instant::now();
         let mut all_products = Vec::new();
         let mut page_reports = Vec::new();
@@ -266,29 +247,27 @@ impl CatalogScanner {
 
             for site in sites {
                 for (_, url) in site.config().sections.iter().filter(|(s, _)| s == section) {
-                    if let Some((report, products)) = site.check_api(url, *section).await {
-                        page_reports.push(report);
-                        all_products.extend(products);
-                        sleep(time::Duration::from_millis(250)).await;
-                        continue
-                    }
-
                     let task = async move {
+                        if let Some((report, products)) = site.fetch_api(url, *section).await {
+                            random_wait().await;
+                            return (report, products, vec![])
+                        }
+
                         let (report, products, page_count) = site.scrape_page(url, 1, *section).await;
                         let page_count = page_count.unwrap_or(1);
                         let mut tasks = Vec::new();
                         for page in 2..page_count + 1 {
                             tasks.push(async move {
                                 let (reports, products, _) = site.scrape_page(url, page, *section).await;
-                                sleep(time::Duration::from_millis(100)).await;
+                                random_wait().await;
                                 (reports, products)
                             });
                         }
-                        sleep(time::Duration::from_millis(100)).await;
+                        random_wait().await;
                         (report, products, tasks)
                     };
 
-                    match site.config().web_client_type {
+                    match site.config().fetch_type {
                         WebClientType::HttpClient => client_tasks.push(task),
                         WebClientType::Browser => browser_tasks.push(task),
                     };
@@ -304,7 +283,7 @@ impl CatalogScanner {
                 .buffer_unordered(buffer_size)
                 .inspect(move |_| {
                     let n = done.fetch_add(1, Ordering::SeqCst) + 1;
-                    println!("First-page {n}/{total} complete");
+                    println!("Scan Progress: {n}/{total}");
                 })
                 .collect::<Vec<_>>()
                 .await
@@ -314,7 +293,8 @@ impl CatalogScanner {
             let mut rng = rand::rng();
             browser_tasks.shuffle(&mut rng);
             client_tasks.shuffle(&mut rng);
-            (process_first_pages(browser_tasks, 6), process_first_pages(client_tasks, 12))
+            (process_first_pages(browser_tasks, BROWSER_RETAILER_CONCURRENCY),
+             process_first_pages(client_tasks, HTTP_RETAILER_CONCURRENCY))
         };
 
         let (browser_results, client_results) = tokio::join!(browser_future, client_future);
@@ -342,7 +322,7 @@ impl CatalogScanner {
                 .buffer_unordered(buffer_size)
                 .inspect(move |_| {
                     let n = done.fetch_add(1, Ordering::SeqCst) + 1;
-                    println!("Subsequent-page {n}/{total} complete");
+                    println!("Scan Progress: Page {n}/{total}");
                 })
                 .collect::<Vec<_>>()
                 .await
@@ -352,7 +332,8 @@ impl CatalogScanner {
             let mut rng = rand::rng();
             browser_tasks.shuffle(&mut rng);
             client_tasks.shuffle(&mut rng);
-            (process_subsequent_pages(browser_tasks, 6), process_subsequent_pages(client_tasks, 12))
+            (process_subsequent_pages(browser_tasks, BROWSER_RETAILER_CONCURRENCY),
+             process_subsequent_pages(client_tasks, HTTP_RETAILER_CONCURRENCY))
         };
 
         let (browser_results, client_results) = tokio::join!(browser_future, client_future);
@@ -371,11 +352,7 @@ impl CatalogScanner {
         report.metrics.duplicates_removed = old_count - all_products.len();
         tracing::info!(duplicates = old_count - all_products.len(), "Deduplicated scraped products");
 
-        tracing::info!(
-            "Successfully Fetched {} products in {:.2?}",
-            all_products.len(),
-            start_time.elapsed()
-        );
+        tracing::info!("Successfully Fetched {} products in {:.2?}", all_products.len(), start_time.elapsed());
 
         all_products
     }
@@ -402,11 +379,7 @@ impl CatalogScanner {
         let mut current = product.section;
 
         for _ in 0..5 {
-            // safety limit
-            if !visited.insert(current) {
-                tracing::debug!(?visited, product_id = %product.id, "Section move-rule cycle detected");
-                break;
-            }
+            visited.insert(current);
 
             let config = current.config();
             let mut next = current;
@@ -433,8 +406,8 @@ impl CatalogScanner {
 
             // Description Rules
             if next == current {
-                if let Some(desc) = &product.description {
-                    let text = format!("{} {}", product.title, desc);
+                if !product.description.is_empty() {
+                    let text = format!("{} {}", product.title, product.description);
                     for item in &config.move_by_description_rules {
                         if let [section, pattern, ..] = item.as_slice() {
                             if RegexCache::custom_match(pattern, &text) {
@@ -452,6 +425,18 @@ impl CatalogScanner {
                 break;
             }
 
+            if visited.contains(&next) {
+                tracing::warn!(
+                    product_id = %product.id,
+                    title = %product.title,
+                    from = ?current,
+                    to = ?next,
+                    ?visited,
+                    "Section move-rule cycle detected"
+                );
+                break;
+            }
+
             current = next;
         }
 
@@ -460,70 +445,48 @@ impl CatalogScanner {
 
     async fn parse_changed_products(&self, report: &mut ScanReport) {
         let start_time = Instant::now();
-        let products = &mut report.added_items;
-        for mut product in products.iter_mut() {
+        for product in &mut report.added_items {
             product.section.parser().parse(product);
         }
         for (product, _) in &mut report.edited_items {
             product.section.parser().parse(product);
         }
-        tracing::info!(
-            "Parsed {} changed products in {:.2?}",
-            report.added_items.len() + report.edited_items.len(),
-            start_time.elapsed()
-        );
+        tracing::info!("Parsed {} changed products in {:.2?}", report.added_items.len() + report.edited_items.len(), start_time.elapsed());
     }
 }
 
-fn deduplicate_products(mut products: Vec<Product>) -> Vec<Product> {
-    products.sort_by(|left, right| {
-        left.url
-            .cmp(&right.url)
-            .then_with(|| compare_duplicate_candidates(right, left))
-    });
-    products.dedup_by(|left, right| left.url == right.url);
-    products.sort_by(|left, right| {
-        left.site
-            .cmp(&right.site)
-            .then_with(|| left.url.cmp(&right.url))
-    });
+async fn random_wait() {
+    let delay_ms = rand::rng().random_range(MIN_RETAILER_REQUEST_GAP_MS..=MAX_RETAILER_REQUEST_GAP_MS);
+    sleep(time::Duration::from_millis(delay_ms)).await;
+}
+
+fn deduplicate_products(products: Vec<Product>) -> Vec<Product> {
+    let mut unique = HashMap::<String, Product>::new();
+
+    for product in products {
+        match unique.entry(product.url.clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(product);
+            }
+            Entry::Occupied(mut entry) => if duplicate_score(&product) > duplicate_score(entry.get()) {
+                entry.insert(product);
+            }
+        }
+    }
+
+    let mut products: Vec<_> = unique.into_values().collect();
+    products.sort_by(|a, b| a.retailer.cmp(&b.retailer).then_with(|| a.url.cmp(&b.url)));
     products
 }
 
-fn compare_duplicate_candidates(left: &Product, right: &Product) -> CmpOrdering {
-    left.section
-        .dedup_priority()
-        .cmp(&right.section.dedup_priority())
-        .then_with(|| product_completeness(left).cmp(&product_completeness(right)))
-        .then_with(|| left.section.to_string().cmp(&right.section.to_string()))
-        .then_with(|| left.title.cmp(&right.title))
-        .then_with(|| left.description.cmp(&right.description))
-        .then_with(|| left.image.cmp(&right.image))
-        .then_with(|| left.price.cmp(&right.price))
-        .then_with(|| left.original_price.cmp(&right.original_price))
-        .then_with(|| left.status.to_string().cmp(&right.status.to_string()))
-}
-
-fn product_completeness(product: &Product) -> (bool, bool, bool, usize, usize) {
-    let description = product.description.as_deref().unwrap_or_default().trim();
-    (
-        product.price > 0,
-        !product.image.trim().is_empty(),
-        !description.is_empty(),
-        description.len(),
-        product.title.trim().len(),
-    )
+fn duplicate_score(product: &Product) -> (u8, usize, usize) {
+    (product.section.dedup_priority(), product.title.trim().len(), product.description.trim().len())
 }
 
 fn build_section_reports(page_reports: Vec<PageReport>) -> Vec<SectionReport> {
     let mut grouped: HashMap<Section, HashMap<String, Vec<PageReport>>> = HashMap::new();
     for page in page_reports {
-        grouped
-            .entry(page.section)
-            .or_default()
-            .entry(page.retailer.clone())
-            .or_default()
-            .push(page);
+        grouped.entry(page.section).or_default().entry(page.retailer.clone()).or_default().push(page);
     }
 
     let mut sections = Vec::new();
@@ -559,7 +522,7 @@ async fn scan_summary(report: &ScanReport, error_health: ErrorCycleSummary) -> S
     let storage = ProductStorage::get_storage().read().await;
     let mut totals = HashMap::<String, usize>::new();
     for product in storage.products.values() {
-        *totals.entry(product.site.clone()).or_default() += 1;
+        *totals.entry(product.retailer.clone()).or_default() += 1;
     }
     let mut top_retailers: Vec<_> = totals.into_iter().collect();
     top_retailers.sort_by(|a, b| b.1.cmp(&a.1));
@@ -568,14 +531,12 @@ async fn scan_summary(report: &ScanReport, error_health: ErrorCycleSummary) -> S
     let mut section_totals = HashMap::<String, usize>::new();
     let mut catalog = ScanCatalogMetrics::default();
     for product in storage.products.values() {
-        *section_totals
-            .entry(product.section.to_string())
-            .or_default() += 1;
+        *section_totals.entry(product.section.to_string()).or_default() += 1;
         match product.status {
             ProductStatus::InStock => catalog.in_stock += 1,
             ProductStatus::OutOfStock => catalog.out_of_stock += 1,
-            ProductStatus::OnArrive => catalog.on_arrive += 1,
-            ProductStatus::OnRequest => catalog.on_request += 1,
+            ProductStatus::Arriving => catalog.on_arrive += 1,
+            ProductStatus::OnDemand => catalog.on_request += 1,
         }
     }
 
@@ -585,65 +546,33 @@ async fn scan_summary(report: &ScanReport, error_health: ErrorCycleSummary) -> S
 
     let mut changes = HashMap::<String, (usize, usize, usize)>::new();
     for product in &report.added_items {
-        changes.entry(product.site.clone()).or_default().0 += 1;
+        changes.entry(product.retailer.clone()).or_default().0 += 1;
     }
     for (product, _) in &report.edited_items {
-        changes.entry(product.site.clone()).or_default().1 += 1;
+        changes.entry(product.retailer.clone()).or_default().1 += 1;
     }
     for product in &report.removed_items {
-        changes.entry(product.site.clone()).or_default().2 += 1;
+        changes.entry(product.retailer.clone()).or_default().2 += 1;
     }
-    let mut change_sites: Vec<_> = changes
-        .into_iter()
-        .map(|(site, (added, edited, removed))| (site, added, edited, removed))
-        .collect();
+    let mut change_sites: Vec<_> = changes.into_iter().map(|(s, (a, e, r))| (s, a, e, r)).collect();
     change_sites.sort_by(|a, b| (b.1 + b.2 + b.3).cmp(&(a.1 + a.2 + a.3)));
 
     let mut section_changes = HashMap::<String, (usize, usize, usize)>::new();
     for product in &report.added_items {
-        section_changes
-            .entry(product.section.to_string())
-            .or_default()
-            .0 += 1;
+        section_changes.entry(product.section.to_string()).or_default().0 += 1;
     }
     for (product, _) in &report.edited_items {
-        section_changes
-            .entry(product.section.to_string())
-            .or_default()
-            .1 += 1;
+        section_changes.entry(product.section.to_string()).or_default().1 += 1;
     }
     for product in &report.removed_items {
-        section_changes
-            .entry(product.section.to_string())
-            .or_default()
-            .2 += 1;
+        section_changes.entry(product.section.to_string()).or_default().2 += 1;
     }
-    let mut change_sections = section_changes
-        .into_iter()
-        .map(|(section, (added, edited, removed))| (section, added, edited, removed))
-        .collect::<Vec<_>>();
+    let mut change_sections = section_changes.into_iter().map(|(section, (added, edited, removed))| (section, added, edited, removed)).collect::<Vec<_>>();
     change_sections.sort_by(|a, b| (b.1 + b.2 + b.3).cmp(&(a.1 + a.2 + a.3)));
 
-    let pages = report
-        .scrape
-        .iter()
-        .flat_map(|section| &section.sites)
-        .map(|site| site.page_count)
-        .sum();
-    let failed_pages = report
-        .scrape
-        .iter()
-        .flat_map(|section| &section.sites)
-        .flat_map(|site| &site.pages)
-        .filter(|page| !page.errors.is_empty())
-        .count();
-    let attempts = report
-        .scrape
-        .iter()
-        .flat_map(|section| &section.sites)
-        .flat_map(|site| &site.pages)
-        .map(|page| page.attempts)
-        .sum();
+    let pages = report.scrape.iter().flat_map(|section| &section.sites).map(|site| site.page_count).sum();
+    let failed_pages = report.scrape.iter().flat_map(|section| &section.sites).flat_map(|site| &site.pages).filter(|page| !page.errors.is_empty()).count();
+    let attempts = report.scrape.iter().flat_map(|section| &section.sites).flat_map(|site| &site.pages).map(|page| page.attempts).sum();
     let mut site_metrics = HashMap::<String, (usize, usize, usize, u128)>::new();
     for site in report.scrape.iter().flat_map(|section| &section.sites) {
         let metric = site_metrics.entry(site.site.clone()).or_default();
@@ -654,14 +583,12 @@ async fn scan_summary(report: &ScanReport, error_health: ErrorCycleSummary) -> S
     }
     let mut site_metrics: Vec<_> = site_metrics
         .into_iter()
-        .map(|(site, (products, pages, errors, duration_ms))| {
-            ScanSiteMetric {
-                site,
-                products,
-                pages,
-                errors,
-                duration_ms,
-            }
+        .map(|(site, (products, pages, errors, duration_ms))| ScanSiteMetric {
+            site,
+            products,
+            pages,
+            errors,
+            duration_ms,
         })
         .collect();
     site_metrics.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));

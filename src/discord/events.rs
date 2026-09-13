@@ -12,7 +12,7 @@ use serenity::builder::{CreateMessage, EditMessage, CreateAttachment, CreateAllo
 use serenity::http::Http;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use crate::core::retailers::utils::validate_url;
+use crate::core::retailers::validate_url;
 use crate::core::tracking::scan_metrics::ScanMetrics;
 use crate::utils::web_client::WebClient;
 

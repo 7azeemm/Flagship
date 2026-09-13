@@ -1,5 +1,5 @@
 use crate::core::dataset::Dataset;
-use crate::core::parsers::console_game_parser::ConsoleGameParser;
+use crate::core::parsers::game_parser::GameParser;
 use crate::core::parsers::console_parser::ConsoleParser;
 use crate::core::parsers::gpu_parser::GPUParser;
 use crate::core::parsers::headphones_parser::HeadphonesParser;
@@ -51,12 +51,12 @@ pub enum Section {
     MousePad,
     Headphones,
     GamingChair,
-    AccessoriesCombo,
+    AccessoryBundle,
     UpgradeKit,
 
     Console,
     Controller,
-    ConsoleGame,
+    Game,
     ConsoleAccessories,
 
     Smartphone,
@@ -81,16 +81,9 @@ impl Section {
     pub fn dedup_priority(&self) -> u8 {
         match self {
             Self::Others => 0,
-            Self::PC | Self::Laptop | Self::AccessoriesCombo => 1,
+            Self::PC | Self::Laptop | Self::AccessoryBundle => 1,
             _ => 2,
         }
-    }
-
-    pub fn requires_desc(&self) -> bool {
-        matches!(
-            self, Self::PC | Self::GamingPC | Self::AllInOnePC | Self::MiniPC |
-            Self::Laptop | Self::GamingLaptop | Self::MacBook
-        )
     }
 
     pub fn from_str(s: &str) -> Result<Self, String> {
@@ -163,16 +156,11 @@ impl SectionConfig {
         Ok(count)
     }
 
-    pub fn replace_words(&self, text: &str, uppercase: bool) -> String {
-        let mut text = text.to_string();
+    pub fn replace_uppercase_words(&self, mut text: String) -> String {
         for list in &self.replace_words {
             if let (Some(from), Some(to)) = (list.first(), list.get(1)) {
                 let string = RegexCache::replace_all(&format!("(?i){}", regex::escape(from)), &text, to);
-                text = if uppercase {
-                    string.to_uppercase()
-                } else {
-                    string.to_string()
-                }
+                text = string.to_uppercase()
             }
         }
         text
@@ -193,7 +181,7 @@ fn build_parser(
         Section::Keyboard => Arc::new(KeyboardParser { config, dataset }),
         Section::Headphones => Arc::new(HeadphonesParser { config, dataset }),
         Section::Console => Arc::new(ConsoleParser { config, dataset }),
-        Section::ConsoleGame => Arc::new(ConsoleGameParser { config, dataset }),
+        Section::Game => Arc::new(GameParser { config, dataset }),
         Section::Monitor | Section::Television => Arc::new(MonitorParser { config, dataset }),
         Section::PC | Section::GamingPC | Section::AllInOnePC | Section::MiniPC |
         Section::Laptop | Section::GamingLaptop | Section::MacBook => Arc::new(PCParser { config, dataset }),

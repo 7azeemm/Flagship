@@ -9,7 +9,7 @@ use std::error::Error;
 use std::time::Duration;
 use tokio::time::sleep;
 
-pub(crate) const USER_AGENT: &'static str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+pub const USER_AGENT: &'static str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
 const TIMEOUT: Duration = Duration::from_secs(30);
 
 static WEB_CLIENT: OnceCell<WebClient> = OnceCell::new();
@@ -78,7 +78,7 @@ impl WebClient {
 
         match web_client_type {
             WebClientType::HttpClient => {
-                let response = web_client.http_client.get(url).send().await?;
+                let response = web_client.http_client.get(url).send().await?.error_for_status()?;
                 let body = response.text().await?;
                 if body.contains("Sorry, you have been blocked") {
                     return Err(

@@ -306,9 +306,9 @@ impl ProductStorage {
 
         let new_product_urls: HashSet<&String> = products.iter().map(|p| &p.url).collect();
         storage.products.retain(|_, existing| {
-            let scope = (existing.site.clone(), existing.section);
+            let scope = (existing.retailer.clone(), existing.section);
             let is_in_scope = (sections.is_empty() || sections.contains(&existing.section))
-                && (sites.is_empty() || sites.contains(&existing.site.as_str()));
+                && (sites.is_empty() || sites.contains(&existing.retailer.as_str()));
             let missing = is_in_scope && !new_product_urls.contains(&existing.url);
 
             if !missing || !scan_scopes.attempted.contains(&scope) || scan_scopes.failed.contains(&scope) {
@@ -423,10 +423,10 @@ fn product_matches_query(product: &Product, query: &ProductQuery, text: &str) ->
         text.is_empty()
         || product.id.to_lowercase().contains(text)
         || product.title.to_lowercase().contains(text)
-        || product.description.as_deref().is_some_and(|description| description.to_lowercase().contains(text))
+        || product.description.to_lowercase().contains(text)
     )
         && query.section.is_none_or(|section| product.section == section)
-        && query.site.as_deref().is_none_or(|site| product.site.eq_ignore_ascii_case(site))
+        && query.site.as_deref().is_none_or(|site| product.retailer.eq_ignore_ascii_case(site))
         && query.status.as_ref().is_none_or(|status| &product.status == status)
         && query.min_price.is_none_or(|price| product.price >= price)
         && query.max_price.is_none_or(|price| product.price <= price)

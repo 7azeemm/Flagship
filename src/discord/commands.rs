@@ -298,7 +298,7 @@ pub async fn autocomplete(ctx: &Context, command: &CommandInteraction) -> Result
                     embeds::truncate(
                         &format!(
                             "{} | {} | {} TND",
-                            product.title, product.site, product.price
+                            product.title, product.retailer, product.price
                         ),
                         100,
                     ),
@@ -427,7 +427,7 @@ fn product_query(command: &CommandInteraction) -> Result<ProductQuery, String> {
         text: option(command, "query").map(str::to_string),
         section: option(command, "section").map(Section::from_str).transpose()?,
         site: option(command, "site").map(str::to_string),
-        status: option(command, "stock").map(ProductStatus::from_str).transpose()?,
+        status: option(command, "stock").map(ProductStatus::from_str).transpose().map_err(|err| err.to_string())?,
         min_price,
         max_price,
         exclude_others: true,

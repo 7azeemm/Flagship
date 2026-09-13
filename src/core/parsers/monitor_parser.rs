@@ -20,9 +20,7 @@ impl SectionParser for MonitorParser {
     }
 
     fn parse_specs(&self, product: &mut Product, cleaned_title: &str) {
-        let desc = product.description.clone().unwrap_or_default();
-        let text: String = format!("{cleaned_title} | {desc}").to_uppercase();
-        parse_display_specs(product, &text);
+        parse_display_specs(product, &format!("{} | {}", cleaned_title, product.description).to_uppercase());
     }
 }
 

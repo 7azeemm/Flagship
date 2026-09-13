@@ -110,7 +110,7 @@
     },
     {
       "name": "Accessory Bundles",
-      "url": "AccessoriesCombo"
+      "url": "AccessoryBundle"
     }
   ],
   "Consoles": [
@@ -141,6 +141,10 @@
     {
       "name": "Console Accessories",
       "url": "ConsoleAccessories"
+    },
+    {
+      "name": "Other Consoles",
+      "url": "Console?filters=%7B\"platform\"%3A%5B\"Others\"%5D%7D"
     }
   ],
   "Smartphones & TVs": [

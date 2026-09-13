@@ -221,7 +221,7 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
         timestamp: Utc::now(),
         offer_count: offers.len(),
         in_stock_count: offers.iter().filter(|product| product.status == ProductStatus::InStock).count(),
-        retailer_count: offers.iter().map(|product| &product.site).collect::<HashSet<_>>().len(),
+        retailer_count: offers.iter().map(|product| &product.retailer).collect::<HashSet<_>>().len(),
         lowest_price: lowest.map(|product| product.price),
         lowest_price_product_id: lowest.map(|product| product.id.clone()),
     };
