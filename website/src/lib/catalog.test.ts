@@ -79,6 +79,12 @@ test('API original_price maps correctly and missing availability is not fabricat
   );
   assert.throws(() => parseProduct({ title: 'bad', price: 'NaN' }));
 });
+test('product detail responses retain the retailer name', () => {
+  assert.equal(
+    parseProduct({ id: 'a', title: 'Laptop', price: 1500, retailer: 'Mytek' }).site,
+    'Mytek',
+  );
+});
 test('response validation rejects malformed data and accepts empty catalogs', () => {
   assert.throws(() => parsePage({ products: [], total_pages: '1' }));
   assert.throws(() => parseServerInfo({ categories: { Components: [123] } }));
@@ -166,7 +172,7 @@ test('metadata identity ignores pagination, sorting and grouping but tracks sele
     [],
   );
 });
-test('grouped API summaries do not require a removed name field', () => {
+test('grouped API summaries keep the joined-fields label and gallery images', () => {
   const page = parsePage({
     section_info: null,
     page: 1,
@@ -177,8 +183,10 @@ test('grouped API summaries do not require a removed name field', () => {
       {
         type: 'variant',
         data: {
-          id: 'v',
+          id: 'Intel Core i5 | 16 GB',
           section: 'CPU',
+          image: 'https://example.com/one.jpg',
+          images: ['https://example.com/two.jpg'],
           price: 120,
           offer_count: 2,
           retailer_count: 2,
@@ -189,7 +197,10 @@ test('grouped API summaries do not require a removed name field', () => {
     ],
   });
   assert.equal(page.items[0].type, 'variant');
-  if (page.items[0].type === 'variant') assert.equal(page.items[0].data.name, 'v');
+  if (page.items[0].type === 'variant')
+    assert.equal(page.items[0].data.id, 'Intel Core i5 | 16 GB');
+  if (page.items[0].type === 'variant')
+    assert.deepEqual(page.items[0].data.images, ['https://example.com/two.jpg']);
 });
 import { productHistoryChart } from './productHistory';
 test('ungroupable product gets a price and stock chart without variant history', () => {
@@ -289,9 +300,9 @@ test('product page renders the requested price and availability charts without s
   );
   assert.equal((html.match(/<svg/g) || []).length, 2);
   assert.match(html, /linearGradient/);
-  assert.match(html, /Lowest price/);
+  assert.match(html, /Listed price/);
   assert.match(html, /Availability/);
-  assert.match(html, /Typical Price/);
+  assert.doesNotMatch(html, /Typical Price/);
   assert.match(html, />7D</);
   assert.match(html, />All</);
   assert.doesNotMatch(html, /type="range"/);

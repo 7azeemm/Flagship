@@ -7,7 +7,7 @@ use crate::utils::web_client::WebClientType;
 use once_cell::sync::Lazy;
 use scraper::ElementRef;
 use std::str::FromStr;
-
+//todo: check images
 static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
     RetailerConfigBuilder {
         web_client_type: WebClientType::HttpClient,
@@ -19,7 +19,7 @@ static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
         price_sel: "empty",
         original_price_sel: "empty",
         page_desc_sel: "div[itemprop=description]",
-        page_images_sel: "div#seo-gallery-data span[data-image]",
+        page_images_sel: "div#gallery-container img",
         status_sel: None,
         desc_sel: None,
         empty_page_sel: None,
@@ -96,7 +96,18 @@ impl Retailer for Mytek {
         let description = Some(element.select_attr("data-description", "description")?).unwrap_or_default();
         let status = ProductStatus::from_str(&status)?;
 
-        Ok(Product::new(self.name(), url, title, section, description, image, vec![], status, price, original_price))
+        Ok(Product::new(
+            self.name(),
+            url,
+            title,
+            section,
+            description,
+            image,
+            vec![],
+            status,
+            price,
+            original_price
+        ))
     }
 
     fn format_url(&self, url: &str, page: i32) -> String {

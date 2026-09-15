@@ -149,7 +149,7 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           Availability <ChevronDown size={15} />
         </summary>
         <div className="filter-options">
-          {['InStock', 'OutOfStock', 'Arriving', 'OnRequest'].map((status) => (
+          {['InStock', 'OutOfStock', 'Arriving', 'OnDemand'].map((status) => (
             <label className="checkbox-row" key={status}>
               <input
                 type="checkbox"
@@ -237,11 +237,13 @@ export function ActiveFilters({ query, update, reset }: Pick<Props, 'query' | 'u
       remove: () => update({ min_price: '', max_price: '' }),
     });
   for (const key of ['site', 'stock'] as const)
-    for (const value of query[key])
+    for (const value of query[key]) {
+      if (key === 'stock' && value === 'InStock' && query.stock.length === 1) continue;
       chips.push({
         label: key === 'stock' ? stockLabels[value] || value : value,
         remove: () => update({ [key]: query[key].filter((item) => item !== value) }),
       });
+    }
   for (const [key, values] of Object.entries(query.filters))
     for (const value of values)
       chips.push({

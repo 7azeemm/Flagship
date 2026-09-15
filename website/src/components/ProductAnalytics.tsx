@@ -54,9 +54,11 @@ function comparisonText(current: number, average: number) {
 export function HistoryChart({
   points,
   availability = false,
+  scope = 'variant',
 }: {
   points: VariantChartPoint[];
   availability?: boolean;
+  scope?: 'product' | 'variant';
 }) {
   const id = useId();
   const [active, setActive] = useState<number | null>(null);
@@ -150,7 +152,9 @@ export function HistoryChart({
         <title id={id}>
           {availability
             ? 'Number of in-stock offers over time'
-            : 'Lowest in-stock price over time, in TND'}
+            : scope === 'product'
+              ? 'Listed price over time, in TND'
+              : 'Lowest in-stock price over time, in TND'}
         </title>
         <defs>
           <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
@@ -241,7 +245,7 @@ export function HistoryChart({
           </small>
         </div>
       )}
-      {points.length === 1 && (
+      {points.length <= 2 && (
         <p className="chart-single-observation">
           One recorded observation. More updates are needed to show a trend.
         </p>
@@ -307,7 +311,10 @@ export function ProductAnalytics({
   const current = chart?.summary.current_price;
   const average90 = chart?.summary.ninety_day_average;
   const rating =
-    typeof current === 'number' && typeof average90 === 'number' && average90 > 0
+    chart.points.length > 2 &&
+    typeof current === 'number' &&
+    typeof average90 === 'number' &&
+    average90 > 0
       ? classifyPrice(current, average90)
       : null;
 
@@ -388,12 +395,20 @@ export function ProductAnalytics({
           <section className="history-panel">
             <div className="history-heading">
               <div>
-                <h3>Lowest price</h3>
-                <p>Cheapest in-stock offer</p>
+                <h3>{chart?.scope === 'product' ? 'Listed price' : 'Lowest price'}</h3>
+                <p>
+                  {chart?.scope === 'product'
+                    ? 'Price recorded for this listing'
+                    : 'Cheapest in-stock offer'}
+                </p>
               </div>
               <span>TND</span>
             </div>
-            <HistoryChart key={`${range}-price`} points={chart?.points || []} />
+            <HistoryChart
+              key={`${range}-price`}
+              points={chart?.points || []}
+              scope={chart?.scope}
+            />
           </section>
           <section className="history-panel">
             <div className="history-heading">

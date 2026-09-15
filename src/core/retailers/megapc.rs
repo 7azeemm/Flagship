@@ -194,17 +194,23 @@ async fn fetch_api(
         for product in products {
             let url = format!("https://megapc.tn/shop/product/{}/{}", encode(link), product.lien);
 
-            let gallery = product.gallerie.get_array("urlPhoto").cloned().unwrap_or_default();
-            let images: Vec<String> = gallery.iter()
-                .map(|v| format!("https://static.gi-ga.tech/{}", v.as_str().unwrap_or_default()))
-                .collect();
-            let Some(preview_image) = images.first().cloned() else {
+            let mut images = product.gallerie.get_array("urlPhoto")
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|v| format!("https://static.gi-ga.tech{}", v.as_str().unwrap_or_default()));
+
+            let Some(preview_image) = images.next() else {
                 errors.push(ScrapeErrorKind::ParseFailed {
                     url: Some(url.clone()),
-                    error: ProductParseError::MissingElement { field: "image".to_string() }
+                    error: ProductParseError::MissingElement {
+                        field: "image".to_string(),
+                    },
                 });
-                continue
+                continue;
             };
+
+            let images: Vec<String> = images.collect();
 
             let description = match fetch_product_page(&url, category, sub_category, &product.lien, metrics).await {
                 Ok(desc) => Some(desc),

@@ -486,7 +486,7 @@
       ["Others", "imprimante|console de jeu"],
       ["Controller", "manette&!=pack|sony|xbox||joy-con&!=console"],
       ["ConsoleAccessories", "!=pack&volant|dock|game stick||!=pack&PlayStation 5|PS5&Portable|Portal|Portatif"],
-      ["ConsoleGame", "jeu Nintendo Switch||jeux|jeu&PS5|PS4|PC|Nintendo&!=console"]
+      ["Game", "jeu Nintendo Switch||jeux|jeu&PS5|PS4|PC|Nintendo&!=console"]
     ],
     "replace_words": [
       ["PlayStation ", "PS"], ["Play Station ", "PS"]
@@ -500,11 +500,11 @@
       ["Others", "cable|câble|console de jeu"],
       ["Headphones", "casque|Écouteurs"],
       ["ConsoleAccessories", "pistolet|trueforce|film|chargeur|stand|volant|vitesses|panneau|streamdeck|thrustmaster|ecran||joystick&logitech||ventilateur&!=manette"],
-      ["ConsoleGame", "jeux|jeu&vidéo|Mario"]
+      ["Game", "jeux|jeu&vidéo|Mario"]
     ]
   },
   {
-    "id": "ConsoleGame",
+    "id": "Game",
     "move_rules": [
       ["Controller", "manette|mannette|manettes"],
       ["ConsoleAccessories", "volant"]

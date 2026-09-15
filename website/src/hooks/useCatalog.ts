@@ -3,7 +3,7 @@ import type { CatalogQuery, PageResponse, SectionInfo, ServerInfo } from '../typ
 import { parsePage, parseServerInfo, request } from '../lib/api';
 import { defaultQuery, apiQueryParams, sectionInfoKey, queryURL, readQuery } from '../lib/catalog';
 
-export function useCatalog() {
+export function useCatalog(catalogEnabled = true) {
   const [query, setQuery] = useState(() => readQuery(window.location));
   const [categories, setCategories] = useState<ServerInfo['categories']>({});
   const [page, setPage] = useState<PageResponse | null>(null);
@@ -34,6 +34,7 @@ export function useCatalog() {
         if (controller.signal.aborted) return;
         serverInfo.current = info;
         setCategories(info.categories);
+        if (!catalogEnabled) return;
         const available = Object.values(info.categories).flat();
         if (!available.length) return;
         const category = available.find(
@@ -71,7 +72,7 @@ export function useCatalog() {
     };
     void load();
     return () => controller.abort();
-  }, [query, revision]);
+  }, [catalogEnabled, query, revision]);
 
   const update = (changes: Partial<CatalogQuery>, replace = false) => {
     const next = { ...query, ...changes, page: changes.page ?? 1 };
@@ -81,9 +82,6 @@ export function useCatalog() {
   return {
     query,
     categories,
-    sections: Object.values(categories)
-      .flat()
-      .map((category) => category.id),
     page,
     base,
     loading,

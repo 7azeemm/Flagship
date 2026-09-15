@@ -10,6 +10,7 @@ pub async fn run(listener: TcpListener) -> Result<(), Box<dyn Error>> {
     let api = Router::new()
         .route("/info", get(endpoints::info::get_info))
         .route("/homepage", get(endpoints::homepage::get_homepage))
+        .route("/stats", get(endpoints::statistics::get_statistics))
         .route("/search/suggestions", get(endpoints::homepage::search_suggestions))
         .route("/products/{id}", get(endpoints::details::get_product))
         .route("/variants/{id}", get(endpoints::details::get_variant))

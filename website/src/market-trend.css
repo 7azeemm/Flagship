@@ -1,0 +1,22 @@
+.market-trend-chart {
+  min-width: 0;
+  margin-top: 14px;
+}
+.history-chart.market-trend-chart svg {
+  width: 100%;
+  height: auto;
+  max-height: none;
+}
+.history-chart.market-trend-chart text {
+  font-size: 11px;
+}
+.market-trend-chart .chart-series-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.market-trend-chart .chart-dot {
+  fill: var(--accent);
+}

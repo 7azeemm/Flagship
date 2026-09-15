@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 use uuid::Uuid;
+use crate::utils::regex_cache::RegexCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Product {
@@ -53,7 +54,7 @@ impl Product {
             section,
             description,
             image: minimize_image_url(image),
-            images: images.into_iter().map(minimize_image_url).collect(),
+            images,
             status,
             price,
             original_price,
@@ -184,8 +185,21 @@ impl FromStr for ProductStatus {
     }
 }
 
-fn minimize_image_url(url: String) -> String {
-    for key in vec!["-home_default", "-medium_default", "-small_default", "-large_default", "-product_zoom"] {
+pub fn minimize_image_url(mut url: String) -> String {
+    if url.contains("cloudtiktak") && url.contains("_thumb.") {
+        url = url.replace("_thumb", "");
+    } else if url.contains("skymil-shop") {
+        if let Some(first) = url.find("https") {
+            if let Some(second_rel) = url[first + 5..].find("https") {
+                url = url[first + 5 + second_rel..].to_string();
+            }
+        }
+    }
+
+    // Remove patterns like "-1000x1000" or "-300x300"
+    url = RegexCache::replace_all(r"-(\d{3,4})x\1", &url, "").to_string();
+
+    for key in vec!["-home_default", "-medium_default", "-small_default", "-large_default", "-product_zoom", "-catalog_small", "-side_product_default", "/small", "/home"] {
         if url.contains(key) {
             return url.replace(key, "")
         }

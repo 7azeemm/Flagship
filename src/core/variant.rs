@@ -1,5 +1,7 @@
+use crate::api::filters::STRUCTURED_FILTERS;
 use crate::core::product::{Product, ProductStatus};
 use crate::core::sections::Section;
+use crate::core::storage::ProductStorage;
 use crate::utils::file_loader::FileLoader;
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
@@ -8,8 +10,6 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::{Mutex, RwLock};
 use tokio::time::Instant;
 use uuid::Uuid;
-use crate::api::filters::STRUCTURED_FILTERS;
-use crate::core::storage::ProductStorage;
 
 const VARIANTS_PATH: &str = "state/variants.json";
 static VARIANT_STORAGE: Lazy<RwLock<VariantStorage>> = Lazy::new(|| RwLock::new(VariantStorage::default()));
@@ -52,16 +52,14 @@ pub struct VariantStorage {
 pub struct VariantCatalogRecord {
     pub id: String,
     pub section: Section,
-    pub product_count: usize,
 }
 
 impl VariantStorage {
     pub async fn load() {
-        let mut storage = FileLoader::load_or_default::<VariantStorage>(VARIANTS_PATH).await
-            .unwrap_or_else(|error| {
-                tracing::error!(%error, "Failed to load variant storage");
-                VariantStorage::default()
-            });
+        let mut storage = FileLoader::load_or_default::<VariantStorage>(VARIANTS_PATH).await.unwrap_or_else(|error| {
+            tracing::error!(%error, "Failed to load variant storage");
+            VariantStorage::default()
+        });
 
         storage.synchronize(&ProductStorage::get_storage().read().await.products, false);
 
@@ -109,8 +107,8 @@ impl VariantStorage {
         let mut variants = HashMap::new();
         for variant in storage.variants.values().filter(|variant| variant.active && same_fields(&variant.fields, fields)) {
             variants.insert(variant.id.clone(), VariantCatalogRecord {
-                id: variant.id.clone(), section: variant.section,
-                product_count: variant.product_ids.len(),
+                id: variant.id.clone(),
+                section: variant.section,
             });
             for product_id in &variant.product_ids {
                 by_product.insert(product_id.clone(), variant.id.clone());
@@ -187,13 +185,10 @@ fn variant_id(product: &Product, field_keys: &[String]) -> Option<String> {
 }
 
 fn variant_fields(product: &Product, field_keys: &[String]) -> Option<HashMap<String, String>> {
-    field_keys.iter()
-        .map(|field| component_value(product, field)
-            .map(|value| (field.clone(), value.to_string()))
-        ).collect()
+    field_keys.iter().map(|field| component_value(product, field).map(|value| (field.clone(), value.to_string()))).collect()
 }
 
-fn component_value<'a>(product: &'a Product, field: &str) -> Option<&'a str> {
+pub fn component_value<'a>(product: &'a Product, field: &str) -> Option<&'a str> {
     let set = if STRUCTURED_FILTERS.contains(&field) { &product.components } else { &product.filter_ids };
     set.get(field).map(String::as_str)
 }
@@ -204,11 +199,19 @@ fn same_fields(stored: &HashMap<String, String>, requested: &[String]) -> bool {
 
 fn new_variant(id: &str, product: &Product, field_keys: &[String], now: DateTime<Utc>) -> Variant {
     Variant {
-        id: id.to_string(), section: product.section,
+        id: id.to_string(),
+        section: product.section,
         fields: variant_fields(product, field_keys).unwrap_or_default(),
-        representative_product_id: Some(product.id.clone()), product_ids: HashSet::new(),
-        data: VariantSnapshot::default(), history: Vec::new(), views: 0,
-        active: true, created_at: now, updated_at: now, last_seen_at: now, lowest_price_updated_at: None
+        representative_product_id: Some(product.id.clone()),
+        product_ids: HashSet::new(),
+        data: VariantSnapshot::default(),
+        history: Vec::new(),
+        views: 0,
+        active: true,
+        created_at: now,
+        updated_at: now,
+        last_seen_at: now,
+        lowest_price_updated_at: None,
     }
 }
 

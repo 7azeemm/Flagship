@@ -7,6 +7,9 @@ import type {
   ServerInfo,
   VariantChart,
   VariantSummary,
+  HomeProduct,
+  HomepageData,
+  StatisticsData,
 } from '../types';
 
 const origin = '/api';
@@ -40,7 +43,13 @@ export function parseProduct(value: unknown): Product {
     price: value.price,
     url: typeof value.url === 'string' ? value.url : '',
     image: typeof value.image === 'string' ? value.image : '',
-    site: typeof value.site === 'string' ? value.site : 'Retailer',
+    images: strings(value.images) ? value.images : [],
+    site:
+      typeof value.site === 'string'
+        ? value.site
+        : typeof value.retailer === 'string'
+          ? value.retailer
+          : 'Retailer',
     section: typeof value.section === 'string' ? value.section : '',
     status: typeof value.status === 'string' ? value.status : 'Unknown',
     original_price: number(value.original_price) ? value.original_price : null,
@@ -67,10 +76,10 @@ function parseVariant(value: unknown): VariantSummary {
     throw invalid();
   return {
     id: value.id,
-    name: value.id,
     section: value.section,
     price: value.price,
     image: typeof value.image === 'string' ? value.image : '',
+    images: strings(value.images) ? value.images : [],
     original_price: number(value.original_price) ? value.original_price : null,
     components: stringMap(value.components),
     offer_count: value.offer_count,
@@ -258,4 +267,248 @@ export function parseServerInfo(value: unknown): ServerInfo {
     }),
   );
   return { categories };
+}
+
+const nullableNumber = (value: unknown): value is number | null => value === null || number(value);
+const nullableString = (value: unknown): value is string | null =>
+  value === null || typeof value === 'string';
+
+export function parseHomeProduct(value: unknown): HomeProduct {
+  if (
+    !record(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.title !== 'string' ||
+    typeof value.section !== 'string' ||
+    typeof value.image !== 'string' ||
+    !number(value.price) ||
+    !nullableNumber(value.original_price) ||
+    !nullableNumber(value.previous_price) ||
+    !nullableNumber(value.saving) ||
+    !nullableNumber(value.change_percent) ||
+    typeof value.site !== 'string' ||
+    typeof value.status !== 'string' ||
+    !number(value.views) ||
+    typeof value.added_at !== 'string' ||
+    !nullableString(value.updated_at) ||
+    !nullableString(value.badge)
+  )
+    throw invalid();
+  return value as unknown as HomeProduct;
+}
+
+export function parseHomepage(value: unknown): HomepageData {
+  if (
+    !record(value) ||
+    typeof value.generated_at !== 'string' ||
+    !record(value.coverage) ||
+    !number(value.coverage.products) ||
+    !number(value.coverage.retailers) ||
+    !number(value.coverage.in_stock_offers) ||
+    !nullableString(value.coverage.updated_at) ||
+    !nullableString(value.coverage.last_scan_at) ||
+    !nullableString(value.coverage.next_scan_at) ||
+    !Array.isArray(value.market_views) ||
+    value.market_views.length === 0 ||
+    !Array.isArray(value.deals) ||
+    !Array.isArray(value.new_products) ||
+    !Array.isArray(value.retailers)
+  )
+    throw invalid();
+  const marketViews = value.market_views.map((view) => {
+    if (
+      !record(view) ||
+      typeof view.range !== 'string' ||
+      !nullableString(view.section) ||
+      !nullableNumber(view.change_percent) ||
+      !number(view.tracked_offers) ||
+      !number(view.comparable_products) ||
+      !number(view.price_decreases) ||
+      !number(view.price_increases) ||
+      !number(view.in_stock_percent) ||
+      !Array.isArray(view.points)
+    )
+      throw invalid();
+    const points = view.points.map((point) => {
+      if (
+        !record(point) ||
+        typeof point.timestamp !== 'string' ||
+        !Number.isFinite(Date.parse(point.timestamp)) ||
+        !number(point.index) ||
+        !number(point.comparable_products)
+      )
+        throw invalid();
+      return {
+        timestamp: point.timestamp,
+        index: point.index,
+        comparable_products: point.comparable_products,
+      };
+    });
+    return { ...view, points } as HomepageData['market_views'][number];
+  });
+  const retailers = value.retailers.map((item) => {
+    if (
+      !record(item) ||
+      typeof item.name !== 'string' ||
+      !number(item.products) ||
+      !number(item.in_stock)
+    )
+      throw invalid();
+    return {
+      name: item.name,
+      products: item.products,
+      in_stock: item.in_stock,
+    };
+  });
+  return {
+    generated_at: value.generated_at,
+    coverage: value.coverage as unknown as HomepageData['coverage'],
+    hero_deal: value.hero_deal === null ? null : parseHomeProduct(value.hero_deal),
+    market_views: marketViews,
+    deals: value.deals.map(parseHomeProduct),
+    new_products: value.new_products.map(parseHomeProduct),
+    retailers,
+  };
+}
+
+export function parseSearchSuggestions(value: unknown): HomeProduct[] {
+  if (!Array.isArray(value)) throw invalid();
+  return value.map(parseHomeProduct);
+}
+
+export function parseStatistics(value: unknown): StatisticsData {
+  if (
+    !record(value) ||
+    typeof value.generated_at !== 'string' ||
+    !nullableString(value.last_scan_at) ||
+    !record(value.retailer_overviews) ||
+    !Array.isArray(value.explorer_charts) ||
+    value.explorer_charts.length !== 4 ||
+    !Array.isArray(value.facets) ||
+    !strings(value.retailers) ||
+    !number(value.configuration_count) ||
+    !Array.isArray(value.configurations)
+  )
+    throw invalid();
+  const retailerOverviews: StatisticsData['retailer_overviews'] = {};
+  for (const [section, overview] of Object.entries(value.retailer_overviews)) {
+    if (
+      !record(overview) ||
+      !number(overview.comparable_configurations) ||
+      !Array.isArray(overview.retailers)
+    )
+      throw invalid();
+    retailerOverviews[section] = {
+      comparable_configurations: overview.comparable_configurations,
+      retailers: overview.retailers.map((item: unknown) => {
+        if (
+          !record(item) ||
+          typeof item.name !== 'string' ||
+          !number(item.offers) ||
+          !number(item.lowest_price_wins) ||
+          !number(item.price_comparisons)
+        )
+          throw invalid();
+        return {
+          name: item.name,
+          offers: item.offers,
+          lowest_price_wins: item.lowest_price_wins,
+          price_comparisons: item.price_comparisons,
+        };
+      }),
+    };
+  }
+  const chart = (raw: unknown): StatisticsData['explorer_charts'][number] => {
+    if (
+      !record(raw) ||
+      typeof raw.id !== 'string' ||
+      typeof raw.title !== 'string' ||
+      typeof raw.description !== 'string' ||
+      typeof raw.section !== 'string' ||
+      !record(raw.filters) ||
+      typeof raw.metric !== 'string' ||
+      typeof raw.range !== 'string' ||
+      !number(raw.matching_offers) ||
+      !number(raw.retailer_count) ||
+      !number(raw.comparable_offers) ||
+      !Array.isArray(raw.points) ||
+      typeof raw.note !== 'string'
+    )
+      throw invalid();
+    if (!['index', 'median_price', 'lowest_price', 'availability'].includes(raw.metric))
+      throw invalid();
+    const points = raw.points.map((point: unknown) => {
+      if (
+        !record(point) ||
+        typeof point.timestamp !== 'string' ||
+        !Number.isFinite(Date.parse(point.timestamp)) ||
+        !number(point.value) ||
+        !number(point.sample_size)
+      )
+        throw invalid();
+      return { timestamp: point.timestamp, value: point.value, sample_size: point.sample_size };
+    });
+    return { ...raw, points } as StatisticsData['explorer_charts'][number];
+  };
+  const facets = value.facets.map((facet: unknown) => {
+    if (
+      !record(facet) ||
+      typeof facet.key !== 'string' ||
+      typeof facet.label !== 'string' ||
+      !Array.isArray(facet.options)
+    )
+      throw invalid();
+    return {
+      key: facet.key,
+      label: facet.label,
+      options: facet.options.map((option: unknown) => {
+        if (!record(option) || typeof option.value !== 'string' || !number(option.count))
+          throw invalid();
+        return { value: option.value, count: option.count };
+      }),
+    };
+  });
+  const configurations = value.configurations.map((item: unknown) => {
+    if (
+      !record(item) ||
+      typeof item.id !== 'string' ||
+      typeof item.title !== 'string' ||
+      !nullableString(item.product_id) ||
+      !number(item.offers) ||
+      !number(item.retailer_count) ||
+      !Array.isArray(item.price_points) ||
+      !Array.isArray(item.availability_points)
+    )
+      throw invalid();
+    const points = (raw: unknown[]) =>
+      raw.map((point) => {
+        if (
+          !record(point) ||
+          typeof point.timestamp !== 'string' ||
+          !Number.isFinite(Date.parse(point.timestamp)) ||
+          !number(point.value) ||
+          !number(point.sample_size)
+        )
+          throw invalid();
+        return { timestamp: point.timestamp, value: point.value, sample_size: point.sample_size };
+      });
+    return {
+      id: item.id,
+      title: item.title,
+      product_id: item.product_id,
+      offers: item.offers,
+      retailer_count: item.retailer_count,
+      price_points: points(item.price_points),
+      availability_points: points(item.availability_points),
+    };
+  });
+  return {
+    generated_at: value.generated_at,
+    last_scan_at: value.last_scan_at,
+    retailer_overviews: retailerOverviews,
+    explorer_charts: value.explorer_charts.map(chart),
+    facets,
+    retailers: value.retailers,
+    configuration_count: value.configuration_count,
+    configurations,
+  };
 }

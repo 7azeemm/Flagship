@@ -53,6 +53,7 @@ pub struct ProductSummary {
     pub site: String,
     pub section: Section,
     pub image: String,
+    pub images: Vec<String>,
     pub status: ProductStatus,
     pub price: i32,
     pub original_price: Option<i32>,
@@ -68,6 +69,7 @@ impl ProductSummary {
             site: product.retailer,
             section: product.section,
             image: product.image,
+            images: product.images,
             status: product.status,
             price: product.price,
             original_price: product.original_price,
@@ -81,6 +83,7 @@ pub struct VariantSummary {
     pub id: String,
     pub section: Section,
     pub image: String,
+    pub images: Vec<String>,
     pub price: i32,
     pub original_price: Option<i32>,
     pub components: HashMap<String, String>,
@@ -97,6 +100,7 @@ impl VariantSummary {
             id: variant.id,
             section: variant.section,
             image: representative.image.clone(),
+            images: representative.images.clone(),
             price: representative.price,
             original_price: representative.original_price,
             components: representative.components.clone(),
@@ -278,7 +282,7 @@ async fn grouped_items(fields: &[String], products: Vec<Product>) -> Vec<Catalog
     }
     for (id, mut offers) in grouped {
         let Some(variant) = variants.remove(&id) else { continue };
-        if variant.product_count <= 1 {
+        if offers.len() <= 1 {
             if let Some(product) = offers.pop() {
                 standalone.push(CatalogItem::Product(ProductSummary::from_product(product)));
             }

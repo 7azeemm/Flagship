@@ -11,8 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "tsc --noEmit",
-    "format": "prettier --write src scripts public/theme.js index.html *.json vite.config.ts README.md",
-    "format:check": "prettier --check src scripts public/theme.js index.html *.json vite.config.ts README.md",
+    "format": "prettier --write src scripts public/theme.js index.html *.json vite.config.ts",
+    "format:check": "prettier --check src scripts public/theme.js index.html *.json vite.config.ts",
     "test:smoke": "node scripts/smoke.mjs",
     "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts"
   },

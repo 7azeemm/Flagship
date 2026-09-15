@@ -11,36 +11,44 @@ import { Dialog } from './components/Dialog';
 import { parseChart, parseProduct, request } from './lib/api';
 import { Pagination } from './components/Pagination';
 import { SortSelect } from './components/SortSelect';
+import { HomePage } from './components/HomePage';
+import { ProductPage } from './components/ProductPage';
+import { StatisticsPage } from './components/StatisticsPage';
 
 export default function App() {
-  const {
-    query,
-    sections,
-    categories,
-    page,
-    base,
-    loading,
-    error,
-    update,
-    retry,
-    changeSection,
-    reset,
-  } = useCatalog();
-  const [selected, setSelected] = useState<{ products: Product[]; chart: VariantChart | null; endpoint: string } | null>(null);
+  const [pathname, setPathname] = useState(window.location.pathname);
+  useEffect(() => {
+    const onLocationChange = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', onLocationChange);
+    return () => window.removeEventListener('popstate', onLocationChange);
+  }, []);
+  const isHome = pathname === '/';
+  const isStatistics = pathname === '/statistics';
+  const productMatch = pathname.match(/^\/product\/([^/]+)\/?$/);
+  const productId = productMatch ? decodeURIComponent(productMatch[1]) : null;
+  const { query, categories, page, base, loading, error, update, retry, changeSection, reset } =
+    useCatalog(!isHome && !productId && !isStatistics);
+  const [selected, setSelected] = useState<{
+    products: Product[];
+    chart: VariantChart | null;
+    endpoint: string;
+  } | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const [detailStatus, setDetailStatus] = useState('');
   useEffect(() => () => detailRequest.current?.abort(), []);
   const [about, setAbout] = useState(false);
   const [mobileFilters, setMobileFilters] = useState(false);
   useEffect(() => {
-    document.title = `${sectionLabel(query.section)} — Mythos`;
+    if (!isHome && !productId && !isStatistics) document.title = `${sectionLabel(query.section)} — Mythos`;
     detailRequest.current?.abort();
     setDetailStatus('');
     setSelected(null);
-  }, [query.section]);
+  }, [query.section, isHome, productId, isStatistics]);
   useEffect(() => {
-    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, [query.section, query.page]);
+    if (!isHome && !isStatistics && !productId) {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [query.section, query.page, isHome, isStatistics, productId]);
   const fields = page?.section_info?.components || base?.components || [];
   const filterProps = {
     query,
@@ -51,14 +59,28 @@ export default function App() {
     disabled: loading,
   };
   const entries = (page?.items || []).map((item) => {
-    if (item.type === 'product') return { id: item.data.id, product: item.data, variant: undefined };
+    if (item.type === 'product')
+      return { id: item.data.id, product: item.data, variant: undefined };
     const variant = item.data;
     const product: Product = {
-      id: variant.id, title: variant.name, section: variant.section, image: variant.image,
-      price: variant.price, original_price: variant.original_price, components: variant.components,
-      site: `${variant.retailer_count} retailers`, status: variant.in_stock_count ? 'InStock' : 'OutOfStock',
-      url: '', description: null, filter_ids: {}, history: [], updated_at: null, added_at: null,
-      views: variant.views, missing_group_fields: [],
+      id: variant.id,
+      title: variant.id,
+      section: variant.section,
+      image: variant.image,
+      images: variant.images,
+      price: variant.price,
+      original_price: variant.original_price,
+      components: variant.components,
+      site: `${variant.retailer_count} retailers`,
+      status: variant.in_stock_count ? 'InStock' : 'OutOfStock',
+      url: '',
+      description: null,
+      filter_ids: {},
+      history: [],
+      updated_at: null,
+      added_at: null,
+      views: variant.views,
+      missing_group_fields: [],
     };
     return { id: variant.id, product, variant };
   });
@@ -66,158 +88,198 @@ export default function App() {
     detailRequest.current?.abort();
     const controller = new AbortController();
     detailRequest.current = controller;
-    setDetailStatus('Loading product details…');
-    const endpoint = item.type === 'variant' ? `/variants/${encodeURIComponent(item.data.id)}` : `/products/${encodeURIComponent(item.data.id)}`;
+    setDetailStatus('');
+    const endpoint =
+      item.type === 'variant'
+        ? `/variants/${encodeURIComponent(item.data.id)}`
+        : `/products/${encodeURIComponent(item.data.id)}`;
     try {
-      const raw = await request(
-        endpoint,
-        controller.signal,
-      );
+      const raw = await request(endpoint, controller.signal);
       if (controller.signal.aborted) return;
       if (!raw || typeof raw !== 'object') throw new Error('Product details are unavailable.');
       const record = raw as Record<string, unknown>;
-      const products = item.type === 'variant'
-        ? (Array.isArray(record.products) ? record.products.map(parseProduct) : [])
-        : record.product ? [parseProduct(record.product)] : [];
+      const products =
+        item.type === 'variant'
+          ? Array.isArray(record.products)
+            ? record.products.map(parseProduct)
+            : []
+          : record.product
+            ? [parseProduct(record.product)]
+            : [];
       if (!products.length) throw new Error('No retailer listings are available.');
       setSelected({ products, chart: parseChart(record.chart), endpoint });
       setDetailStatus('');
     } catch (error) {
-      if (!controller.signal.aborted) setDetailStatus(error instanceof Error ? error.message : 'Product details could not be loaded.');
+      if (!controller.signal.aborted)
+        setDetailStatus(
+          error instanceof Error ? error.message : 'Product details could not be loaded.',
+        );
     }
   };
   const chooseSection = (section: string) => {
     changeSection(section);
+    setPathname(window.location.pathname);
     setMobileFilters(false);
   };
+  const navigatePath = (path: string) => {
+    window.history.pushState(null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+  const chooseHome = () => navigatePath('/');
 
   return (
     <>
-      <a href="#catalog" className="skip-link">
-        Skip to catalog
+      <a
+        href={isHome ? '#home-content' : isStatistics ? '#statistics-content' : productId ? '#product-content' : '#catalog'}
+        className="skip-link"
+      >
+        Skip to {isHome ? 'homepage' : isStatistics ? 'statistics' : productId ? 'product details' : 'catalog'}
       </a>
       <Header
         categories={categories}
-        section={query.section}
+        section={isHome || isStatistics || productId ? '' : query.section}
         filters={query.filters}
         onSection={chooseSection}
+        onProduct={(id) => navigatePath(`/product/${encodeURIComponent(id)}`)}
+        onHome={chooseHome}
         onAbout={() => setAbout(true)}
       />
-      <main className="main-container" id="catalog" tabIndex={-1}>
-        <h1 className="sr-only">{sectionLabel(query.section)}</h1>
-        <div className="catalog-layout">
-          <aside className="desktop-filters" aria-label="Product filters">
-            <Filters key={query.section} {...filterProps} />
-          </aside>
-          <section className="results-section" aria-label="Catalog results">
-            <div className="results-toolbar compact-toolbar">
-              <div className="toolbar-summary">
-                <div role="status" className="result-count">
-                  {loading ? (
-                    'Finding your next upgrade…'
-                  ) : error ? (
-                    'Catalog unavailable'
-                  ) : (
-                    <>
-                      <strong>{money(page?.total_items ?? 0)}</strong>{' '}
-                      {page?.total_items === 1 ? 'result' : 'results'}
-                      {query.grouped && page && page.total_items < page.total_products && (
-                        <span> · {money(page.total_products)} listings</span>
-                      )}
-                    </>
+      {isHome ? (
+        <HomePage onNavigate={navigatePath} onAbout={() => setAbout(true)} />
+      ) : isStatistics ? (
+        <StatisticsPage categories={categories} onNavigate={navigatePath} />
+      ) : productId ? (
+        <ProductPage id={productId} fields={base?.components || []} onNavigate={navigatePath} />
+      ) : (
+        <main className="main-container" id="catalog" tabIndex={-1}>
+          <h1 className="sr-only">{sectionLabel(query.section)}</h1>
+          <div className="catalog-layout">
+            <aside className="desktop-filters" aria-label="Product filters">
+              <Filters key={query.section} {...filterProps} />
+            </aside>
+            <section className="results-section" aria-label="Catalog results">
+              <div className="results-toolbar compact-toolbar">
+                <div className="toolbar-summary">
+                  <div role="status" className="result-count">
+                    {loading ? (
+                      'Finding your next upgrade…'
+                    ) : error ? (
+                      'Catalog unavailable'
+                    ) : (
+                      <>
+                        <strong>{money(page?.total_items ?? 0)}</strong>{' '}
+                        {page?.total_items === 1 ? 'result' : 'results'}
+                        {query.grouped && page && page.total_items < page.total_products && (
+                          <span> · {money(page.total_products)} listings</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <ActiveFilters query={query} update={update} reset={reset} />
+                </div>
+                <div className="toolbar-controls">
+                  <button
+                    className="mobile-filter-button secondary-button"
+                    onClick={() => setMobileFilters(true)}
+                  >
+                    <SlidersHorizontal size={16} /> Filters
+                  </button>
+                  <SortSelect value={query.sort} onChange={(sort) => update({ sort })} />
+                  {!loading && !error && (
+                    <Pagination
+                      page={query.page}
+                      total={page?.total_pages || 0}
+                      onChange={(value) => update({ page: value })}
+                    />
                   )}
                 </div>
-                <ActiveFilters query={query} update={update} reset={reset} />
               </div>
-              <div className="toolbar-controls">
-                <button
-                  className="mobile-filter-button secondary-button"
-                  onClick={() => setMobileFilters(true)}
-                >
-                  <SlidersHorizontal size={16} /> Filters
-                </button>
-                <SortSelect value={query.sort} onChange={(sort) => update({ sort })} />
-                {!loading && !error && (
-                  <Pagination
-                    page={query.page}
-                    total={page?.total_pages || 0}
-                    onChange={(value) => update({ page: value })}
-                  />
+              <div className="product-grid" aria-busy={loading}>
+                {loading ? (
+                  Array.from({ length: 6 }, (_, index) => (
+                    <div key={index} className="card-skeleton" aria-hidden="true">
+                      <div />
+                      <i />
+                      <i />
+                      <span />
+                      <section>
+                        <i />
+                        <i />
+                        <i />
+                        <i />
+                      </section>
+                    </div>
+                  ))
+                ) : error ? (
+                  <div className="empty-state" role="alert">
+                    <Store size={30} />
+                    <h2>We couldn’t load the catalog.</h2>
+                    <p>{error}</p>
+                    <button className="primary-button" onClick={retry}>
+                      Try again <ArrowRight size={16} />
+                    </button>
+                  </div>
+                ) : !entries.length ? (
+                  <div className="empty-state">
+                    <Search size={30} />
+                    <h2>
+                      {base && !base.sites.length
+                        ? 'The catalog is getting ready.'
+                        : 'No matches. More possibilities.'}
+                    </h2>
+                    <p>
+                      {base && !base.sites.length
+                        ? 'No products have been loaded for this category yet.'
+                        : 'Try a broader search or remove a filter to see more products.'}
+                    </p>
+                    {base && base.sites.length > 0 && (
+                      <button className="primary-button" onClick={reset}>
+                        Clear filters <ArrowRight size={16} />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  entries.map((entry) => (
+                    <ProductCard
+                      key={entry.id}
+                      product={entry.product}
+                      variant={entry.variant}
+                      fields={base?.components_by_section[entry.product.section] || fields}
+                      onOpen={() => {
+                        const item = page!.items.find((item) => item.data.id === entry.id);
+                        if (item) void openItem(item);
+                      }}
+                    />
+                  ))
                 )}
               </div>
-            </div>
-            <div className="product-grid" aria-busy={loading}>
-              {loading ? (
-                Array.from({ length: 6 }, (_, index) => (
-                  <div key={index} className="card-skeleton" aria-hidden="true">
-                    <div />
-                    <i />
-                    <i />
-                    <span />
-                    <section>
-                      <i />
-                      <i />
-                      <i />
-                      <i />
-                    </section>
-                  </div>
-                ))
-              ) : error ? (
-                <div className="empty-state" role="alert">
-                  <Store size={30} />
-                  <h2>We couldn’t load the catalog.</h2>
-                  <p>{error}</p>
-                  <button className="primary-button" onClick={retry}>
-                    Try again <ArrowRight size={16} />
-                  </button>
-                </div>
-              ) : !entries.length ? (
-                <div className="empty-state">
-                  <Search size={30} />
-                  <h2>
-                    {sections.length
-                      ? 'No matches. More possibilities.'
-                      : 'The catalog is getting ready.'}
-                  </h2>
-                  <p>
-                    {sections.length
-                      ? 'Try a broader search or remove a filter to see more products.'
-                      : 'Check back soon for available products.'}
-                  </p>
-                  {sections.length > 0 && (
-                    <button className="primary-button" onClick={reset}>
-                      Clear filters <ArrowRight size={16} />
-                    </button>
-                  )}
-                </div>
-              ) : (
-                entries.map((entry) => (
-                  <ProductCard
-                    key={entry.id}
-                    product={entry.product}
-                    variant={entry.variant}
-                    fields={base?.components_by_section[entry.product.section] || fields}
-                    onOpen={() => {
-                      const item = page!.items.find((item) => item.data.id === entry.id);
-                      if (item) void openItem(item);
-                    }}
-                  />
-                ))
+              {!loading && !error && (
+                <Pagination
+                  page={query.page}
+                  total={page?.total_pages || 0}
+                  onChange={(value) => update({ page: value })}
+                />
               )}
-            </div>
-            {!loading && !error && (
-              <Pagination
-                page={query.page}
-                total={page?.total_pages || 0}
-                onChange={(value) => update({ page: value })}
-              />
-            )}
-            <p className="results-note">Your next upgrade is a few good choices away.</p>
-          </section>
-        </div>
-      </main>
+              <p className="results-note">Your next upgrade is a few good choices away.</p>
+            </section>
+          </div>
+        </main>
+      )}
       <Footer onSection={chooseSection} onAbout={() => setAbout(true)} />
-      {detailStatus && <div className="detail-status" role="status">{detailStatus}<button onClick={() => { detailRequest.current?.abort(); setDetailStatus(''); }}>Dismiss</button></div>}
+      {detailStatus && (
+        <div className="detail-status" role="status">
+          {detailStatus}
+          <button
+            onClick={() => {
+              detailRequest.current?.abort();
+              setDetailStatus('');
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       {selected && (
         <ProductDialog
           key={selected.endpoint}
@@ -268,6 +330,12 @@ export default function App() {
           <p className="muted">
             Listings can change between updates. Similar offers may have different configurations;
             verify the product details with the retailer.
+          </p>
+          <h3>How the Price Index works</h3>
+          <p>
+            For each interval, Mythos compares recorded prices for products observed at both ends,
+            takes the median change, and chains those changes into an index starting at 100. A
+            smaller set of comparable products makes the trend less representative.
           </p>
           <button className="primary-button" onClick={() => setAbout(false)}>
             Back to exploring <ArrowUpRight size={17} />

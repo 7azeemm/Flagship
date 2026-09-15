@@ -78,6 +78,11 @@ for (const sort of ['price_asc', 'price_desc']) {
   );
 }
 assert.equal((await fetch(base + '/GamingLaptop')).status, 200);
+assert.equal(
+  (await fetch(base + '/product/' + encodeURIComponent(first.items[0].data.id))).status,
+  200,
+  'Direct product page route',
+);
 console.log(
   'Live checks passed: ordered navigation, stable metadata, facet counts, validation, pagination, repeatable results, and grouped ordering.',
 );
@@ -107,4 +112,26 @@ const variant = grouped.items.find((item) => item.type === 'variant');
 assert(variant, 'Grouped cards include a variant');
 const detail = await get('/api/variants/' + encodeURIComponent(variant.data.id));
 assert(detail, 'Optional group details resolve');
-console.log('Global search removal and optional grouping checks passed.');
+const homepage = await get('/api/homepage');
+assert(homepage.coverage.products > 0, 'Homepage reports catalog coverage');
+assert(homepage.coverage.retailers > 0, 'Homepage reports retailer coverage');
+assert(Array.isArray(homepage.deals), 'Homepage returns price drops');
+assert(
+  homepage.deals.every(
+    (deal) =>
+      deal.status === 'InStock' &&
+      deal.previous_price > deal.price &&
+      deal.saving === deal.previous_price - deal.price,
+  ),
+  'Homepage price drops are current and available',
+);
+assert(homepage.new_products.length, 'Homepage includes recently discovered products');
+assert.equal(
+  homepage.market_views.length,
+  36,
+  'Homepage includes every market category and period',
+);
+assert(homepage.market_views.some((view) => view.section === null && view.range === '30d'));
+const suggestions = await get('/api/search/suggestions?q=RTX');
+assert(suggestions.length, 'Header search returns global catalog suggestions');
+console.log('Homepage intelligence, global suggestions, and optional grouping checks passed.');

@@ -54,6 +54,11 @@ impl Drop for ScanGuard {
 }
 
 impl CatalogScanner {
+    pub async fn next_scheduled_at() -> Option<chrono::DateTime<Utc>> {
+        let scanner = Self::try_get()?;
+        *scanner.next_scheduled_at.read().await
+    }
+
     pub fn try_get() -> Option<Arc<Self>> {
         CATALOG_SCANNER.get().cloned()
     }

@@ -51,7 +51,8 @@ export const stockLabels: Record<string, string> = {
   OutOfStock: 'Out of stock',
   OnArrive: 'Arriving soon',
   Arriving: 'Arriving soon',
-  OnRequest: 'On request',
+  OnRequest: 'On demand',
+  OnDemand: 'On demand',
 };
 export const money = (value: number) =>
   new Intl.NumberFormat('en-TN', { maximumFractionDigits: 0 }).format(value);
@@ -226,7 +227,6 @@ export function sectionInfoKey(query: CatalogQuery) {
 export function apiQueryParams(query: CatalogQuery, metadata: boolean) {
   const params = queryParams(query, metadata);
   params.delete('group_by');
-  if (query.grouped)
-    (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
+  if (query.grouped) (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
   return params;
 }

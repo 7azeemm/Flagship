@@ -1,11 +1,32 @@
-import { useState } from 'react';
-import { ArrowUpRight, Cpu, HardDrive, ImageOff, Layers3, Monitor, Tag, Zap } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Cpu,
+  HardDrive,
+  ImageOff,
+  Layers3,
+  Monitor,
+  Tag,
+  Zap,
+} from 'lucide-react';
 import type { Product, VariantSummary } from '../types';
 import { money, productSpecs, safeURL, stockLabels } from '../lib/catalog';
 
-export function ProductImage({ product, eager = false }: { product: Product; eager?: boolean }) {
+export function ProductImage({
+  product,
+  src = product.image,
+  eager = false,
+  alt = product.title,
+}: {
+  product: Product;
+  src?: string;
+  eager?: boolean;
+  alt?: string;
+}) {
   const [failed, setFailed] = useState(false);
-  const url = safeURL(product.image);
+  const url = safeURL(src);
   return !url || failed ? (
     <span className="image-fallback">
       <ImageOff size={28} />
@@ -14,11 +35,79 @@ export function ProductImage({ product, eager = false }: { product: Product; eag
   ) : (
     <img
       src={url}
-      alt={product.title}
+      alt={alt}
       loading={eager ? 'eager' : 'lazy'}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
+  );
+}
+export function ProductGallery({
+  product,
+  className,
+  onOpen,
+  label,
+  eager = false,
+  pressed,
+  children,
+}: {
+  product: Product;
+  className: string;
+  onOpen: () => void;
+  label: string;
+  eager?: boolean;
+  pressed?: boolean;
+  children?: ReactNode;
+}) {
+  const images = [
+    ...new Set(
+      [product.image, ...product.images].map(safeURL).filter((url): url is string => !!url),
+    ),
+  ];
+  const [index, setIndex] = useState(0);
+  useEffect(() => setIndex(0), [product.id]);
+  const current = images[Math.min(index, images.length - 1)];
+  const move = (step: number) =>
+    setIndex((value) => (value + step + images.length) % images.length);
+  return (
+    <div
+      className={`product-gallery ${className === 'product-image' ? 'card-gallery' : 'detail-gallery'}`}
+    >
+      <button className={className} onClick={onOpen} aria-label={label} aria-pressed={pressed}>
+        <ProductImage
+          key={current || 'missing'}
+          product={product}
+          src={current}
+          eager={eager}
+          alt={
+            images.length > 1
+              ? `${product.title}, image ${Math.min(index, images.length - 1) + 1} of ${images.length}`
+              : product.title
+          }
+        />
+        {children}
+      </button>
+      {images.length > 1 && (
+        <>
+          <button
+            type="button"
+            className="gallery-arrow gallery-prev"
+            onClick={() => move(-1)}
+            aria-label={`Previous image of ${product.title}`}
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            type="button"
+            className="gallery-arrow gallery-next"
+            onClick={() => move(1)}
+            aria-label={`Next image of ${product.title}`}
+          >
+            <ChevronRight size={20} />
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 const icons = {
@@ -94,8 +183,12 @@ export function ProductCard({
   const url = safeURL(product.url);
   return (
     <article className="product-card">
-      <button className="product-image" onClick={onOpen} aria-label={`View ${name}`}>
-        <ProductImage key={product.image} product={product} />
+      <ProductGallery
+        product={product}
+        className="product-image"
+        onOpen={onOpen}
+        label={`View ${name}`}
+      >
         {discount > 0 && <span className="discount">−{discount}%</span>}
         {grouped && (
           <span className="offer-badge">
@@ -103,7 +196,7 @@ export function ProductCard({
             {variant.offer_count} offers
           </span>
         )}
-      </button>
+      </ProductGallery>
       <div className="product-meta">
         <span className="retailer-badge">
           {grouped ? `${variant.retailer_count} retailers` : product.site}

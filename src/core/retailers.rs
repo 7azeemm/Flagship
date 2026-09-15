@@ -1,4 +1,4 @@
-use crate::core::product::{CachedProductInfo, Product, ProductStatus};
+use crate::core::product::{minimize_image_url, CachedProductInfo, Product, ProductStatus};
 use crate::core::retailers::affariyet::Affariyet;
 use crate::core::retailers::agora::Agora;
 use crate::core::retailers::batam::Batam;
@@ -407,6 +407,8 @@ pub trait Retailer: Send + Sync {
                 let images = html
                     .select(&self.config().page_images_sel)
                     .filter_map(|elem| self.extract_image_url(elem))
+                    .map(minimize_image_url)
+                    .filter(|s| &product.image != s)
                     .collect::<Vec<_>>();
 
                 (description, images)

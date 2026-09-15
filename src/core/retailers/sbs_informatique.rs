@@ -14,7 +14,7 @@ static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
         web_client_type: WebClientType::HttpClient,
         name: "SBSInformatique",
         nav_sel: "div#js-product-list-top div.tv-total-product h2",
-        product_sel: "div.products article.item",
+        product_sel: "div.products article.item.tv-grid-list-wrapper-info-box",
         title_sel: "div.product-title a[href]",
         image_sel: "a.product-thumbnail img[src]",
         price_sel: "span.price",

@@ -17,6 +17,8 @@ pub fn routes() -> Router {
         .route("/favicon.svg", get(|| async { asset_file("favicon.svg", "image/svg+xml", false).await }))
         .route("/theme.js", get(|| async { asset_file("theme.js", "text/javascript; charset=utf-8", false).await }))
         .route("/assets/{file}", get(asset))
+        .route("/product/{id}", get(product))
+        .route("/statistics", get(index))
         .route("/{section}", get(category))
 }
 
@@ -26,6 +28,13 @@ async fn index() -> Response {
 
 async fn category(Path(section): Path<String>) -> Response {
     if !Section::iter().any(|item| item.to_string().eq_ignore_ascii_case(&section)) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    index().await
+}
+
+async fn product(Path(id): Path<String>) -> Response {
+    if id.is_empty() || id.len() > 128 || !id.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"-_".contains(&byte)) {
         return StatusCode::NOT_FOUND.into_response();
     }
     index().await

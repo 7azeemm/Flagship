@@ -14,7 +14,7 @@ static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
         price_sel: "span.price span bdi",
         original_price_sel: "span.price del span bdi",
         page_desc_sel: "div.woocommerce-product-details__short-description",
-        page_images_sel: "div.wd-carousel-inner img",
+        page_images_sel: "div.woocommerce-product-gallery img",
         status_sel: Some("p.stock"),
         desc_sel: None,
         empty_page_sel: Some("div.woocommerce-no-products-found"),

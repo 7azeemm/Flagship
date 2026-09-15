@@ -1,19 +1,10 @@
 import { useState } from 'react';
-import {
-  Activity,
-  Star,
-  ArrowUpRight,
-  CalendarDays,
-  Clock3,
-  History,
-  Maximize2,
-  Package,
-} from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Clock3, History, Maximize2, Package } from 'lucide-react';
 import type { Product, VariantChart } from '../types';
 import { fieldLabel, money, safeURL, sectionLabel, stockLabels } from '../lib/catalog';
 import { ProductAnalytics } from './ProductAnalytics';
 import { Dialog } from './Dialog';
-import { Price, ProductImage, Specifications } from './ProductCard';
+import { Price, ProductGallery, Specifications } from './ProductCard';
 
 const formatDate = (value: string | null) => {
   if (!value) return 'Not available';
@@ -52,15 +43,17 @@ export function ProductDialog({
     <Dialog title={selected.title} onClose={onClose} className="product-dialog">
       <div className="product-detail-grid">
         <section className="detail-overview" aria-labelledby="product-overview-title">
-          <button
+          <ProductGallery
+            key={selected.id}
+            product={selected}
             className={`detail-image ${zoom ? 'zoomed' : ''}`}
-            onClick={() => setZoom(!zoom)}
-            aria-label={zoom ? 'Reduce product image' : 'Enlarge product image'}
-            aria-pressed={zoom}
+            onOpen={() => setZoom(!zoom)}
+            label={zoom ? 'Reduce product image' : 'Enlarge product image'}
+            pressed={zoom}
+            eager
           >
-            <ProductImage key={selected.image} product={selected} eager />
             <Maximize2 size={18} />
-          </button>
+          </ProductGallery>
           <div className="detail-meta">
             <span className="retailer-badge">{selected.site}</span>
             <span className={`stock stock-${selected.status}`}>
@@ -142,29 +135,7 @@ export function ProductDialog({
                     : 'No recorded changes'}
                 </dd>
               </div>
-              <div>
-                <dt>Product ID</dt>
-                <dd className="product-id">{selected.id}</dd>
-              </div>
             </dl>
-          </div>
-          <div className="future-insights">
-            <section>
-              <Activity size={18} />
-              <div>
-                <h3>Performance</h3>
-                <p>Benchmarks and comparisons coming later.</p>
-              </div>
-              <span>Planned</span>
-            </section>
-            <section>
-              <Star size={18} />
-              <div>
-                <h3>Ratings</h3>
-                <p>Reviews and rating breakdowns coming later.</p>
-              </div>
-              <span>Planned</span>
-            </section>
           </div>
         </section>
         {offers.length > 1 && endpoint.startsWith('/variants/') && (
@@ -214,7 +185,7 @@ export function ProductDialog({
   );
 }
 
-function ProductChangeHistory({ product }: { product: Product }) {
+export function ProductChangeHistory({ product }: { product: Product }) {
   const events = product.history
     .filter(
       (event): event is Record<string, unknown> =>

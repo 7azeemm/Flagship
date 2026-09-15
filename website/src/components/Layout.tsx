@@ -3,16 +3,15 @@ import {
   ArrowUpRight,
   ChevronDown,
   Cpu,
-  Heart,
   Info,
+  LoaderCircle,
   Moon,
-  Store,
+  Search,
   Sun,
-  UserRound,
-  Wrench,
 } from 'lucide-react';
 import type { ServerInfo } from '../types';
 import { readQuery, sectionLabel } from '../lib/catalog';
+import { parseSearchSuggestions, request } from '../lib/api';
 import '../header.css';
 
 export function Brand() {
@@ -29,18 +28,28 @@ export function Header({
   filters,
   categories,
   onSection,
+  onProduct,
+  onHome,
   onAbout,
 }: {
   section: string;
   filters: Record<string, string[]>;
   categories: ServerInfo['categories'];
   onSection: (url: string) => void;
+  onProduct: (id: string) => void;
+  onHome: () => void;
   onAbout: () => void;
 }) {
   const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'dark');
   const [open, setOpen] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [left, setLeft] = useState(12);
+  const [search, setSearch] = useState('');
+  const [suggestions, setSuggestions] = useState<ReturnType<typeof parseSearchSuggestions>>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const root = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -63,7 +72,10 @@ export function Header({
   };
   useEffect(() => {
     const outside = (event: PointerEvent) => {
-      if (!root.current?.contains(event.target as Node)) setOpen(null);
+      if (!root.current?.contains(event.target as Node)) {
+        setOpen(null);
+        setSearchOpen(false);
+      }
     };
     document.addEventListener('pointerdown', outside);
     return () => {
@@ -71,6 +83,38 @@ export function Header({
       document.removeEventListener('pointerdown', outside);
     };
   }, []);
+  useEffect(() => {
+    const value = search.trim();
+    setActiveSuggestion(-1);
+    setSearchError(false);
+    if (value.length < 2) {
+      setSuggestions([]);
+      setSearchLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    setSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      request(`/search/suggestions?q=${encodeURIComponent(value)}`, controller.signal)
+        .then(parseSearchSuggestions)
+        .then((items) => {
+          if (!controller.signal.aborted) setSuggestions(items);
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSuggestions([]);
+            setSearchError(true);
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSearchLoading(false);
+        });
+    }, 220);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [search]);
   useEffect(() => {
     let frame = 0;
     const onScroll = () => {
@@ -84,11 +128,11 @@ export function Header({
         if (next <= headerHeight) {
           scrollDistance.current = 0;
           setHidden(false);
-        } else if (scrollDistance.current > 12) {
+        } else if (scrollDistance.current > 18) {
           setHidden(true);
           setOpen(null);
           scrollDistance.current = 0;
-        } else if (scrollDistance.current < -12) {
+        } else if (scrollDistance.current < -18) {
           setHidden(false);
           scrollDistance.current = 0;
         }
@@ -161,6 +205,19 @@ export function Header({
         getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
       );
   };
+  const submitSearch = (item?: (typeof suggestions)[number]) => {
+    const value = search.trim();
+    if (!value) return;
+    if (item) {
+      setSearch(item.title);
+      setSearchOpen(false);
+      onProduct(item.id);
+      return;
+    }
+    const target = section || 'GamingLaptop';
+    setSearchOpen(false);
+    onSection(`/${target}?search=${encodeURIComponent(value)}`);
+  };
   const children = open ? categories[open] || [] : [];
   return (
     <header
@@ -168,7 +225,10 @@ export function Header({
       ref={root}
       onFocusCapture={() => setHidden(false)}
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) close();
+        if (!event.currentTarget.contains(event.relatedTarget)) {
+          close();
+          setSearchOpen(false);
+        }
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -180,42 +240,116 @@ export function Header({
       <div className="masthead-row">
         <a
           className="masthead-brand"
-          href="/GamingLaptop"
+          href="/"
           aria-label="Mythos home"
-          onClick={(event) => navigate(event, '/GamingLaptop')}
+          onClick={(event) => {
+            if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+              event.preventDefault();
+              close();
+              setSearchOpen(false);
+              onHome();
+            }
+          }}
         >
           <img src="/favicon.svg" alt="" width="30" height="30" />
           <span>
             mythos<b>.</b>
           </span>
         </a>
-        <div className="masthead-upcoming" aria-label="Upcoming features">
-          <button disabled title="Coming soon">
-            <Wrench size={14} />
-            PC Builder
-          </button>
-          <button disabled title="Coming soon">
-            <Store size={14} />
-            Marketplace
-          </button>
-        </div>
+        <form
+          className="masthead-search"
+          role="search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitSearch(activeSuggestion >= 0 ? suggestions[activeSuggestion] : undefined);
+          }}
+        >
+          <Search size={18} aria-hidden="true" />
+          <input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setSearchOpen(true);
+            }}
+            onFocus={() => {
+              setHidden(false);
+              setOpen(null);
+              setSearchOpen(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                setActiveSuggestion((value) => Math.min(suggestions.length - 1, value + 1));
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                setActiveSuggestion((value) => Math.max(-1, value - 1));
+              } else if (event.key === 'Escape') {
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="Search products…"
+            aria-label="Search the Mythos catalog"
+            aria-autocomplete="list"
+            aria-expanded={searchOpen && search.trim().length >= 2}
+            aria-controls="masthead-search-results"
+            aria-activedescendant={
+              activeSuggestion >= 0 ? `search-result-${activeSuggestion}` : undefined
+            }
+          />
+          {searchLoading && (
+            <LoaderCircle className="masthead-search-spinner" size={16} aria-label="Searching" />
+          )}
+          {searchOpen && search.trim().length >= 2 && (
+            <div className="masthead-search-panel" id="masthead-search-results" role="listbox">
+              {suggestions.length ? (
+                <>
+                  <p>Products</p>
+                  {suggestions.map((item, index) => (
+                    <button
+                      type="button"
+                      id={`search-result-${index}`}
+                      role="option"
+                      aria-selected={activeSuggestion === index}
+                      className={activeSuggestion === index ? 'active' : ''}
+                      key={item.id}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => submitSearch(item)}
+                    >
+                      <span className="masthead-result-image">
+                        {item.image && <img src={item.image} alt="" />}
+                      </span>
+                      <span className="masthead-result-copy">
+                        <strong>{item.title}</strong>
+                        <small>
+                          {sectionLabel(item.section)} · {item.price.toLocaleString('en-TN')} DT
+                        </small>
+                      </span>
+                      <ArrowUpRight size={15} />
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    className="masthead-search-all"
+                    onClick={() => submitSearch()}
+                  >
+                    See results for “{search.trim()}” <ArrowUpRight size={15} />
+                  </button>
+                </>
+              ) : searchError ? (
+                <div className="masthead-search-empty">
+                  <strong>Search is temporarily unavailable</strong>
+                  <span>Please try again in a moment.</span>
+                </div>
+              ) : !searchLoading ? (
+                <div className="masthead-search-empty">
+                  <strong>No exact matches yet</strong>
+                  <span>Try a model, brand, or component name.</span>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </form>
         <div className="masthead-actions">
-          <button
-            className="masthead-optional"
-            disabled
-            aria-label="Account"
-            title="Account coming soon"
-          >
-            <UserRound size={17} />
-          </button>
-          <button
-            className="masthead-optional"
-            disabled
-            aria-label="Wishlist"
-            title="Wishlist coming soon"
-          >
-            <Heart size={17} />
-          </button>
           <button
             role="switch"
             aria-checked={theme === 'dark'}
@@ -224,7 +358,7 @@ export function Header({
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button className="masthead-optional" onClick={onAbout} aria-label="About Mythos">
+          <button onClick={onAbout} aria-label="About Mythos">
             <Info size={17} />
           </button>
         </div>
@@ -253,8 +387,7 @@ export function Header({
                   trigger.current = event.currentTarget;
                   cancelClose();
                   const touch =
-                    'pointerType' in event.nativeEvent &&
-                    event.nativeEvent.pointerType === 'touch';
+                    'pointerType' in event.nativeEvent && event.nativeEvent.pointerType === 'touch';
                   setOpen(open === parent && (event.detail === 0 || touch) ? null : parent);
                 }}
                 onKeyDown={(event) => {
@@ -271,6 +404,7 @@ export function Header({
               </button>
             ))}
           </nav>
+          <a className="masthead-statistics-link" href="/statistics">Statistics <ArrowUpRight size={13} /></a>
         </div>
       </div>
       {open && (
@@ -290,7 +424,9 @@ export function Header({
         >
           <div
             className="masthead-links"
-            style={{ gridTemplateRows: `repeat(${Math.min(children.length, 4)}, minmax(40px, auto))` }}
+            style={{
+              gridTemplateRows: `repeat(${Math.min(children.length, 4)}, minmax(40px, auto))`,
+            }}
           >
             {children.map((child) => (
               <a
@@ -326,6 +462,7 @@ export function Footer({
         </div>
         <div className="footer-links">
           <h2>Explore the catalog</h2>
+          <a href="/statistics">Statistics <ArrowUpRight size={13} /></a>
           {['GamingLaptop', 'GPU', 'Monitor'].map((section) => (
             <a
               href={`/${section}`}

@@ -4,16 +4,22 @@
   top: 0;
   z-index: 40;
   background: var(--masthead-bg);
+  backdrop-filter: blur(18px);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   box-shadow: 0 10px 32px #0003;
-  transition: transform 220ms ease, box-shadow 220ms ease;
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease;
   will-change: transform;
 }
 .masthead-hidden {
-  transform: translateY(-100%);
+  transform: translateY(calc(-100% - 1px));
   box-shadow: none;
+  pointer-events: none;
 }
 .masthead-row {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 20px;
@@ -24,6 +30,7 @@
 }
 .masthead-category-row {
   position: relative;
+  z-index: 1;
   height: 48px;
   background: var(--masthead-bg);
 }
@@ -42,7 +49,8 @@
 }
 .masthead-brand img {
   border-radius: 9px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
     0 5px 18px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .masthead-brand b {
@@ -69,6 +77,8 @@
   height: 100%;
   flex: none;
 }
+.masthead-statistics-link { display: inline-flex; align-items: center; gap: 6px; flex: none; margin-left: auto; padding: 0 14px; height: 100%; border-radius: 10px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.masthead-statistics-link:hover { color: var(--text); background: var(--raised); }
 .masthead-trigger {
   position: relative;
   display: flex;
@@ -106,40 +116,157 @@
 .masthead-trigger[aria-expanded='true'] svg {
   transform: rotate(180deg);
 }
-.masthead-upcoming {
+.masthead-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding-right: 8px;
+  min-width: 0;
+  width: clamp(280px, 32vw, 480px);
+  height: 40px;
+  margin-left: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  box-shadow: inset 0 1px 0 #ffffff08;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+.masthead-search:focus-within {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.masthead-search > svg:first-child {
+  margin-left: 13px;
   flex: none;
 }
-.masthead-upcoming button {
+.masthead-search input {
+  width: 0;
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 10px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  outline: 0;
+  font-size: 13px;
+}
+.masthead-search-spinner {
+  position: absolute;
+  right: 13px;
+  pointer-events: none;
+  animation: masthead-spin 800ms linear infinite;
+}
+@keyframes masthead-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.masthead-search-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  max-height: min(460px, calc(100dvh - 130px));
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow:
+    0 24px 60px #0009,
+    0 0 0 1px #ffffff05;
+  animation: masthead-menu-in 140ms ease-out;
+}
+.masthead-search-panel > p {
+  margin: 3px 9px 6px;
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.masthead-search-panel button {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 10px;
-  white-space: nowrap;
-  font-size: 11px;
-  font-weight: 550;
-  color: var(--faint);
-  border: 1px solid transparent;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  gap: 10px;
+  border: 0;
   border-radius: 9px;
-  opacity: 0.72;
-  cursor: default;
+  text-align: left;
 }
-.masthead-upcoming button:disabled {
-  cursor: default;
-  opacity: 0.72;
+.masthead-search-panel button:hover,
+.masthead-search-panel button.active {
+  background: var(--soft);
 }
-.masthead-upcoming button svg {
-  color: color-mix(in srgb, var(--accent) 68%, var(--faint));
+.masthead-result-image {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 38px;
+  flex: none;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #fff;
+}
+.masthead-result-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.masthead-result-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  flex: 1;
+}
+.masthead-result-copy strong {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+}
+.masthead-result-copy small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.masthead-search-panel .masthead-search-all {
+  justify-content: center;
+  margin-top: 5px;
+  padding: 10px;
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.masthead-search-empty {
+  display: grid;
+  gap: 2px;
+  padding: 16px 12px;
+  text-align: center;
+}
+.masthead-search-empty strong {
+  font-size: 13px;
+}
+.masthead-search-empty span {
+  color: var(--muted);
+  font-size: 11px;
 }
 .masthead-actions {
   display: flex;
   flex: none;
   gap: 4px;
+  margin-left: auto;
 }
 .masthead-actions button {
   display: grid;
@@ -168,7 +295,9 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in srgb, var(--masthead-bg) 82%, var(--surface));
-  box-shadow: 0 24px 60px #0009, 0 0 0 1px #ffffff05;
+  box-shadow:
+    0 24px 60px #0009,
+    0 0 0 1px #ffffff05;
   animation: masthead-menu-in 140ms ease-out;
 }
 .masthead-menu-wide {
@@ -233,8 +362,8 @@
   .masthead-scroll {
     padding: 6px 12px;
   }
-  .masthead-actions .masthead-optional {
-    display: none;
+  .masthead-search {
+    width: min(39vw, 420px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -249,23 +378,30 @@
 }
 @media (max-width: 600px) {
   .masthead-row {
-    height: 56px;
+    height: 104px;
+    padding: 8px 12px 10px;
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 7px 10px;
   }
   .masthead-category-row {
     height: 42px;
   }
+  .masthead-brand {
+    height: 38px;
+  }
   .masthead-brand > span {
-    display: none;
+    display: inline;
   }
-  .masthead-upcoming {
-    gap: 10px;
+  .masthead-actions {
+    margin-left: auto;
+    height: 38px;
   }
-  .masthead-upcoming button {
-    font-size: 0;
-  }
-  .masthead-upcoming button svg {
-    width: 16px;
-    height: 16px;
+  .masthead-search {
+    order: 3;
+    width: 100%;
+    height: 40px;
+    margin: 0;
   }
   .masthead-trigger {
     padding: 0 9px;

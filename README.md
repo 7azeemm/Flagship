@@ -2,12 +2,11 @@
 
 **A platform in development for discovering tech products, understanding prices, and planning purchases in Tunisia.**
 
-Mythos brings together product data from Tunisian retailers as the foundation for a broader shopping platform: price-history graphs, product trackers and alerts, a marketplace, PC building tools, and more.
+Mythos brings together product data from Tunisian retailers as the foundation for a broader shopping platform: product trackers and alerts, a marketplace, PC building tools, and more.
 
 This repository contains the **Rust data collection and API backend** and a responsive
-catalog website with light/dark themes, category navigation, product details, and
-simple and structured filters. Accounts, charts, statistics, and alerts are still on
-the roadmap.
+catalog website with light/dark themes, category navigation, product details, price-history
+charts, and structured filters. Accounts and alerts are still on the roadmap.
 
 To browse saved products without starting the scraper or Discord bot, first run
 `npm ci` and `npm run build` inside `website/`, then run
@@ -20,6 +19,7 @@ To browse saved products without starting the scraper or Discord bot, first run
 - Category-specific parsers and reference datasets for normalizing product information.
 - Product records with retailer links, prices, availability, component identifiers, and change-history fields.
 - An Axum API with search, price and stock filters, retailer selection, sorting, pagination, and experimental product grouping.
+- A market overview and product price-history charts based on saved observations.
 - JSON product exports, page and description caches, and scraping-cycle reports.
 
 > [!IMPORTANT]
@@ -30,7 +30,7 @@ To browse saved products without starting the scraper or Discord bot, first run
 | Area | Direction |
 | --- | --- |
 | Product discovery | Richer comparisons and product insights beyond the current catalog |
-| Graphs and analytics | Price-history charts and availability trends |
+| Graphs and analytics | Broader price and availability analysis beyond the current charts |
 | Trackers | Watchlists, price-drop alerts, restock alerts, and advanced queries |
 | PC builder | Tools for choosing components and planning a build |
 | Marketplace | A marketplace alongside retailer product discovery |
@@ -69,13 +69,13 @@ cargo run --locked
 
 The Cargo package is still named `PriceTracker`; the project is now called **Mythos**. Run commands from the repository root so relative configuration and data paths resolve correctly.
 
-The normal server binds to `0.0.0.0:3000`; catalog-only mode binds to `127.0.0.1:3000`. The website makes same-origin API requests, and permissive CORS is disabled. The catalog is read-only and has no account authentication. For deployment, use an HTTPS reverse proxy; see [website/README.md](website/README.md).
+The normal server binds to `0.0.0.0:3000`; catalog-only mode binds to `127.0.0.1:3000`. The website makes same-origin API requests, and permissive CORS is disabled. The catalog is read-only and has no account authentication. For deployment, use an HTTPS reverse proxy.
 
 ### Try the API
 
 ```bash
 curl http://localhost:3000/info
-curl 'http://localhost:3000/GPU/products?page=1&sort=price_desc&require_section_info=true'
+curl 'http://localhost:3000/GPU/products?page=1&sort=price_desc&send_section_info=true'
 curl 'http://localhost:3000/Laptop/products?search=Lenovo&stock=InStock'
 ```
 
@@ -88,16 +88,32 @@ Use the section identifiers returned by `/info`; they are case-sensitive. Produc
 | `site`, `stock` | Filter retailer names and stock states |
 | `page` | Select a page, starting at 1 |
 | `sort=price_desc` | Sort by descending price; default is ascending |
-| `require_section_info=true` | Include available filter and category metadata |
+| `send_section_info=true` | Include available filter and category metadata |
 | `grouping_mode=true` | Return experimental product groups |
 | `filters` | JSON object mapping filter keys to lists of accepted identifiers |
 
 ## Development notes
 
-Parser coverage, grouping accuracy, data restoration, and durable history storage are still being refined. A history field in a product record does not yet mean that a complete charting or alert service exists.
+Parser coverage, grouping accuracy, data restoration, and durable history storage are still being refined. Charts need repeated observations to show a meaningful trend; alerts are not implemented yet.
 
 When enabling live collection, review retailer access policies and use appropriate request limits. Treat collected prices and availability as observations, and verify them with the retailer before purchasing. Keep credentials and private operational data out of Git.
 
 ## Contributing
 
 Useful contributions include reproducible parser failures, sanitized sample pages, normalization improvements, and focused API fixes. Discuss larger changes before implementing them so they fit the platform roadmap.
+# Development price history
+
+The homepage and `/statistics` use recorded price changes. To preview or add a repeatable month of sample changes to the local saved catalog, stop the server and run:
+
+```powershell
+python scripts/simulate_price_history.py
+python scripts/simulate_price_history.py --apply
+```
+
+Restart the server with `--serve-only` to inspect the generated charts without scraping. The script backs up every changed file in `data/.price-history-backup`. Restore the original catalog with:
+
+```powershell
+python scripts/simulate_price_history.py --restore
+```
+
+The generated changes are for development only. A normal scan may overwrite the modified prices.

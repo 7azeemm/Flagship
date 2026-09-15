@@ -38,6 +38,10 @@ impl ScanRecord {
 pub struct ScanCache;
 
 impl ScanCache {
+    pub async fn latest() -> Option<ScanRecord> {
+        REPORTS.read().await.first().cloned()
+    }
+
     pub async fn insert(record: ScanRecord) {
         let mut reports = REPORTS.write().await;
         reports.retain(|existing| existing.id != record.id);
