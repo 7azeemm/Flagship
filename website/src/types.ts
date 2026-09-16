@@ -20,11 +20,23 @@ export interface Product {
   description: string | null;
   components: Record<string, string>;
   filter_ids: Record<string, string>;
-  history: unknown[];
+  history: ProductHistory;
   updated_at: string | null;
   added_at: string | null;
   views: number;
   missing_group_fields: string[];
+}
+export interface ProductHistory {
+  entries: ProductHistoryEntry[];
+}
+export interface ProductHistoryEntry {
+  timestamp: string;
+  changes: ProductHistoryChange[];
+}
+export interface ProductHistoryChange {
+  field: string;
+  old_value: unknown;
+  new_value: unknown;
 }
 export interface VariantSummary {
   id: string;
@@ -75,11 +87,15 @@ export interface FilterGroup {
   label: string;
   options: FilterValue[];
 }
+export interface FacetCount {
+  value: string;
+  count: number;
+}
 export interface SectionInfo {
   filters: FilterGroup[];
-  sites: string[];
+  sites: FacetCount[];
+  statuses: FacetCount[];
   components: string[];
-  components_by_section: Record<string, string[]>;
   group_by: { key: string; required: boolean }[];
   min_price: number;
   max_price: number;

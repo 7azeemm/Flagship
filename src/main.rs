@@ -8,7 +8,6 @@ use crate::api::server;
 use crate::utils::logger::setup_logging;
 use crate::utils::serde_ext::JsonExt;
 use crate::utils::web_client::WebClient;
-use core::scanner::CatalogScanner;
 use core::sections::SectionConfig;
 use core::storage::ProductStorage;
 use core::tracking::error_tracker::ErrorTracker;
@@ -18,6 +17,8 @@ use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use tokio::net::TcpListener;
+use crate::core::scanner::CatalogScanner;
+use crate::core::tracking::overrides::{ProductOverrides};
 
 #[tokio::main]
 async fn main() {
@@ -34,9 +35,10 @@ async fn main() {
     WebClient::init().await;
 
     info::load_categories().await;
+    ProductOverrides::load().await;
     SectionConfig::load().await;
     ProductStorage::load().await;
-    // CatalogScanner::schedule().await;
+    CatalogScanner::schedule().await;
     VariantStorage::load().await;
 
     let api_listener = TcpListener::bind("127.0.0.1:3000".to_string()).await.expect("Failed to bind API port");

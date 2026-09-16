@@ -15,6 +15,9 @@ import {
   pageNumbers,
 } from './catalog';
 import { parsePage, parseProduct, parseServerInfo } from './api';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Filters } from '../components/Filters';
 
 test('URLs preserve nested filters, retailers, sorting, grouping and pagination', () => {
   const query = {
@@ -118,6 +121,83 @@ test('response validation rejects malformed data and accepts empty catalogs', ()
     }).total_products,
     0,
   );
+  const sectionInfo = parsePage({
+    items: [],
+    total_items: 0,
+    total_products: 0,
+    total_pages: 0,
+    page: 1,
+    section_info: {
+      filters: [],
+      sites: [
+        { value: 'Mytek', count: 8 },
+        { value: 'Empty shop', count: 0 },
+      ],
+      statuses: [
+        { value: 'InStock', count: 6 },
+        { value: 'OutOfStock', count: 2 },
+        { value: 'Arriving', count: 0 },
+        { value: 'OnDemand', count: 0 },
+      ],
+      components: ['cpu'],
+      group_by: [],
+      min_price: 100,
+      max_price: 1000,
+    },
+  }).section_info;
+  assert.equal(sectionInfo?.sites[1].count, 0);
+  assert.equal(sectionInfo?.statuses[0].value, 'InStock');
+  assert.throws(() =>
+    parsePage({
+      items: [],
+      total_items: 0,
+      total_products: 0,
+      total_pages: 0,
+      page: 1,
+      section_info: {
+        filters: [],
+        sites: ['Mytek'],
+        statuses: [],
+        components: [],
+        group_by: [],
+        min_price: 0,
+        max_price: 0,
+      },
+    }),
+  );
+});
+
+test('retailer and availability counts render, including zero-count retailers', () => {
+  const info = {
+    filters: [],
+    sites: [
+      { value: 'Empty shop', count: 0 },
+      { value: 'Mytek', count: 8 },
+    ],
+    statuses: [
+      { value: 'InStock', count: 6 },
+      { value: 'OutOfStock', count: 2 },
+      { value: 'Arriving', count: 0 },
+      { value: 'OnDemand', count: 0 },
+    ],
+    components: [],
+    group_by: [],
+    min_price: 100,
+    max_price: 1000,
+  };
+  const html = renderToStaticMarkup(
+    createElement(Filters, {
+      query: defaultQuery(),
+      info,
+      base: info,
+      update: () => {},
+      reset: () => {},
+      disabled: false,
+    }),
+  );
+  assert.match(html, /In stock<\/span><small>6<\/small>/);
+  assert.match(html, /Empty shop<\/span><small>0<\/small>/);
+  assert.match(html, /Mytek<\/span><small>8<\/small>/);
 });
 test('external links reject executable or relative URLs', () => {
   assert.equal(safeURL('javascript:alert(1)'), undefined);
@@ -231,15 +311,18 @@ test('individual charts reconstruct price changes and respect period and interva
     price: 100,
     status: 'OutOfStock',
     added_at: '2026-01-01T00:00:00Z',
-    history: [
-      { field: 'price', old_value: 150, new_value: 100, timestamp: '2026-09-02T00:00:00Z' },
-      {
-        field: 'status',
-        old_value: 'InStock',
-        new_value: 'OutOfStock',
-        timestamp: '2026-09-03T00:00:00Z',
-      },
-    ],
+    history: {
+      entries: [
+        {
+          timestamp: '2026-09-02T00:00:00Z',
+          changes: [{ field: 'price', old_value: 150, new_value: 100 }],
+        },
+        {
+          timestamp: '2026-09-03T00:00:00Z',
+          changes: [{ field: 'status', old_value: 'InStock', new_value: 'OutOfStock' }],
+        },
+      ],
+    },
   });
   const chart = productHistoryChart(product, '30d', 'scan', Date.parse('2026-09-07T00:00:00Z'));
   assert.equal(chart.points[0].timestamp, '2026-08-08T00:00:00.000Z');
@@ -248,8 +331,6 @@ test('individual charts reconstruct price changes and respect period and interva
   assert.equal(chart.summary.period_low, 100);
   assert.equal(productHistoryChart(product, 'all', 'week').interval, 'week');
 });
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { classifyPrice, ProductAnalytics } from '../components/ProductAnalytics';
 import { ProductDialog } from '../components/ProductDialog';
 
@@ -286,6 +367,40 @@ test('product details hide empty components and show listings only for multi-pro
     render([{ ...product, components: { cpu: 'Core i5' } }], '/products/a'),
     /<h2>Components<\/h2>/,
   );
+});
+test('product history groups one update and renders every typed field change', () => {
+  const product = parseProduct({
+    id: 'history-product',
+    title: 'History product',
+    site: 'Shop',
+    price: 120,
+    status: 'OutOfStock',
+    history: {
+      entries: [
+        {
+          timestamp: '2026-09-15T10:30:00Z',
+          changes: [
+            { field: 'price', old_value: 150, new_value: 120 },
+            { field: 'status', old_value: 'InStock', new_value: 'OutOfStock' },
+          ],
+        },
+      ],
+    },
+  });
+  const html = renderToStaticMarkup(
+    createElement(ProductDialog, {
+      products: [product],
+      chart: null,
+      fields: [],
+      endpoint: '/products/history-product',
+      onClose: () => {},
+    }),
+  );
+  assert.match(html, /1 recorded updates · 2 changes/);
+  assert.match(html, /2 fields changed/);
+  assert.match(html, /dateTime="2026-09-15T10:30:00Z"/);
+  assert.match(html, /150 DT/);
+  assert.match(html, /Out of stock/);
 });
 test('product page renders the requested price and availability charts without sliders', () => {
   const product = parseProduct({
@@ -350,17 +465,20 @@ test('retailer comparison uses the lowest available offer and preserves stock ga
     price: 120,
     status: 'InStock',
     added_at: '2026-09-01T00:00:00Z',
-    history: [
-      { field: 'price', timestamp: '2026-09-03T00:00:00Z', old_value: 100, new_value: 120 },
-      {
-        field: 'status',
-        timestamp: '2026-09-02T00:00:00Z',
-        old_value: 'OutOfStock',
-        new_value: 'InStock',
-      },
-    ],
+    history: {
+      entries: [
+        {
+          timestamp: '2026-09-03T00:00:00Z',
+          changes: [{ field: 'price', old_value: 100, new_value: 120 }],
+        },
+        {
+          timestamp: '2026-09-02T00:00:00Z',
+          changes: [{ field: 'status', old_value: 'OutOfStock', new_value: 'InStock' }],
+        },
+      ],
+    },
   });
-  const second = { ...first, id: 'b', price: 150, history: [] };
+  const second = { ...first, id: 'b', price: 150, history: { entries: [] } };
   const alone = retailerHistory([first], 'all', 'scan', now)[0];
   assert.equal(alone.points[0].lowest_price, null);
   assert.equal(alone.low, 100);
@@ -371,7 +489,7 @@ test('retailer comparison uses the lowest available offer and preserves stock ga
   assert.equal(combined.low, 100);
   assert.equal(combined.high, 150);
   const unavailable = retailerHistory(
-    [{ ...first, status: 'OutOfStock', history: [] }],
+    [{ ...first, status: 'OutOfStock', history: { entries: [] } }],
     'all',
     'scan',
     now,

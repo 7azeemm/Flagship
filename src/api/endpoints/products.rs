@@ -2,6 +2,7 @@ use crate::api::error::ApiError::InvalidQuery;
 use crate::api::error::ApiResult;
 use crate::api::filters::{FilterGroup, build_all_filters, product_matches_key};
 use crate::core::product::{Product, ProductStatus};
+use crate::core::retailers::RETAILERS;
 use crate::core::sections::{GroupField, Section};
 use crate::core::storage::ProductStorage;
 use crate::core::variant::{VariantCatalogRecord, VariantStorage};
@@ -114,12 +115,18 @@ impl VariantSummary {
 #[derive(Serialize, Debug)]
 pub struct SectionInfo {
     pub filters: Vec<FilterGroup>,
-    pub sites: Vec<String>,//todo: with count
+    pub sites: Vec<FacetCount>,
+    pub statuses: Vec<FacetCount>,
     pub components: Vec<String>,
-    pub components_by_section: HashMap<String, Vec<String>>,
     pub group_by: Vec<GroupField>,
     pub min_price: i32,
     pub max_price: i32,
+}
+
+#[derive(Serialize, Debug, PartialEq, Eq)]
+pub struct FacetCount {
+    pub value: String,
+    pub count: usize,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -154,20 +161,20 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Pric
     let mut products: Vec<Product> = ProductStorage::get_storage().read().await.products.values().filter(|product| product.section == section).cloned().collect();
 
     let stable_bounds = category_bounds(&products);
+    let section_info = (params.send_section_info == Some(true)).then(|| SectionInfo {
+        sites: site_counts(section, &products, &params, &filters),
+        statuses: status_counts(&products, &params, &filters),
+        min_price: stable_bounds.0,
+        max_price: stable_bounds.1,
+        components: config.components.clone(),
+        group_by: config.group.clone(),
+        filters: Vec::new(),
+    });
     products.retain(|product| matches_basic(product, &params));
-    let bounds = (params.send_section_info == Some(true)).then_some(stable_bounds);
-    let section_info = match bounds {
-        Some((sites, min_price, max_price)) => Some(SectionInfo {
-            sites,
-            min_price,
-            max_price,
-            components: config.components.clone(),
-            components_by_section: HashMap::new(),
-            group_by: config.group.clone(),
-            filters: build_all_filters(section, &products, &filters),
-        }),
-        None => None,
-    };
+    let section_info = section_info.map(|mut info| {
+        info.filters = build_all_filters(section, &products, &filters);
+        info
+    });
 
     products.retain(|product| filters.iter().all(|(key, ids)| ids.is_empty() || product_matches_key(product, key, ids)));
 
@@ -227,14 +234,53 @@ fn validate_query(params: &PriceQuery) -> ApiResult<()> {
     Ok(())
 }
 
-fn category_bounds(products: &[Product]) -> (Vec<String>, i32, i32) {
-    let sites = products.iter().map(|p| p.retailer.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+fn category_bounds(products: &[Product]) -> (i32, i32) {
     let min = products.iter().map(|p| p.price).min().unwrap_or(0);
     let max = products.iter().map(|p| p.price).max().unwrap_or(0);
-    (sites, min, max)
+    (min, max)
+}
+
+fn site_counts(section: Section, products: &[Product], params: &PriceQuery, filters: &HashMap<String, Vec<String>>) -> Vec<FacetCount> {
+    let sites = RETAILERS
+        .iter()
+        .filter(|retailer| retailer.config().sections.iter().any(|(candidate, _)| *candidate == section))
+        .map(|retailer| retailer.config().name.to_string())
+        .chain(products.iter().map(|product| product.retailer.clone()))
+        .collect::<BTreeSet<_>>();
+    let mut counts = HashMap::<String, usize>::new();
+    for product in products
+        .iter()
+        .filter(|product| matches_search_and_price(product, params) && matches_stock(product, &params.stock) && matches_filters(product, filters))
+    {
+        *counts.entry(product.retailer.clone()).or_default() += 1;
+    }
+    sites
+        .into_iter()
+        .map(|value| FacetCount {
+            count: counts.get(&value).copied().unwrap_or(0),
+            value,
+        })
+        .collect()
+}
+
+fn status_counts(products: &[Product], params: &PriceQuery, filters: &HashMap<String, Vec<String>>) -> Vec<FacetCount> {
+    [ProductStatus::InStock, ProductStatus::OutOfStock, ProductStatus::Arriving, ProductStatus::OnDemand]
+        .into_iter()
+        .map(|status| FacetCount {
+            value: status.to_string(),
+            count: products
+                .iter()
+                .filter(|product| product.status == status && matches_search_and_price(product, params) && matches_site(product, &params.site) && matches_filters(product, filters))
+                .count(),
+        })
+        .collect()
 }
 
 fn matches_basic(product: &Product, params: &PriceQuery) -> bool {
+    matches_search_and_price(product, params) && matches_site(product, &params.site) && matches_stock(product, &params.stock)
+}
+
+fn matches_search_and_price(product: &Product, params: &PriceQuery) -> bool {
     if let Some(search) = &params.search {
         let search = search.to_lowercase();
         let (excluded, text) = search.strip_prefix("!=").map_or((false, search.as_str()), |text| (true, text));
@@ -243,17 +289,6 @@ fn matches_basic(product: &Product, params: &PriceQuery) -> bool {
             return false;
         }
     }
-    if !params.site.is_empty() && !params.site.contains(&product.retailer) {
-        return false;
-    }
-    if !params.stock.is_empty()
-        && !params.stock.iter().any(|stock| {
-            let stock = if stock == "OnArrive" { "Arriving" } else { stock.as_str() };
-            stock == product.status.to_string()
-        })
-    {
-        return false;
-    }
     if params.min_price.is_some_and(|min| i64::from(product.price) < min) {
         return false;
     }
@@ -261,6 +296,22 @@ fn matches_basic(product: &Product, params: &PriceQuery) -> bool {
         return false;
     }
     true
+}
+
+fn matches_site(product: &Product, sites: &[String]) -> bool {
+    sites.is_empty() || sites.contains(&product.retailer)
+}
+
+fn matches_stock(product: &Product, statuses: &[String]) -> bool {
+    statuses.is_empty()
+        || statuses.iter().any(|status| {
+            let status = if status == "OnArrive" { "Arriving" } else { status.as_str() };
+            status == product.status.to_string()
+        })
+}
+
+fn matches_filters(product: &Product, filters: &HashMap<String, Vec<String>>) -> bool {
+    filters.iter().all(|(key, ids)| ids.is_empty() || product_matches_key(product, key, ids))
 }
 
 fn pagination(count: usize, requested: Option<usize>) -> (usize, usize, usize) {
@@ -291,4 +342,55 @@ async fn grouped_items(fields: &[String], products: Vec<Product>) -> Vec<Catalog
         }
     }
     standalone
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn product(retailer: &str, status: ProductStatus) -> Product {
+        Product {
+            id: retailer.into(),
+            url: format!("https://example.test/{retailer}"),
+            title: format!("{retailer} laptop"),
+            retailer: retailer.into(),
+            section: Section::Laptop,
+            description: String::new(),
+            image: String::new(),
+            images: Vec::new(),
+            status,
+            price: 1_000,
+            original_price: None,
+            filter_ids: HashMap::new(),
+            components: HashMap::new(),
+            notes: Vec::new(),
+            approved: false,
+            views: 0,
+            history: Default::default(),
+            added_at: chrono::Utc::now(),
+            updated_at: None,
+            removed_at: None,
+        }
+    }
+
+    #[test]
+    fn retailer_and_status_facets_exclude_their_own_selection() {
+        let products = vec![product("Mytek", ProductStatus::InStock), product("Mytek", ProductStatus::OutOfStock), product("Tunisianet", ProductStatus::InStock)];
+        let params = PriceQuery {
+            site: vec!["Mytek".into()],
+            stock: vec!["InStock".into()],
+            ..PriceQuery::default()
+        };
+        let filters = HashMap::new();
+
+        let sites = site_counts(Section::Laptop, &products, &params, &filters);
+        assert_eq!(sites.iter().find(|site| site.value == "Mytek").unwrap().count, 1);
+        assert_eq!(sites.iter().find(|site| site.value == "Tunisianet").unwrap().count, 1);
+        assert!(sites.iter().any(|site| site.count == 0));
+
+        let statuses = status_counts(&products, &params, &filters);
+        assert_eq!(statuses.iter().find(|status| status.value == "InStock").unwrap().count, 1);
+        assert_eq!(statuses.iter().find(|status| status.value == "OutOfStock").unwrap().count, 1);
+        assert_eq!(statuses.len(), 4);
+    }
 }

@@ -30,10 +30,17 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
   const selectedGroupFields = groupFields
     .filter((field) => field.required || query.groupBy?.includes(field.key))
     .map((field) => field.key);
-  const sites = [...new Set([...(base?.sites || []), ...query.site])].sort();
+  const currentInfo = info || base;
+  const siteCounts = new Map((currentInfo?.sites || []).map((site) => [site.value, site.count]));
+  for (const site of query.site) if (!siteCounts.has(site)) siteCounts.set(site, 0);
+  const sites = [...siteCounts].map(([value, count]) => ({ value, count }));
+  sites.sort((left, right) => left.value.localeCompare(right.value));
   const visibleSites = allRetailers
     ? sites
-    : sites.filter((site, index) => index < 5 || query.site.includes(site));
+    : sites.filter((site, index) => index < 5 || query.site.includes(site.value));
+  const statuses =
+    currentInfo?.statuses ||
+    ['InStock', 'OutOfStock', 'Arriving', 'OnDemand'].map((value) => ({ value, count: 0 }));
   return (
     <fieldset className="filters-content" disabled={disabled}>
       <div className="filters-heading">
@@ -149,14 +156,15 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           Availability <ChevronDown size={15} />
         </summary>
         <div className="filter-options">
-          {['InStock', 'OutOfStock', 'Arriving', 'OnDemand'].map((status) => (
-            <label className="checkbox-row" key={status}>
+          {statuses.map((status) => (
+            <label className="checkbox-row" key={status.value}>
               <input
                 type="checkbox"
-                checked={query.stock.includes(status)}
-                onChange={() => update({ stock: toggle(query.stock, status) })}
+                checked={query.stock.includes(status.value)}
+                onChange={() => update({ stock: toggle(query.stock, status.value) })}
               />
-              <span>{stockLabels[status]}</span>
+              <span>{stockLabels[status.value] || status.value}</span>
+              <small>{status.count}</small>
             </label>
           ))}
         </div>
@@ -167,13 +175,14 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
         </summary>
         <div className="filter-options">
           {visibleSites.map((site) => (
-            <label className="checkbox-row" key={site}>
+            <label className="checkbox-row" key={site.value}>
               <input
                 type="checkbox"
-                checked={query.site.includes(site)}
-                onChange={() => update({ site: toggle(query.site, site) })}
+                checked={query.site.includes(site.value)}
+                onChange={() => update({ site: toggle(query.site, site.value) })}
               />
-              <span>{site}</span>
+              <span>{site.value}</span>
+              <small>{site.count}</small>
             </label>
           ))}
           {sites.length > 5 && (

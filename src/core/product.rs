@@ -1,13 +1,14 @@
 use crate::core::sections::Section;
+use crate::core::tracking::overrides::ProductOverrides;
 use crate::core::tracking::scrape_error::ProductParseError;
+use crate::utils::regex_cache::RegexCache;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 use uuid::Uuid;
-use crate::utils::regex_cache::RegexCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Product {
@@ -27,7 +28,7 @@ pub struct Product {
     pub notes: Vec<String>,
     pub approved: bool,
     pub views: u64,
-    pub history: Value,
+    pub history: Vec<ProductHistoryEntry>,
     pub added_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
@@ -70,57 +71,87 @@ impl Product {
         }
     }
 
-    pub fn find_changes(&self, new: &Product, minimal: bool) -> Vec<Value> {
-        let mut changes = Vec::new();
-        change(&mut changes, "title", &self.title, &new.title);
-        change(&mut changes, "description", &self.description, &new.description);
-        change(&mut changes, "status", &self.status, &new.status);
-        change(&mut changes, "price", &self.price, &new.price);
-        change(&mut changes, "original_price", &self.original_price, &new.original_price);
-        change(&mut changes, "image", &self.image, &new.image);
-        change(&mut changes, "images", &self.images, &new.images);
-        if !minimal {
-            change(&mut changes, "id", &self.id, &new.id);
-            change(&mut changes, "url", &self.url, &new.url);
-            change(&mut changes, "site", &self.retailer, &new.retailer);
-            change(&mut changes, "section", &self.section.to_string(), &new.section.to_string());
-            change(&mut changes, "filters", &self.filter_ids, &new.filter_ids);
-            change(&mut changes, "components", &self.components, &new.components);
-            change(&mut changes, "notes", &self.notes, &new.notes);
-            change(&mut changes, "approved", &self.approved, &new.approved);
-            change(&mut changes, "views", &self.views, &new.views);
-            change(&mut changes, "history", &self.history, &new.history);
-            change(&mut changes, "added_at", &self.added_at, &new.added_at);
-            change(&mut changes, "updated_at", &self.updated_at, &new.updated_at);
-            change(&mut changes, "removed_at", &self.removed_at, &new.removed_at);
+    pub async fn record_override_changes(&mut self, old: &Product, minimal: bool) -> Vec<ProductChange> {
+        let changes = self.record_changes(old, minimal);
+        if let Some(history_entry) = self.history.last().cloned().filter(|_| !changes.is_empty()) {
+            ProductOverrides::record(&old.url, history_entry).await;
         }
         changes
     }
 
-    pub fn record_changes(&mut self, old: &Product, minimal: bool) -> Vec<Value> {
+    pub fn record_changes(&mut self, old: &Product, minimal: bool) -> Vec<ProductChange> {
         let changes = old.find_changes(self, minimal);
         if changes.is_empty() {
             return changes;
         }
 
-        let mut history = self.history.as_array().cloned().unwrap_or_default();
-        history.extend(changes.iter().cloned());
-        self.history = Value::Array(history);
-        self.updated_at = Some(Utc::now());
+        let timestamp = Utc::now();
+        let history_entry = ProductHistoryEntry {
+            timestamp,
+            changes: changes.clone(),
+        };
+        self.history.push(history_entry);
+        self.updated_at = Some(timestamp);
         changes
+    }
+
+    pub fn find_changes(&self, new: &Product, minimal: bool) -> Vec<ProductChange> {
+        const SCANNER_FIELDS: &[&str] = &["title", "description", "status", "price", "original_price", "image", "images"];
+        const MANAGED_FIELDS: &[&str] = &["history", "updated_at"];
+
+        let old = serde_json::to_value(self).expect("Product should always serialize");
+        let new = serde_json::to_value(new).expect("Product should always serialize");
+        let old = old.as_object().expect("Product should serialize as an object");
+        let new = new.as_object().expect("Product should serialize as an object");
+
+        new.iter()
+            .filter(|(field, _)| {
+                if minimal {
+                    SCANNER_FIELDS.contains(&field.as_str())
+                } else {
+                    !MANAGED_FIELDS.contains(&field.as_str())
+                }
+            })
+            .filter_map(|(field, new_value)| {
+                let old_value = old.get(field)?;
+                (old_value != new_value).then(|| ProductChange {
+                    field: field.clone(),
+                    old_value: old_value.clone(),
+                    new_value: new_value.clone(),
+                })
+            })
+            .collect()
     }
 }
 
-fn change<T: Serialize + PartialEq>(changes: &mut Vec<Value>, field: &str, old: &T, new: &T) {
-    if old != new {
-        changes.push(
-            json!({
-                "field": field,
-                "old_value": old,
-                "new_value": new,
-                "timestamp": Utc::now()
-            }),
-        );
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductHistoryEntry {
+    pub timestamp: DateTime<Utc>,
+    pub changes: Vec<ProductChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProductChange {
+    pub field: String,
+    pub old_value: Value,
+    pub new_value: Value,
+}
+
+impl ProductChange {
+    pub fn prices(&self) -> Option<(i32, i32)> {
+        if self.field != "price" { return None; }
+        Some((
+            i32::try_from(self.old_value.as_i64()?).ok()?,
+            i32::try_from(self.new_value.as_i64()?).ok()?,
+        ))
+    }
+
+    pub fn statuses(&self) -> Option<(ProductStatus, ProductStatus)> {
+        if self.field != "status" { return None; }
+        Some((
+            serde_json::from_value(self.old_value.clone()).ok()?,
+            serde_json::from_value(self.new_value.clone()).ok()?,
+        ))
     }
 }
 
@@ -196,8 +227,8 @@ pub fn minimize_image_url(mut url: String) -> String {
         }
     }
 
-    // Remove patterns like "-1000x1000" or "-300x300"
-    url = RegexCache::replace_all(r"-(\d{3,4})x\1", &url, "").to_string();
+    // Remove patterns like "-1000x1000" or "-300x600"
+    url = RegexCache::replace_all(r"-\d{3,4}x\d{3,4}", &url, "").to_string();
 
     for key in vec!["-home_default", "-medium_default", "-small_default", "-large_default", "-product_zoom", "-catalog_small", "-side_product_default", "/small", "/home"] {
         if url.contains(key) {

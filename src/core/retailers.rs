@@ -1,5 +1,4 @@
 use crate::core::product::{minimize_image_url, CachedProductInfo, Product, ProductStatus};
-use crate::core::retailers::affariyet::Affariyet;
 use crate::core::retailers::agora::Agora;
 use crate::core::retailers::batam::Batam;
 use crate::core::retailers::bestbuytunisie::BestBuyTunisie;
@@ -94,7 +93,6 @@ pub static RETAILERS: Lazy<Vec<Box<dyn Retailer>>> = Lazy::new(|| {
         Box::new(CyberInfo),
         Box::new(MBMInformatique),
         Box::new(Jumbo),
-        Box::new(Affariyet),
         Box::new(Batam),
         Box::new(TechSpace),
         Box::new(SBSInformatique),
@@ -110,6 +108,7 @@ pub static RETAILERS: Lazy<Vec<Box<dyn Retailer>>> = Lazy::new(|| {
         Box::new(Graiet),
         Box::new(TechLand),
 
+        // Box::new(Affariyet), // Cloudflare
         // Box::new(WikiTN), // Bad Pagination
         // Box::new(TunewTec), // Bad Site
         // Box::new(JMB), // Unstable

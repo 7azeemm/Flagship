@@ -1,4 +1,4 @@
-use crate::core::product::Product;
+use crate::core::product::{Product, ProductChange};
 use crate::core::tracking::error_tracker::ErrorCycleSummary;
 use crate::core::tracking::scan_cache::{ScanRecord, ScanTrigger};
 use crate::core::tracking::scan_report::FailedScope;
@@ -7,7 +7,6 @@ use crate::discord::embeds;
 use chrono::{DateTime, Utc};
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use serenity::builder::{CreateMessage, EditMessage, CreateAttachment, CreateAllowedMentions};
 use serenity::http::Http;
 use std::sync::Arc;
@@ -92,7 +91,7 @@ pub enum DiscordEvent {
     Product {
         kind: ProductChangeKind,
         product: Product,
-        changes: Vec<Value>,
+        changes: Vec<ProductChange>,
     },
     Alert(AlertEvent),
     DebugUrl(String),

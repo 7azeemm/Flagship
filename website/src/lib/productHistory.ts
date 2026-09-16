@@ -18,18 +18,16 @@ export function productHistoryChart(
     in_stock_count: stock,
     retailer_count: 1,
   });
-  const events = product.history
-    .filter((event): event is Record<string, unknown> => !!event && typeof event === 'object')
+  const events = product.history.entries
+    .flatMap((entry) => entry.changes.map((change) => ({ ...change, timestamp: entry.timestamp })))
     .filter(
       (event) =>
-        ['price', 'status'].includes(String(event.field)) &&
-        typeof event.timestamp === 'string' &&
-        Number.isFinite(Date.parse(event.timestamp)),
+        ['price', 'status'].includes(event.field) && Number.isFinite(Date.parse(event.timestamp)),
     )
-    .sort((a, b) => Date.parse(String(b.timestamp)) - Date.parse(String(a.timestamp)));
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   const history: VariantChartPoint[] = [];
   for (const event of events) {
-    history.push(snapshot(Date.parse(String(event.timestamp))));
+    history.push(snapshot(Date.parse(event.timestamp)));
     if (
       event.field === 'price' &&
       typeof event.old_value === 'number' &&

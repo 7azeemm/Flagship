@@ -1,9 +1,8 @@
-use crate::core::product::Product;
+use crate::core::product::{Product, ProductChange};
 use crate::core::sections::Section;
 use crate::core::tracking::scan_metrics::{PageMetrics, ScanMetrics};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -21,7 +20,7 @@ pub struct ScanReport {
     pub update: UpdateReport,
 
     pub added_items: Vec<Product>,
-    pub edited_items: Vec<(Product, Vec<Value>)>,
+    pub edited_items: Vec<(Product, Vec<ProductChange>)>,
     pub removed_items: Vec<Product>,
     pub metrics: ScanMetrics,
 }

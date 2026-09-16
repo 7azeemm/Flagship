@@ -1,5 +1,5 @@
 use crate::core::parsers::SectionParser;
-use crate::core::product::Product;
+use crate::core::product::{Product, ProductChange};
 use crate::core::sections::Section;
 use crate::core::storage::ProductStorage;
 use crate::core::tracking::error_tracker::{ErrorCycleSummary, ErrorStatusFilter, ErrorTracker};
@@ -541,20 +541,20 @@ async fn apply_json_edit(
     let old = ProductStorage::get(product_id).await.ok_or("Product not found")?;
     let raw = modal_value(modal, "json")
         .map(str::to_string)
-        .unwrap_or_else(|| {
-            (0..5)
-                .filter_map(|index| modal_value(modal, &format!("json_{index}")))
-                .collect::<String>()
-        });
+        .unwrap_or_else(|| (0..5).filter_map(|index| modal_value(modal, &format!("json_{index}"))).collect::<String>());
     if raw.trim().is_empty() {
         return Err("Product JSON cannot be empty".into());
     }
 
     let mut product: Product = serde_json::from_str(&raw).map_err(|error| format!("Invalid product JSON: {error}"))?;
 
-    let changes = product.record_changes(&old, false);
+    if product.id != old.id {
+        return Err("Product ID cannot be modified".into())
+    }
+
+    let changes = product.record_override_changes(&old, false).await;
     if changes.len() > 0 {
-        ProductStorage::replace_by_id(product_id, product.clone()).await?;
+        ProductStorage::replace(product.clone()).await?;
         events::emit(DiscordEvent::Product {
             kind: ProductChangeKind::Edited,
             product: product.clone(),
@@ -565,15 +565,8 @@ async fn apply_json_edit(
     update_product_modal(ctx, modal, &product).await
 }
 
-async fn apply_note(
-    ctx: &Context,
-    modal: &ModalInteraction,
-    product_id: &str,
-) -> Result<(), String> {
-    let note = modal_value(modal, "note")
-        .ok_or("Missing note")?
-        .trim()
-        .to_string();
+async fn apply_note(ctx: &Context, modal: &ModalInteraction, product_id: &str) -> Result<(), String> {
+    let note = modal_value(modal, "note").ok_or("Missing note")?.trim().to_string();
     let update = ProductStorage::add_note(product_id, note).await?;
     events::emit(DiscordEvent::Product {
         kind: ProductChangeKind::Edited,

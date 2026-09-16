@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Search, SlidersHorizontal, Store } from 'lucide-react';
 import type { CatalogItem, Product, VariantChart } from './types';
 import { useCatalog } from './hooks/useCatalog';
-import { money, sectionLabel } from './lib/catalog';
+import { hasFilterChanges, money, sectionLabel } from './lib/catalog';
 import { Footer, Header } from './components/Layout';
 import { ActiveFilters, Filters } from './components/Filters';
 import { ProductCard } from './components/ProductCard';
@@ -76,7 +76,7 @@ export default function App() {
       url: '',
       description: null,
       filter_ids: {},
-      history: [],
+      history: { entries: [] },
       updated_at: null,
       added_at: null,
       views: variant.views,
@@ -84,6 +84,10 @@ export default function App() {
     };
     return { id: variant.id, product, variant };
   });
+  const catalogEmpty =
+    !!base &&
+    !hasFilterChanges(query) &&
+    base.statuses.every((status) => status.count === 0);
   const openItem = async (item: CatalogItem) => {
     detailRequest.current?.abort();
     const controller = new AbortController();
@@ -224,16 +228,16 @@ export default function App() {
                   <div className="empty-state">
                     <Search size={30} />
                     <h2>
-                      {base && !base.sites.length
+                      {catalogEmpty
                         ? 'The catalog is getting ready.'
                         : 'No matches. More possibilities.'}
                     </h2>
                     <p>
-                      {base && !base.sites.length
+                      {catalogEmpty
                         ? 'No products have been loaded for this category yet.'
                         : 'Try a broader search or remove a filter to see more products.'}
                     </p>
-                    {base && base.sites.length > 0 && (
+                    {hasFilterChanges(query) && (
                       <button className="primary-button" onClick={reset}>
                         Clear filters <ArrowRight size={16} />
                       </button>
@@ -245,7 +249,7 @@ export default function App() {
                       key={entry.id}
                       product={entry.product}
                       variant={entry.variant}
-                      fields={base?.components_by_section[entry.product.section] || fields}
+                      fields={fields}
                       onOpen={() => {
                         const item = page!.items.find((item) => item.data.id === entry.id);
                         if (item) void openItem(item);
@@ -286,7 +290,7 @@ export default function App() {
           endpoint={selected.endpoint}
           products={selected.products}
           chart={selected.chart}
-          fields={base?.components_by_section[selected.products[0].section] || fields}
+          fields={fields}
           onClose={() => setSelected(null)}
         />
       )}

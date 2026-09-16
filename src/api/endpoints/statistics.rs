@@ -540,29 +540,14 @@ fn sample_offers(products: &[&Product], boundaries: &[DateTime<Utc>]) -> Vec<Sam
         .map(|product| {
             let mut price_changes = Vec::new();
             let mut status_changes = Vec::new();
-            for event in product.history.as_array().into_iter().flatten() {
-                let Some(at) = event.get("timestamp").and_then(|value| value.as_str()).and_then(|value| value.parse::<DateTime<Utc>>().ok()) else {
-                    continue;
-                };
-                match event.get("field").and_then(|value| value.as_str()) {
-                    Some("price") => {
-                        if let Some(old) = event.get("old_value").and_then(|value| value.as_i64()).and_then(|value| i32::try_from(value).ok()) {
-                            price_changes.push((at, old));
-                        }
+            for entry in &product.history {
+                for change in &entry.changes {
+                    if let Some((old, _)) = change.prices() {
+                        price_changes.push((entry.timestamp, old));
                     }
-                    Some("status") => {
-                        let old = match event.get("old_value").and_then(|value| value.as_str()) {
-                            Some("InStock") => Some(ProductStatus::InStock),
-                            Some("OutOfStock") => Some(ProductStatus::OutOfStock),
-                            Some("Arriving") => Some(ProductStatus::Arriving),
-                            Some("OnDemand") => Some(ProductStatus::OnDemand),
-                            _ => None,
-                        };
-                        if let Some(old) = old {
-                            status_changes.push((at, old));
-                        }
+                    if let Some((old, _)) = change.statuses() {
+                        status_changes.push((entry.timestamp, old));
                     }
-                    _ => {}
                 }
             }
             price_changes.sort_unstable_by(|a, b| b.0.cmp(&a.0));

@@ -1,13 +1,13 @@
-use crate::core::product::{Product, ProductStatus};
+use crate::core::product::{Product, ProductChange, ProductStatus};
 use crate::core::scanner::CatalogScanner;
 use crate::core::sections::Section;
+use crate::core::tracking::overrides::ProductOverrides;
 use crate::core::tracking::scan_report::ScanReport;
 use crate::core::variant::VariantStorage;
 use crate::utils::file_loader::FileLoader;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -26,7 +26,7 @@ pub struct ProductStorage {
 #[derive(Clone, Debug)]
 pub struct ProductUpdate {
     pub product: Product,
-    pub changes: Vec<Value>,
+    pub changes: Vec<ProductChange>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -59,6 +59,10 @@ impl ProductStorage {
                 Ok(section_products) => products.extend(section_products),
                 Err(error) => tracing::error!(%error, "Failed to load {section} products"),
             }
+        }
+
+        if let Err(error) = ProductOverrides::apply_saved(&mut products).await {
+            tracing::error!(%error, "Failed to apply saved product overrides");
         }
 
         let removed_products = FileLoader::load_or_default::<Vec<Product>>(REMOVED_PRODUCTS_PATH)
@@ -158,22 +162,15 @@ impl ProductStorage {
         products
     }
 
-    pub async fn replace_by_id(original_id: &str, product: Product) -> Result<Product, String> {
+    pub async fn replace(product: Product) -> Result<(), String> {
         let mut storage = PRODUCT_STORAGE.write().await;
-        let previous = storage.products.remove(original_id).ok_or_else(|| "Product not found".to_string())?;
-        let section = product.section;
-
-        if product.id != original_id && storage.products.contains_key(&product.id) {
-            storage.products.insert(previous.id.clone(), previous);
-            return Err("Another product already uses that ID".into());
-        }
+        let previous = storage.products.get(&product.id).ok_or_else(|| "Product not found".to_string())?;
+        let sections = HashSet::from([previous.section, product.section]);
 
         storage.products.insert(product.id.clone(), product);
-
-        Self::save(&*storage, vec![section], false).await;
+        Self::save(&storage, sections.into_iter().collect(), false).await;
         VariantStorage::update(&storage.products, false).await;
-        
-        Ok(previous)
+        Ok(())
     }
 
     pub async fn reparse_section(section: Section) -> Result<ReparseSummary, String> {
@@ -230,7 +227,7 @@ impl ProductStorage {
         Ok(update)
     }
 
-    fn reparse(product: &mut Product) -> Vec<Value> {
+    fn reparse(product: &mut Product) -> Vec<ProductChange> {
         let old = product.clone();
         CatalogScanner::normalize_product_section(product);
         product.filter_ids.clear();
@@ -246,7 +243,7 @@ impl ProductStorage {
         
         let old = product.clone();
         product.notes.push(note);
-        let changes = product.record_changes(&old, false);
+        let changes = product.record_override_changes(&old, false).await;
         let update = ProductUpdate {
             product: product.clone(),
             changes,
@@ -254,6 +251,19 @@ impl ProductStorage {
         
         Self::save(&storage, vec![section], false).await;
         Ok(update)
+    }
+
+    pub async fn approve(product_id: &str) -> Result<Product, String> {
+        let mut storage = PRODUCT_STORAGE.write().await;
+        let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let old = product.clone();
+
+        product.approved = true;
+        product.record_override_changes(&old, false).await;
+
+        let clone = product.clone();
+        Self::save(&storage, vec![clone.section], false).await;
+        Ok(clone)
     }
 
     pub async fn pending_review(section: Option<Section>) -> Vec<Product> {
@@ -265,18 +275,6 @@ impl ProductStorage {
             .collect::<Vec<_>>();
         products.sort_by_key(|product| product.added_at);
         products
-    }
-
-    pub async fn approve(product_id: &str) -> Result<Product, String> {
-        let mut storage = PRODUCT_STORAGE.write().await;
-        let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
-        let section = product.section;
-        
-        product.approved = true;
-        let product = product.clone();
-        
-        Self::save(&storage, vec![section], false).await;
-        Ok(product)
     }
 
     pub async fn remove(product_id: &str) -> Result<Product, String> {

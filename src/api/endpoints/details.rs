@@ -159,33 +159,21 @@ fn build_product_chart(product: &Product, query: &ChartQuery) -> VariantChart {
         retailer_count: 1,
     };
 
-    let mut events = product
-        .history
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|event| {
-            let field = event.get("field")?.as_str()?;
-            if !matches!(field, "price" | "status") {
-                return None;
-            }
-            let timestamp = event.get("timestamp")?.as_str()?.parse::<DateTime<Utc>>().ok()?;
-            Some((timestamp, field, event))
-        })
-        .collect::<Vec<_>>();
-    events.sort_by_key(|(timestamp, _, _)| *timestamp);
+    let mut entries = product.history.iter().collect::<Vec<_>>();
+    entries.sort_by_key(|entry| entry.timestamp);
 
     let mut state = current.clone();
     let mut history = Vec::new();
-    for (timestamp, field, event) in events.into_iter().rev() {
-        state.timestamp = timestamp;
+    for entry in entries.into_iter().rev() {
+        state.timestamp = entry.timestamp;
         history.push(state.clone());
-        if field == "price" {
-            if let Some(price) = event.get("old_value").and_then(|v| v.as_i64()).and_then(|v| i32::try_from(v).ok()) {
-                state.lowest_price = Some(price);
+        for change in &entry.changes {
+            if let Some((old, _)) = change.prices() {
+                state.lowest_price = Some(old);
             }
-        } else if let Some(status) = event.get("old_value").and_then(|v| v.as_str()) {
-            state.in_stock_count = usize::from(status == "InStock");
+            if let Some((old, _)) = change.statuses() {
+                state.in_stock_count = usize::from(old == ProductStatus::InStock);
+            }
         }
     }
     state.timestamp = product.added_at;

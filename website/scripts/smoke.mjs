@@ -28,11 +28,30 @@ assert.equal(new Set(urls).size, urls.length);
 const initial = await get('/api/GamingLaptop/products?send_section_info=true');
 assert(initial.items.length, 'Load saved GamingLaptop data before running smoke checks.');
 const bounds = (result) => [
-  result.section_info.sites,
+  result.section_info.sites.map(({ value }) => value),
+  result.section_info.statuses.map(({ value }) => value),
   result.section_info.min_price,
   result.section_info.max_price,
   result.section_info.components,
 ];
+assert(
+  initial.section_info.sites.every(
+    ({ value, count }) => typeof value === 'string' && Number.isInteger(count),
+  ),
+);
+assert(
+  initial.section_info.statuses.every(
+    ({ value, count }) => typeof value === 'string' && Number.isInteger(count),
+  ),
+);
+assert.equal(
+  initial.section_info.sites.reduce((total, site) => total + site.count, 0),
+  initial.total_products,
+);
+assert.equal(
+  initial.section_info.statuses.reduce((total, status) => total + status.count, 0),
+  initial.total_products,
+);
 for (const query of [
   'search=NO_MATCH_729A',
   'site=Mytek',

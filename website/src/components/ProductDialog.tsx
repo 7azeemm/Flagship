@@ -130,8 +130,8 @@ export function ProductDialog({
                   <History size={13} /> History
                 </dt>
                 <dd>
-                  {selected.history.length
-                    ? `${selected.history.length} recorded changes`
+                  {selected.history.entries.length
+                    ? `${selected.history.entries.length} recorded updates · ${selected.history.entries.reduce((total, entry) => total + entry.changes.length, 0)} changes`
                     : 'No recorded changes'}
                 </dd>
               </div>
@@ -186,21 +186,22 @@ export function ProductDialog({
 }
 
 export function ProductChangeHistory({ product }: { product: Product }) {
-  const events = product.history
-    .filter(
-      (event): event is Record<string, unknown> =>
-        !!event && typeof event === 'object' && !Array.isArray(event),
-    )
-    .filter((event) => typeof event.field === 'string')
-    .sort(
-      (a, b) => (Date.parse(String(b.timestamp)) || 0) - (Date.parse(String(a.timestamp)) || 0),
-    );
+  const entries = [...product.history.entries]
+    .filter((entry) => entry.changes.length > 0)
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   const value = (field: string, raw: unknown): string => {
     if (raw === null || raw === undefined || raw === '') return 'Not recorded';
     if ((field === 'price' || field === 'original_price') && typeof raw === 'number')
       return `${money(raw)} DT`;
     if (field === 'status' && typeof raw === 'string') return stockLabels[raw] || raw;
-    if (typeof raw === 'object') return JSON.stringify(raw);
+    if (Array.isArray(raw)) return raw.length ? raw.map(String).join(', ') : 'None';
+    if (typeof raw === 'object') {
+      const values = Object.entries(raw as Record<string, unknown>);
+      return values.length
+        ? values.map(([key, item]) => `${fieldLabel(key)}: ${String(item)}`).join(' · ')
+        : 'None';
+    }
+    if (typeof raw === 'boolean') return raw ? 'Yes' : 'No';
     return String(raw);
   };
   return (
@@ -212,21 +213,28 @@ export function ProductChangeHistory({ product }: { product: Product }) {
           <p>Recorded changes for the selected {product.site} listing · newest first</p>
         </div>
       </div>
-      {events.length ? (
+      {entries.length ? (
         <ol className="product-timeline">
-          {events.map((event, index) => (
-            <li key={index}>
-              <div>
-                <strong>{fieldLabel(String(event.field))}</strong>
-                <time>
-                  {formatDate(typeof event.timestamp === 'string' ? event.timestamp : null)}
-                </time>
-              </div>
-              <p>
-                <span>{value(String(event.field), event.old_value)}</span>
-                <span aria-label="changed to"> → </span>
-                <strong>{value(String(event.field), event.new_value)}</strong>
-              </p>
+          {entries.map((entry, index) => (
+            <li key={`${entry.timestamp}-${index}`}>
+              <header>
+                <time dateTime={entry.timestamp}>{formatDate(entry.timestamp)}</time>
+                <span>
+                  {entry.changes.length} {entry.changes.length === 1 ? 'field' : 'fields'} changed
+                </span>
+              </header>
+              <ul className="product-change-list">
+                {entry.changes.map((change, changeIndex) => (
+                  <li key={`${change.field}-${changeIndex}`}>
+                    <strong>{fieldLabel(change.field)}</strong>
+                    <p>
+                      <span>{value(change.field, change.old_value)}</span>
+                      <span aria-label="changed to"> → </span>
+                      <b>{value(change.field, change.new_value)}</b>
+                    </p>
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ol>

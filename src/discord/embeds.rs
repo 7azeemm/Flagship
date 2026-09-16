@@ -1,4 +1,4 @@
-use crate::core::product::{Product, ProductStatus};
+use crate::core::product::{Product, ProductChange, ProductStatus};
 use crate::core::tracking::error_tracker::{
     ErrorCycleRecord, ErrorCycleStatus, ErrorCycleSummary, ErrorRecord,
 };
@@ -19,7 +19,7 @@ const RED: u32 = 0xEF4444;
 const PURPLE: u32 = 0x8B5CF6;
 const DARK: u32 = 0x334155;
 
-pub fn product(product: &Product, kind: ProductChangeKind, changes: &[Value]) -> CreateEmbed {
+pub fn product(product: &Product, kind: ProductChangeKind, changes: &[ProductChange]) -> CreateEmbed {
     let (label, color) = match kind {
         ProductChangeKind::New => ("✦ New product", GREEN),
         ProductChangeKind::Edited => ("↻ Product updated", BLUE),
@@ -1431,24 +1431,23 @@ fn humanize(value: &str) -> String {
     chars.into_iter().collect()
 }
 
-fn format_change(change: &Value) -> String {
-    let field_name = change
-        .get("field")
-        .and_then(Value::as_str)
-        .unwrap_or("field");
+fn format_change(change: &ProductChange) -> String {
+    let field_name = change.field.as_ref();
     let field = humanize(field_name);
+    let (old_value, new_value) = (&change.old_value, &change.new_value);
+    
     if matches!(field_name, "filters" | "components") {
         if let Some(formatted) = format_object_change(
             &field,
-            change.get("old_value"),
-            change.get("new_value"),
+            Some(old_value),
+            Some(new_value),
         ) {
             return formatted;
         }
     }
 
-    let old = compact(change.get("old_value"));
-    let new = compact(change.get("new_value"));
+    let old = compact(Some(old_value));
+    let new = compact(Some(new_value));
 
     if old.is_empty() {
         format!(

@@ -9,7 +9,6 @@ use axum_extra::extract::Query;
 use chrono::{DateTime, Duration, Utc};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -204,16 +203,12 @@ impl<'a> MarketOffer<'a> {
     fn new(product: &'a Product) -> Self {
         let mut price_changes = product
             .history
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|event| event.get("field").and_then(Value::as_str) == Some("price"))
-            .filter_map(|event| {
-                Some((
-                    event.get("timestamp")?.as_str()?.parse::<DateTime<Utc>>().ok()?,
-                    value_price(event.get("old_value"))?,
-                    value_price(event.get("new_value")),
-                ))
+            .iter()
+            .flat_map(|entry| {
+                entry.changes.iter().filter_map(move |change| {
+                    let (old, new) = change.prices()?;
+                    Some((entry.timestamp, old, Some(new)))
+                })
             })
             .collect::<Vec<_>>();
         price_changes.sort_unstable_by(|a, b| b.0.cmp(&a.0));
@@ -315,27 +310,17 @@ pub(crate) fn price_at(product: &Product, at: DateTime<Utc>) -> Option<i32> {
         return None;
     }
     let mut price = product.price;
-    for event in product.history.as_array().into_iter().flatten().rev() {
-        let Some(timestamp) = event.get("timestamp").and_then(Value::as_str).and_then(|value| value.parse::<DateTime<Utc>>().ok()) else {
-            continue;
-        };
-        if timestamp <= at {
+    for entry in product.history.iter().rev() {
+        if entry.timestamp <= at {
             break;
         }
-        if event.get("field").and_then(Value::as_str) != Some("price") {
-            continue;
-        }
-        if timestamp > at {
-            if let Some(old) = value_price(event.get("old_value")) {
+        for change in &entry.changes {
+            if let Some((old, _)) = change.prices() {
                 price = old;
             }
         }
     }
     Some(price)
-}
-
-fn value_price(value: Option<&Value>) -> Option<i32> {
-    value?.as_i64().and_then(|price| i32::try_from(price).ok())
 }
 
 fn build_deals(products: &[&Product], since: DateTime<Utc>, limit: usize) -> Vec<HomeProduct> {
@@ -345,20 +330,15 @@ fn build_deals(products: &[&Product], since: DateTime<Utc>, limit: usize) -> Vec
         .filter_map(|product| {
             let mut latest: Option<(DateTime<Utc>, Option<i32>, Option<i32>)> = None;
             let mut all_time_low = product.price;
-            for event in product.history.as_array().into_iter().flatten() {
-                if event.get("field").and_then(Value::as_str) != Some("price") {
-                    continue;
-                }
-                let old = value_price(event.get("old_value"));
-                let new = value_price(event.get("new_value"));
-                for price in [old, new].into_iter().flatten() {
-                    all_time_low = all_time_low.min(price);
-                }
-                let Some(timestamp) = event.get("timestamp").and_then(Value::as_str).and_then(|value| value.parse::<DateTime<Utc>>().ok()) else {
-                    continue;
-                };
-                if latest.as_ref().is_none_or(|(stored, _, _)| timestamp >= *stored) {
-                    latest = Some((timestamp, old, new));
+            for entry in &product.history {
+                for change in &entry.changes {
+                    let Some((old, new)) = change.prices() else {
+                        continue;
+                    };
+                    all_time_low = all_time_low.min(old).min(new);
+                    if latest.as_ref().is_none_or(|(stored, _, _)| entry.timestamp >= *stored) {
+                        latest = Some((entry.timestamp, Some(old), Some(new)));
+                    }
                 }
             }
             let (latest_at, old, new) = latest?;

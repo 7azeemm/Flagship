@@ -28,6 +28,47 @@ const stringMap = (value: unknown): Record<string, string> =>
 const number = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 const invalid = () => new Error('The catalog returned an unexpected response. Please try again.');
+const facetCounts = (value: unknown) => {
+  if (
+    !Array.isArray(value) ||
+    !value.every((item) => record(item) && typeof item.value === 'string' && number(item.count))
+  )
+    throw invalid();
+  return value.map((item) => ({ value: item.value as string, count: item.count as number }));
+};
+
+const productHistory = (value: unknown): Product['history'] => {
+  if (value === undefined || value === null) return { entries: [] };
+  if (!record(value) || !Array.isArray(value.entries)) throw invalid();
+  return {
+    entries: value.entries.map((entry) => {
+      if (
+        !record(entry) ||
+        typeof entry.timestamp !== 'string' ||
+        !Number.isFinite(Date.parse(entry.timestamp)) ||
+        !Array.isArray(entry.changes)
+      )
+        throw invalid();
+      return {
+        timestamp: entry.timestamp,
+        changes: entry.changes.map((change) => {
+          if (
+            !record(change) ||
+            typeof change.field !== 'string' ||
+            !Object.hasOwn(change, 'old_value') ||
+            !Object.hasOwn(change, 'new_value')
+          )
+            throw invalid();
+          return {
+            field: change.field,
+            old_value: change.old_value,
+            new_value: change.new_value,
+          };
+        }),
+      };
+    }),
+  };
+};
 
 export function parseProduct(value: unknown): Product {
   if (
@@ -56,7 +97,7 @@ export function parseProduct(value: unknown): Product {
     description: typeof value.description === 'string' ? value.description : null,
     components: stringMap(value.components),
     filter_ids: stringMap(value.filter_ids),
-    history: Array.isArray(value.history) ? value.history : [],
+    history: productHistory(value.history),
     updated_at: typeof value.updated_at === 'string' ? value.updated_at : null,
     added_at: typeof value.added_at === 'string' ? value.added_at : null,
     views: number(value.views) ? value.views : 0,
@@ -172,7 +213,6 @@ export function parsePage(value: unknown): PageResponse {
     if (
       !record(raw) ||
       !Array.isArray(raw.filters) ||
-      !strings(raw.sites) ||
       !strings(raw.components) ||
       !Array.isArray(raw.group_by) ||
       !number(raw.min_price) ||
@@ -180,15 +220,9 @@ export function parsePage(value: unknown): PageResponse {
     )
       throw invalid();
     info = {
-      sites: raw.sites,
+      sites: facetCounts(raw.sites),
+      statuses: facetCounts(raw.statuses),
       components: raw.components,
-      components_by_section: record(raw.components_by_section)
-        ? Object.fromEntries(
-            Object.entries(raw.components_by_section).filter((entry): entry is [string, string[]] =>
-              strings(entry[1]),
-            ),
-          )
-        : {},
       group_by: raw.group_by.map((field: unknown) => {
         if (!record(field) || typeof field.key !== 'string' || typeof field.required !== 'boolean')
           throw invalid();
