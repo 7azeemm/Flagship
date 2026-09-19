@@ -36,7 +36,7 @@ async fn main() {
     ProductOverrides::load().await;
 
     ProductStorage::load().await;
-    // CatalogScanner::schedule().await;
+    CatalogScanner::schedule().await;
     VariantStorage::load().await;
 
     server::run(

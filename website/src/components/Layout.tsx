@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   ChevronDown,
@@ -23,8 +23,9 @@ export function Brand() {
   );
 }
 
-export function Header({
+export const Header = memo(function Header({
   section,
+  locationKey,
   filters,
   categories,
   onSection,
@@ -33,6 +34,7 @@ export function Header({
   onAbout,
 }: {
   section: string;
+  locationKey: string;
   filters: Record<string, string[]>;
   categories: ServerInfo['categories'];
   onSection: (url: string) => void;
@@ -70,6 +72,12 @@ export function Header({
       if (!panel.current?.contains(document.activeElement)) setOpen(null);
     }, 180);
   };
+  useEffect(() => {
+    setHidden(false);
+    setOpen(null);
+    lastScrollY.current = window.scrollY;
+    scrollDistance.current = 0;
+  }, [locationKey]);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (!root.current?.contains(event.target as Node)) {
@@ -171,17 +179,23 @@ export function Header({
       scroller?.removeEventListener('scroll', position);
     };
   }, [open]);
-  const active = (url: string) => {
-    const target = readQuery(new URL(url, window.location.origin));
-    return (
-      target.section === section &&
-      Object.entries(target.filters).every(
-        ([key, values]) =>
-          values.length === filters[key]?.length &&
-          values.every((value) => filters[key].includes(value)),
+  const activeUrls = useMemo(() => {
+    const result = new Set<string>();
+    for (const item of Object.values(categories).flat()) {
+      const target = readQuery(new URL(item.url, window.location.origin));
+      if (
+        target.section === section &&
+        Object.entries(target.filters).every(
+          ([key, values]) =>
+            values.length === filters[key]?.length &&
+            values.every((value) => filters[key].includes(value)),
+        )
       )
-    );
-  };
+        result.add(item.url);
+    }
+    return result;
+  }, [categories, filters, section]);
+  const active = (url: string) => activeUrls.has(url);
   const navigate = (event: React.MouseEvent<HTMLAnchorElement>, url: string) => {
     if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
       event.preventDefault();
@@ -444,7 +458,7 @@ export function Header({
       )}
     </header>
   );
-}
+});
 export function Footer({
   onSection,
   onAbout,

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, Search, SlidersHorizontal, Store } from 'lucide-react';
 import type { CatalogItem, Product, VariantChart } from './types';
 import { useCatalog } from './hooks/useCatalog';
-import { hasFilterChanges, money, sectionLabel } from './lib/catalog';
+import { groupingEnabled, hasFilterChanges, money, sectionLabel } from './lib/catalog';
 import { Footer, Header } from './components/Layout';
 import { ActiveFilters, Filters } from './components/Filters';
 import { ProductCard } from './components/ProductCard';
@@ -43,6 +43,7 @@ export default function App() {
     offers: Product[];
     chart: VariantChart | null;
     detailsEndpoint: string;
+    initialProductId?: string;
   } | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const [detailStatus, setDetailStatus] = useState('');
@@ -69,13 +70,13 @@ export default function App() {
     reset,
     disabled: loading,
   };
-  const entries = (catalogPage?.items || []).map((item) => {
+  const entries = useMemo(() => (catalogPage?.items || []).map((item) => {
     if (item.type === 'product')
-      return { id: item.data.id, product: item.data, variant: undefined };
+      return { id: item.data.id, item, product: item.data, variant: undefined };
     const variant = item.data;
     const product: Product = {
       id: variant.id,
-      title: variant.id,
+      title: variant.title,
       section: variant.section,
       image: variant.image,
       images: variant.images,
@@ -92,13 +93,13 @@ export default function App() {
       views: variant.views,
       missing_group_fields: [],
     };
-    return { id: variant.id, product, variant };
-  });
+    return { id: variant.id, item, product, variant };
+  }), [catalogPage?.items]);
   const catalogEmpty =
     !!baselineSectionInfo &&
     !hasFilterChanges(query) &&
     baselineSectionInfo.statuses.every((status) => status.count === 0);
-  const openItem = async (item: CatalogItem) => {
+  const openItem = useCallback(async (item: CatalogItem) => {
     detailRequest.current?.abort();
     const controller = new AbortController();
     detailRequest.current = controller;
@@ -121,7 +122,13 @@ export default function App() {
             ? [parseProduct(record.product)]
             : [];
       if (!products.length) throw new Error('No retailer listings are available.');
-      setSelected({ offers: products, chart: parseChart(record.chart), detailsEndpoint: endpoint });
+      setSelected({
+        offers: products,
+        chart: parseChart(record.chart),
+        detailsEndpoint: endpoint,
+        initialProductId:
+          item.type === 'variant' ? item.data.representative_product_id : item.data.id,
+      });
       setDetailStatus('');
     } catch (error) {
       if (!controller.signal.aborted)
@@ -129,18 +136,23 @@ export default function App() {
           error instanceof Error ? error.message : 'Product details could not be loaded.',
         );
     }
-  };
-  const chooseSection = (section: string) => {
+  }, []);
+  const chooseSection = useCallback((section: string) => {
     changeSection(section);
     setPathname(window.location.pathname);
     setMobileFilters(false);
-  };
-  const navigatePath = (path: string) => {
+  }, [changeSection]);
+  const navigatePath = useCallback((path: string) => {
     window.history.pushState(null, '', path);
     window.dispatchEvent(new PopStateEvent('popstate'));
     window.scrollTo({ top: 0, behavior: 'auto' });
-  };
-  const chooseHome = () => navigatePath('/');
+  }, []);
+  const chooseHome = useCallback(() => navigatePath('/'), [navigatePath]);
+  const showAbout = useCallback(() => setAbout(true), []);
+  const openProduct = useCallback(
+    (id: string) => navigatePath(`/product/${encodeURIComponent(id)}`),
+    [navigatePath],
+  );
 
   return (
     <>
@@ -153,14 +165,15 @@ export default function App() {
       <Header
         categories={categories}
         section={isHome || isStatistics || productId ? '' : query.section}
+        locationKey={pathname}
         filters={query.filters}
         onSection={chooseSection}
-        onProduct={(id) => navigatePath(`/product/${encodeURIComponent(id)}`)}
+        onProduct={openProduct}
         onHome={chooseHome}
-        onAbout={() => setAbout(true)}
+        onAbout={showAbout}
       />
       {isHome ? (
-        <HomePage onNavigate={navigatePath} onAbout={() => setAbout(true)} />
+        <HomePage onNavigate={navigatePath} onAbout={showAbout} />
       ) : isStatistics ? (
         <StatisticsPage categories={categories} onNavigate={navigatePath} />
       ) : productId ? (
@@ -188,7 +201,7 @@ export default function App() {
                       <>
                         <strong>{money(catalogPage?.total_items ?? 0)}</strong>{' '}
                         {catalogPage?.total_items === 1 ? 'result' : 'results'}
-                        {query.grouped && catalogPage && catalogPage.total_items < catalogPage.total_products && (
+                        {groupingEnabled(query, baselineSectionInfo) && catalogPage && catalogPage.total_items < catalogPage.total_products && (
                           <span> · {money(catalogPage.total_products)} listings</span>
                         )}
                       </>
@@ -264,10 +277,7 @@ export default function App() {
                       product={entry.product}
                       variant={entry.variant}
                       fields={fields}
-                      onOpen={() => {
-                        const item = catalogPage!.items.find((item) => item.data.id === entry.id);
-                        if (item) void openItem(item);
-                      }}
+                      onOpen={() => void openItem(entry.item)}
                     />
                   ))
                 )}
@@ -284,7 +294,7 @@ export default function App() {
           </div>
         </main>
       )}
-      <Footer onSection={chooseSection} onAbout={() => setAbout(true)} />
+      <Footer onSection={chooseSection} onAbout={showAbout} />
       {detailStatus && (
         <div className="detail-status" role="status">
           {detailStatus}
@@ -305,6 +315,7 @@ export default function App() {
           offers={selected.offers}
           chart={selected.chart}
           fields={fields}
+          initialProductId={selected.initialProductId}
           onClose={() => setSelected(null)}
         />
       )}

@@ -127,7 +127,7 @@ impl Product {
 #[serde(untagged)]
 pub enum ComponentValue {
     Simple(String),
-    Structured { id: String, label: String },
+    Structured { id: String, label: String },//todo: add ambiguous field
 }
 
 impl ComponentValue {

@@ -6,35 +6,44 @@
       ["MiniPC", "mini&!=tower||studio|IIYama"],
       ["AllInOnePC", "all in one|all-in-one|tout en un|tout-en-un|aio|all in-one|imac"],
       ["Laptop", "portable"],
-      ["GamingPC", "setup|gamer|gaming|OMEN"]
+      ["GamingPC", "setup|gamer|gaming|OMEN"],
+      ["Others", "serveur"]
     ],
     "replace_words": [
       ["Penitum", "Pentium"]
     ],
     "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"],
+    "group_by_default": true,
     "group": [
       {
         "key": "cpu",
-        "required": true
+        "required": true,
+        "default": true
       },
       {
         "key": "gpu",
-        "required": false
+        "required": false,
+        "default": true
       },
       {
         "key": "memory_size",
-        "required": false
+        "required": false,
+        "default": true
       },
       {
         "key": "storage_size",
-        "required": false
+        "required": false,
+        "default": true
       }
     ]
   },
   {
     "id": "GamingPC",
     "min_price": 200,
+    "move_rules": [
+      ["AllInOnePC", "imac"]
+    ],
     "filters": ["cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"],
     "group": [

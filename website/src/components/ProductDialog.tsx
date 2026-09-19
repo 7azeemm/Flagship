@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ArrowUpRight, CalendarDays, Clock3, History, Maximize2, Package } from 'lucide-react';
 import type { Product, VariantChart } from '../types';
 import { componentLabel, fieldLabel, money, safeURL, sectionLabel, stockLabels } from '../lib/catalog';
@@ -24,18 +24,27 @@ export function ProductDialog({
   chart,
   fields,
   detailsEndpoint,
+  initialProductId,
   onClose,
 }: {
   offers: Product[];
   chart: VariantChart | null;
   fields: string[];
   detailsEndpoint: string;
+  initialProductId?: string;
   onClose: () => void;
 }) {
-  const sortedOffers = [...offers].sort(
-    (a, b) => Number(b.status === 'InStock') - Number(a.status === 'InStock') || a.price - b.price,
+  const sortedOffers = useMemo(
+    () =>
+      [...offers].sort(
+        (a, b) =>
+          Number(b.status === 'InStock') - Number(a.status === 'InStock') || a.price - b.price,
+      ),
+    [offers],
   );
-  const [selected, setSelected] = useState(sortedOffers[0]);
+  const [selected, setSelected] = useState(
+    sortedOffers.find((offer) => offer.id === initialProductId) || sortedOffers[0],
+  );
   const [zoom, setZoom] = useState(false);
   const link = safeURL(selected.url);
 

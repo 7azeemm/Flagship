@@ -128,6 +128,11 @@ function parseVariant(value: unknown): VariantSummary {
     throw invalid();
   return {
     id: value.id,
+    title: typeof value.title === 'string' ? value.title : value.id,
+    representative_product_id:
+      typeof value.representative_product_id === 'string'
+        ? value.representative_product_id
+        : '',
     section: value.section,
     price: value.price,
     image: typeof value.image === 'string' ? value.image : '',
@@ -226,6 +231,7 @@ export function parsePage(value: unknown): PageResponse {
       !Array.isArray(raw.filters) ||
       !strings(raw.components) ||
       !Array.isArray(raw.group_by) ||
+      typeof raw.group_by_default !== 'boolean' ||
       !number(raw.min_price) ||
       !number(raw.max_price)
     )
@@ -234,10 +240,16 @@ export function parsePage(value: unknown): PageResponse {
       sites: facetCounts(raw.sites),
       statuses: facetCounts(raw.statuses),
       components: raw.components,
+      group_by_default: raw.group_by_default,
       group_by: raw.group_by.map((field: unknown) => {
-        if (!record(field) || typeof field.key !== 'string' || typeof field.required !== 'boolean')
+        if (
+          !record(field) ||
+          typeof field.key !== 'string' ||
+          typeof field.required !== 'boolean' ||
+          typeof field.default !== 'boolean'
+        )
           throw invalid();
-        return { key: field.key, required: field.required };
+        return { key: field.key, required: field.required, default: field.default };
       }),
       min_price: raw.min_price,
       max_price: raw.max_price,

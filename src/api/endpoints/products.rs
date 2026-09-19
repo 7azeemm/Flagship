@@ -82,6 +82,8 @@ impl ProductSummary {
 #[derive(Serialize, Debug)]
 pub struct VariantSummary {
     pub id: String,
+    pub title: String,
+    pub representative_product_id: String,
     pub section: Section,
     pub image: String,
     pub images: Vec<String>,
@@ -99,6 +101,8 @@ impl VariantSummary {
         let representative = in_stock.iter().copied().min_by_key(|product| product.price).or_else(|| offers.iter().min_by_key(|product| product.price))?;
         Some(VariantSummary {
             id: variant.id,
+            title: variant.title,
+            representative_product_id: representative.id.clone(),
             section: variant.section,
             image: representative.image.clone(),
             images: representative.images.clone(),
@@ -119,6 +123,7 @@ pub struct SectionInfo {
     pub statuses: Vec<FacetCount>,
     pub components: Vec<String>,
     pub group_by: Vec<GroupField>,
+    pub group_by_default: bool,
     pub min_price: i32,
     pub max_price: i32,
 }
@@ -134,7 +139,7 @@ pub struct FacetCount {
 pub struct CatalogQueryParams {
     #[serde(rename = "send_section_info")]
     pub include_section_info: Option<bool>,
-    pub grouping_mode: bool,
+    pub grouping_mode: Option<bool>,
     pub group_by: Vec<String>,
     pub page: Option<usize>,
     pub search: Option<String>,
@@ -171,6 +176,7 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Cata
         max_price: stable_bounds.1,
         components: config.components.clone(),
         group_by: config.group.clone(),
+        group_by_default: config.group_by_default,
         filters: Vec::new(),
     });
     products.retain(|product| matches_catalog_query(product, &params));
@@ -188,17 +194,19 @@ pub async fn get_products(Path(section): Path<String>, Query(params): Query<Cata
     });
 
     let total_products = products.len();
-    let mut items = if params.grouping_mode && !config.group.is_empty() {
+    let grouping_mode = params.grouping_mode.unwrap_or(config.group_by_default);
+    let mut items = if grouping_mode && !config.group.is_empty() {
         if params.group_by.iter().any(|key| !config.group.iter().any(|field| &field.key == key)) {
             return Err(InvalidQuery("Unsupported grouping field".into()));
         }
+        let use_defaults = params.group_by.is_empty();
         let fields: Vec<String> = config.group.iter()
-            .filter(|field| field.required || params.group_by.contains(&field.key))
+            .filter(|field| field.required || (use_defaults && field.default) || params.group_by.contains(&field.key))
             .map(|field| field.key.clone()).collect();
         if fields.is_empty() {
             return Err(InvalidQuery("Select at least one grouping field".into()));
         }
-        grouped_items(&fields, products).await
+        grouped_items(section, &fields, products).await
     } else {
         products.into_iter().map(|product| CatalogItem::Product(ProductSummary::from_product(product))).collect()
     };
@@ -327,8 +335,8 @@ fn pagination(count: usize, requested: Option<usize>) -> (usize, usize, usize) {
     (page, total, (page - 1) * PAGE_SIZE)
 }
 
-async fn grouped_items(fields: &[String], products: Vec<Product>) -> Vec<CatalogItem> {
-    let (by_product, mut variants) = VariantStorage::catalog_variants_for_fields(fields).await;
+async fn grouped_items(section: Section, fields: &[String], products: Vec<Product>) -> Vec<CatalogItem> {
+    let (by_product, mut variants) = VariantStorage::catalog_variants_for_fields(section, fields).await;
     let mut grouped = HashMap::<String, Vec<Product>>::new();
     let mut standalone = Vec::new();
     for product in products {

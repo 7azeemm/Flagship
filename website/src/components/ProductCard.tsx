@@ -172,7 +172,7 @@ export function ProductCard({
   onOpen: () => void;
 }) {
   const grouped = !!variant;
-  const name = variant?.id ?? product.title;
+  const name = variant?.title ?? product.title;
   const discount =
     !grouped &&
     product.original_price &&

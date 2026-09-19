@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CatalogQuery, PageResponse, SectionInfo, ServerInfo } from '../types';
 import { parsePage, parseServerInfo, request } from '../lib/api';
 import { defaultQuery, apiQueryParams, sectionInfoKey, queryURL, readQuery } from '../lib/catalog';
 
+const emptyCategories: ServerInfo['categories'] = {};
+
 export function useCatalog(shouldFetchCatalogPage = true) {
   const [query, setQuery] = useState(() => readQuery(window.location));
-  const [categories, setCategories] = useState<ServerInfo['categories']>({});
+  const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [catalogPage, setCatalogPage] = useState<PageResponse | null>(null);
   const [baselineSectionInfo, setBaselineSectionInfo] = useState<SectionInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +24,38 @@ export function useCatalog(shouldFetchCatalogPage = true) {
   }, []);
 
   useEffect(() => {
+    if (serverInfoCache.current) {
+      setServerInfo(serverInfoCache.current);
+      return;
+    }
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        const info = parseServerInfo(await request('/info', controller.signal));
+        if (controller.signal.aborted) return;
+        serverInfoCache.current = info;
+        setServerInfo(info);
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : 'The catalog could not be loaded.');
+          setLoading(false);
+        }
+      }
+    };
+    void load();
+    return () => controller.abort();
+  }, [reloadNonce]);
+
+  useEffect(() => {
+    if (!shouldFetchCatalogPage) {
+      setLoading(false);
+      setCatalogPage(null);
+      return;
+    }
+    if (!serverInfo) {
+      setLoading(true);
+      return;
+    }
     const controller = new AbortController();
     setLoading(true);
     setError('');
@@ -29,13 +63,7 @@ export function useCatalog(shouldFetchCatalogPage = true) {
     setBaselineSectionInfo(sectionInfoCache.current.get(query.section) || null);
     const load = async () => {
       try {
-        const info =
-          serverInfoCache.current || parseServerInfo(await request('/info', controller.signal));
-        if (controller.signal.aborted) return;
-        serverInfoCache.current = info;
-        setCategories(info.categories);
-        if (!shouldFetchCatalogPage) return;
-        const available = Object.values(info.categories).flat();
+        const available = Object.values(serverInfo.categories).flat();
         if (!available.length) return;
         const category = available.find(
           (category) => category.id.toLowerCase() === query.section.toLowerCase(),
@@ -74,30 +102,41 @@ export function useCatalog(shouldFetchCatalogPage = true) {
     };
     void load();
     return () => controller.abort();
-  }, [shouldFetchCatalogPage, query, reloadNonce]);
+  }, [shouldFetchCatalogPage, query, reloadNonce, serverInfo]);
 
-  const update = (changes: Partial<CatalogQuery>, replace = false) => {
-    const next = { ...query, ...changes, page: changes.page ?? 1 };
-    window.history[replace ? 'replaceState' : 'pushState'](null, '', queryURL(next));
-    setQuery(next);
-  };
+  const update = useCallback((changes: Partial<CatalogQuery>, replace = false) => {
+    setQuery((current) => {
+      const next = { ...current, ...changes, page: changes.page ?? 1 };
+      window.history[replace ? 'replaceState' : 'pushState'](null, '', queryURL(next));
+      return next;
+    });
+  }, []);
+  const changeSection = useCallback(
+    (url: string) => update(readQuery(new URL(url.replace(/^\/?/, '/'), window.location.origin))),
+    [update],
+  );
+  const reset = useCallback(() => {
+    setQuery((current) => {
+      const next = {
+        ...defaultQuery(current.section),
+        sort: current.sort,
+        grouped: current.grouped,
+        groupBy: current.groupBy,
+      };
+      window.history.pushState(null, '', queryURL(next));
+      return next;
+    });
+  }, []);
   return {
     query,
-    categories,
+    categories: serverInfo?.categories || emptyCategories,
     catalogPage,
     baselineSectionInfo,
     loading,
     error,
     update,
     retry: () => setReloadNonce((value) => value + 1),
-    changeSection: (url: string) =>
-      update(readQuery(new URL(url.replace(/^\/?/, '/'), window.location.origin))),
-    reset: () =>
-      update({
-        ...defaultQuery(query.section),
-        sort: query.sort,
-        grouped: query.grouped,
-        groupBy: query.groupBy,
-      }),
+    changeSection,
+    reset,
   };
 }

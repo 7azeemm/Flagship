@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Search,
   Check,
@@ -9,7 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import type { CatalogQuery, SectionInfo } from '../types';
-import { fieldLabel, hasFilterChanges, stockLabels, toggle, toggleNode } from '../lib/catalog';
+import { fieldLabel, groupingEnabled, hasFilterChanges, stockLabels, toggle, toggleNode } from '../lib/catalog';
 import { RangeSlider } from './RangeSlider';
 import { StructuredFilterNode } from './StructuredFilterNode';
 
@@ -27,14 +27,18 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [allRetailers, setAllRetailers] = useState(false);
   const groupFields = baselineSectionInfo?.group_by || [];
+  const grouped = groupingEnabled(query, baselineSectionInfo);
   const selectedGroupFields = groupFields
-    .filter((field) => field.required || query.groupBy?.includes(field.key))
+    .filter((field) => field.required || (query.groupBy === null ? field.default : query.groupBy.includes(field.key)))
     .map((field) => field.key);
   const currentInfo = info || baselineSectionInfo;
-  const siteCounts = new Map((currentInfo?.sites || []).map((site) => [site.value, site.count]));
-  for (const site of query.site) if (!siteCounts.has(site)) siteCounts.set(site, 0);
-  const sites = [...siteCounts].map(([value, count]) => ({ value, count }));
-  sites.sort((left, right) => left.value.localeCompare(right.value));
+  const sites = useMemo(() => {
+    const counts = new Map((currentInfo?.sites || []).map((site) => [site.value, site.count]));
+    for (const site of query.site) if (!counts.has(site)) counts.set(site, 0);
+    return [...counts]
+      .map(([value, count]) => ({ value, count }))
+      .sort((left, right) => right.count - left.count || left.value.localeCompare(right.value));
+  }, [currentInfo?.sites, query.site]);
   const visibleSites = allRetailers
     ? sites
     : sites.filter((site, index) => index < 5 || query.site.includes(site.value));
@@ -57,25 +61,25 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
             type="button"
             className="group-toggle"
             role="switch"
-            aria-checked={query.grouped}
-            onClick={() => update({ grouped: !query.grouped })}
+            aria-checked={grouped}
+            onClick={() => update({ grouped: !grouped })}
           >
             <span className="toggle-track">
               <Check size={10} />
             </span>
             <span>Group offers</span>
-            <strong>{query.grouped ? 'On' : 'Off'}</strong>
+            <strong>{grouped ? 'On' : 'Off'}</strong>
           </button>
           <div
             className="group-fields"
             aria-label="Group products by"
-            aria-disabled={!query.grouped}
+            aria-disabled={!grouped}
           >
             {groupFields.map((field) => (
               <button
                 key={field.key}
                 aria-pressed={selectedGroupFields.includes(field.key)}
-                disabled={!query.grouped || field.required}
+                disabled={!grouped || field.required}
                 title={
                   field.required ? 'Required for grouping' : `Match by ${fieldLabel(field.key)}`
                 }

@@ -65,7 +65,7 @@ export const defaultQuery = (section = 'GamingLaptop'): CatalogQuery => ({
   stock: ['InStock'],
   filters: {},
   sort: 'price_asc',
-  grouped: true,
+  grouped: null,
   groupBy: null,
   page: 1,
 });
@@ -112,7 +112,7 @@ export function readQuery(location: Pick<Location, 'pathname' | 'search'>): Cata
         return null;
       }
     })(),
-    grouped: params.get('grouping_mode') !== 'false',
+    grouped: params.has('grouping_mode') ? params.get('grouping_mode') !== 'false' : null,
     sort: params.get('sort') === 'price_desc' ? 'price_desc' : 'price_asc',
     page: Math.min(1000000, Math.max(1, parseInt(params.get('page') || '1', 10) || 1)),
   };
@@ -127,7 +127,7 @@ export function queryParams(query: CatalogQuery, metadata = false) {
   if (query.page > 1) params.set('page', String(query.page));
   if (!query.stock.length) params.set('availability', 'all');
   if (query.groupBy !== null) params.set('group_by', JSON.stringify(query.groupBy));
-  params.set('grouping_mode', String(query.grouped));
+  if (query.grouped !== null) params.set('grouping_mode', String(query.grouped));
   const filters = Object.fromEntries(Object.entries(query.filters).filter(([, values]) => values.length));
   if (Object.keys(filters).length) params.set('filters', JSON.stringify(filters));
   if (metadata) params.set('send_section_info', 'true');
@@ -235,6 +235,9 @@ export function sectionInfoKey(query: CatalogQuery) {
 export function apiQueryParams(query: CatalogQuery, metadata: boolean) {
   const params = queryParams(query, metadata);
   params.delete('group_by');
-  if (query.grouped) (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
+  if (query.grouped !== false) (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
   return params;
 }
+
+export const groupingEnabled = (query: CatalogQuery, info: { group_by_default: boolean } | null) =>
+  query.grouped ?? info?.group_by_default ?? false;

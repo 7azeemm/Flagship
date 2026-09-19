@@ -171,6 +171,7 @@ test('response validation rejects malformed data and accepts empty catalogs', ()
       ],
       components: ['cpu'],
       group_by: [],
+      group_by_default: false,
       min_price: 100,
       max_price: 1000,
     },
@@ -190,6 +191,7 @@ test('response validation rejects malformed data and accepts empty catalogs', ()
         statuses: [],
         components: [],
         group_by: [],
+        group_by_default: false,
         min_price: 0,
         max_price: 0,
       },
@@ -212,6 +214,7 @@ test('retailer and availability counts render, including zero-count retailers', 
     ],
     components: [],
     group_by: [],
+    group_by_default: false,
     min_price: 100,
     max_price: 1000,
   };
@@ -228,6 +231,37 @@ test('retailer and availability counts render, including zero-count retailers', 
   assert.match(html, /In stock<\/span><small>6<\/small>/);
   assert.match(html, /Empty shop<\/span><small>0<\/small>/);
   assert.match(html, /Mytek<\/span><small>8<\/small>/);
+  assert.ok(html.indexOf('Mytek') < html.indexOf('Empty shop'));
+});
+test('section grouping defaults select optional fields without locking them', () => {
+  const info = {
+    filters: [],
+    sites: [],
+    statuses: [],
+    components: [],
+    group_by_default: true,
+    group_by: [
+      { key: 'cpu', required: true, default: false },
+      { key: 'gpu', required: false, default: true },
+      { key: 'memory_size', required: false, default: false },
+    ],
+    min_price: 0,
+    max_price: 0,
+  };
+  const html = renderToStaticMarkup(
+    createElement(Filters, {
+      query: defaultQuery('PC'),
+      info,
+      baselineSectionInfo: info,
+      update: () => {},
+      reset: () => {},
+      disabled: false,
+    }),
+  );
+  assert.match(html, /role="switch" aria-checked="true"/);
+  assert.match(html, /aria-pressed="true" disabled="" title="Required for grouping"/);
+  assert.match(html, /aria-pressed="true" title="Match by GPU"/);
+  assert.match(html, /aria-pressed="false" title="Match by Memory size"/);
 });
 test('external links reject executable or relative URLs', () => {
   assert.equal(safeURL('javascript:alert(1)'), undefined);
@@ -294,6 +328,7 @@ test('grouped API summaries keep the joined-fields label and gallery images', ()
         type: 'variant',
         data: {
           id: 'Intel Core i5 | 16 GB',
+          representative_product_id: 'offer-b',
           section: 'CPU',
           image: 'https://example.com/one.jpg',
           images: ['https://example.com/two.jpg'],
@@ -311,6 +346,8 @@ test('grouped API summaries keep the joined-fields label and gallery images', ()
     assert.equal(page.items[0].data.id, 'Intel Core i5 | 16 GB');
   if (page.items[0].type === 'variant')
     assert.deepEqual(page.items[0].data.images, ['https://example.com/two.jpg']);
+  if (page.items[0].type === 'variant')
+    assert.equal(page.items[0].data.representative_product_id, 'offer-b');
 });
 import { buildProductHistoryChart } from './productHistory';
 test('ungroupable product gets a price and stock chart without variant history', () => {
@@ -393,6 +430,17 @@ test('product details hide empty components and show listings only for multi-pro
   );
   assert.match(grouped, /detail-listings/);
   assert.match(grouped, /<b>Shop B<\/b> · Product B/);
+  const previewed = renderToStaticMarkup(
+    createElement(ProductDialog, {
+      offers: [product, { ...product, id: 'b', title: 'Product B', site: 'Shop B', price: 200 }],
+      chart: null,
+      fields: [],
+      detailsEndpoint: '/variants/a',
+      initialProductId: 'b',
+      onClose: () => {},
+    }),
+  );
+  assert.match(previewed, /<h2 id="product-overview-title" tabindex="-1">Product B<\/h2>/);
   assert.match(
     render([{ ...product, components: { cpu: 'Core i5' } }], '/products/a'),
     /<h2>Components<\/h2>/,
@@ -518,7 +566,8 @@ test('file-based categories preserve filtered links sharing a section', () => {
 });
 
 test('category search and grouping defaults survive shared URLs', () => {
-  assert.equal(readQuery({ pathname: '/GPU', search: '' }).grouped, true);
+  assert.equal(readQuery({ pathname: '/GPU', search: '' }).grouped, null);
+  assert.equal(queryParams(defaultQuery('GPU')).has('grouping_mode'), false);
   const query = { ...defaultQuery('GPU'), grouped: false, search: 'RTX 5070' };
   assert.deepEqual(readQuery(new URL(queryURL(query), 'https://mythos.test')), query);
   assert.equal(apiQueryParams(query, false).get('search'), 'RTX 5070');

@@ -44,6 +44,8 @@ export interface ProductHistoryChange {
 }
 export interface VariantSummary {
   id: string;
+  title: string;
+  representative_product_id: string;
   section: string;
   image: string;
   images: string[];
@@ -100,7 +102,8 @@ export interface SectionInfo {
   sites: FacetCount[];
   statuses: FacetCount[];
   components: string[];
-  group_by: { key: string; required: boolean }[];
+  group_by: { key: string; required: boolean; default: boolean }[];
+  group_by_default: boolean;
   min_price: number;
   max_price: number;
 }
@@ -121,7 +124,7 @@ export interface CatalogQuery {
   stock: string[];
   filters: Record<string, string[]>;
   sort: 'price_asc' | 'price_desc';
-  grouped: boolean;
+  grouped: boolean | null;
   groupBy: string[] | null;
   page: number;
 }

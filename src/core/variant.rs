@@ -13,8 +13,6 @@ use uuid::Uuid;
 const VARIANTS_PATH: &str = "state/variants.json";
 static VARIANT_STORAGE: Lazy<RwLock<VariantStorage>> = Lazy::new(|| RwLock::new(VariantStorage::default()));
 
-//FIXME: CPU can be in a variant with PCs if CPU is only selected in groupings (add section check)
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VariantSnapshot {
     pub timestamp: DateTime<Utc>,
@@ -52,6 +50,7 @@ pub struct VariantStorage {
 #[derive(Debug, Clone)]
 pub struct VariantCatalogRecord {
     pub id: String,
+    pub title: String,
     pub section: Section,
 }
 
@@ -102,13 +101,16 @@ impl VariantStorage {
         VARIANT_STORAGE.read().await.variants.get(&key).cloned()
     }
 
-    pub async fn catalog_variants_for_fields(fields: &[String]) -> (HashMap<String, String>, HashMap<String, VariantCatalogRecord>) {
+    pub async fn catalog_variants_for_fields(section: Section, fields: &[String]) -> (HashMap<String, String>, HashMap<String, VariantCatalogRecord>) {
         let storage = VARIANT_STORAGE.read().await;
         let mut by_product = HashMap::new();
         let mut variants = HashMap::new();
-        for variant in storage.variants.values().filter(|variant| variant.active && same_fields(&variant.fields, fields)) {
+        for variant in storage.variants.values().filter(|variant| {
+            variant.active && variant.section == section && same_fields(&variant.fields, fields)
+        }) {
             variants.insert(variant.id.clone(), VariantCatalogRecord {
                 id: variant.id.clone(),
+                title: variant.id.split_once(" | ").map_or_else(|| variant.id.clone(), |(_, title)| title.to_string()),
                 section: variant.section,
             });
             for product_id in &variant.product_ids {
@@ -182,7 +184,11 @@ fn variant_id(product: &Product, field_keys: &[String]) -> Option<String> {
     let values = field_keys.iter()
         .map(|field| component_value(product, field))
         .collect::<Option<Vec<_>>>()?;
-    Some(values.join(" | "))
+    Some(section_variant_id(product.section, &values))
+}
+
+fn section_variant_id(section: Section, values: &[&str]) -> String {
+    format!("{} | {}", section, values.join(" | "))
 }
 
 fn variant_fields(product: &Product, field_keys: &[String]) -> Option<HashMap<String, String>> {
@@ -246,5 +252,17 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
         if changed {
             variant.history.push(snapshot.clone());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::section_variant_id;
+    use crate::core::sections::Section;
+
+    #[test]
+    fn variant_ids_are_scoped_to_their_section() {
+        let fields = ["Intel Core i5-12400"];
+        assert_ne!(section_variant_id(Section::CPU, &fields), section_variant_id(Section::PC, &fields));
     }
 }

@@ -108,6 +108,8 @@ pub struct GroupField {
     pub key: String,
     #[serde(default)]
     pub required: bool,
+    #[serde(default)]
+    pub default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -123,6 +125,8 @@ pub struct SectionConfig {
     pub add_brands_by_models: Vec<Vec<String>>,
     pub filters: Vec<String>,
     pub components: Vec<String>,
+    #[serde(default)]
+    pub group_by_default: bool,
     pub group: Vec<GroupField>,
     pub main_field: Option<String>,
 }
