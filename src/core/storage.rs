@@ -61,9 +61,9 @@ impl ProductStorage {
             }
         }
 
-        if let Err(error) = ProductOverrides::apply_saved(&mut products).await {
-            tracing::error!(%error, "Failed to apply saved product overrides");
-        }
+        // if let Err(error) = ProductOverrides::apply_saved(&mut products).await {
+        //     tracing::error!(%error, "Failed to apply saved product overrides");
+        // }
 
         let removed_products = FileLoader::load_or_create_default::<Vec<Product>>(REMOVED_PRODUCTS_PATH).await
             .unwrap_or_else(|error| {

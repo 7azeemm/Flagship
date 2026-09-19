@@ -14,6 +14,7 @@ use core::tracking::error_tracker::ErrorTracker;
 use core::variant::VariantStorage;
 use dotenv::dotenv;
 use tokio::net::TcpListener;
+use crate::core::scanner::CatalogScanner;
 use crate::core::tracking::overrides::ProductOverrides;
 
 #[tokio::main]
@@ -31,14 +32,16 @@ async fn main() {
     WebClient::init().await;
 
     info::load_categories().await;
-    ProductOverrides::load().await;
     SectionConfig::load().await;
+    ProductOverrides::load().await;
+
     ProductStorage::load().await;
     // CatalogScanner::schedule().await;
     VariantStorage::load().await;
 
-    let api_listener = TcpListener::bind("127.0.0.1:3000".to_string()).await.expect("Failed to bind API port");
-    server::run(api_listener).await.expect("Failed to start server");
+    server::run(
+        TcpListener::bind("127.0.0.1:3000".to_string()).await.expect("Failed to bind API port")
+    ).await.expect("Failed to start server");
 
     WebClient::cleanup().await.ok();
 }

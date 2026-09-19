@@ -13,6 +13,8 @@ use uuid::Uuid;
 const VARIANTS_PATH: &str = "state/variants.json";
 static VARIANT_STORAGE: Lazy<RwLock<VariantStorage>> = Lazy::new(|| RwLock::new(VariantStorage::default()));
 
+//FIXME: CPU can be in a variant with PCs if CPU is only selected in groupings (add section check)
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct VariantSnapshot {
     pub timestamp: DateTime<Utc>,
