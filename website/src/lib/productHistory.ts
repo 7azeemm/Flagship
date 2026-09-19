@@ -2,7 +2,7 @@ import type { Product, VariantChart, VariantChartPoint } from '../types';
 
 // Older APIs return no chart when a product cannot join a variant. Its own record
 // still contains the initial observation and change log, so it remains chartable.
-export function productHistoryChart(
+export function buildProductHistoryChart(
   product: Product,
   range: string,
   interval: string,

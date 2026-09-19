@@ -3,10 +3,11 @@ use crate::core::tracking::overrides::ProductOverrides;
 use crate::core::tracking::scrape_error::ProductParseError;
 use crate::utils::regex_cache::RegexCache;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -23,8 +24,7 @@ pub struct Product {
     pub status: ProductStatus,
     pub price: i32,
     pub original_price: Option<i32>,
-    pub filter_ids: HashMap<String, String>,
-    pub components: HashMap<String, String>,
+    pub components: Components,
     pub notes: Vec<String>,
     pub approved: bool,
     pub views: u64,
@@ -59,7 +59,6 @@ impl Product {
             status,
             price,
             original_price,
-            filter_ids: Default::default(),
             components: Default::default(),
             notes: Default::default(),
             approved: false,
@@ -121,6 +120,69 @@ impl Product {
                 })
             })
             .collect()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ComponentValue {
+    Simple(String),
+    Structured { id: String, label: String },
+}
+
+impl ComponentValue {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Simple(value) => value,
+            Self::Structured { label, .. } => label,
+        }
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Simple(_) => None,
+            Self::Structured { id, .. } => Some(id),
+        }
+    }
+}
+
+impl From<String> for ComponentValue {
+    fn from(value: String) -> Self {
+        Self::Simple(value)
+    }
+}
+
+impl From<&str> for ComponentValue {
+    fn from(value: &str) -> Self {
+        Self::Simple(value.to_string())
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Components(HashMap<String, ComponentValue>);
+
+impl Components {
+    pub fn insert(&mut self, key: String, value: impl Into<ComponentValue>) -> Option<ComponentValue> {
+        self.0.insert(key, value.into())
+    }
+
+    pub fn insert_structured(&mut self, key: String, id: String, label: String) -> Option<ComponentValue> {
+        self.0.insert(key, ComponentValue::Structured { id, label })
+    }
+}
+
+impl Deref for Components {
+    type Target = HashMap<String, ComponentValue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Components {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 

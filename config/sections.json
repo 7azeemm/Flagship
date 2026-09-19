@@ -11,7 +11,7 @@
     "replace_words": [
       ["Penitum", "Pentium"]
     ],
-    "filters": ["cpu", "gpu", "memory", "memory_type", "storage"],
+    "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"],
     "group": [
       {
@@ -23,11 +23,11 @@
         "required": false
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
@@ -35,7 +35,7 @@
   {
     "id": "GamingPC",
     "min_price": 200,
-    "filters": ["cpu", "gpu", "memory", "memory_type", "gpu_memory", "storage"],
+    "filters": ["cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"],
     "group": [
       {
@@ -47,11 +47,11 @@
         "required": true
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
@@ -62,7 +62,7 @@
       ["MiniPC", "mini|barebone"]
     ],
     "filters": [
-      "brand", "cpu", "gpu", "memory", "memory_type", "storage", "display_size", "resolution", "refresh_rate"
+      "brand", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size", "resolution", "refresh_rate"
     ],
     "components": ["brand", "display", "cpu", "gpu", "memory", "storage"],
     "main_field": "brand",
@@ -80,18 +80,18 @@
         "required": true
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
   },
   {
     "id": "MiniPC",
-    "filters": ["cpu", "gpu", "memory", "memory_type", "storage"],
+    "filters": ["cpu", "gpu", "memory_size", "memory_type", "storage_size"],
     "components": ["cpu", "gpu", "memory", "storage"],
     "group": [
       {
@@ -103,11 +103,11 @@
         "required": true
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
@@ -126,7 +126,7 @@
       ["HP15", "HP 15"], ["HP14", "HP 14"]
     ],
     "filters": [
-      "model", "cpu", "gpu", "memory", "memory_type", "storage", "display_size",
+      "model", "cpu", "gpu", "memory_size", "memory_type", "storage_size", "display_size",
       "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
@@ -145,11 +145,11 @@
         "required": false
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
@@ -178,7 +178,7 @@
       ["Lenovo", "Legion"], ["Dell", "Alienware"], ["HP", "Victus"]
     ],
     "filters": [
-      "model", "cpu", "gpu", "memory", "memory_type", "gpu_memory", "storage",
+      "model", "cpu", "gpu", "memory_size", "memory_type", "gpu_memory", "storage_size",
       "display_size", "resolution", "panel_type", "refresh_rate"
     ],
     "components": ["model", "display", "cpu", "gpu", "memory", "storage"],
@@ -197,11 +197,11 @@
         "required": true
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]
@@ -212,7 +212,7 @@
       ["MiniPC", "mini|mac studio"],
       ["AllInOnePC", "imac"]
     ],
-    "filters": ["cpu", "memory", "storage", "display_size"],
+    "filters": ["cpu", "memory_size", "storage_size", "display_size"],
     "components": ["display", "cpu", "memory", "storage"],
     "group": [
       {
@@ -220,11 +220,11 @@
         "required": true
       },
       {
-        "key": "memory",
+        "key": "memory_size",
         "required": false
       },
       {
-        "key": "storage",
+        "key": "storage_size",
         "required": false
       }
     ]

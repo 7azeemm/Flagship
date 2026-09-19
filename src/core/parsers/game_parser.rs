@@ -38,6 +38,6 @@ impl SectionParser for GameParser {
             "Others"
         };
 
-        product.filter_ids.insert("platform".to_string(), platform.to_string());
+        product.components.insert("platform".to_string(), platform.to_string());
     }
 }

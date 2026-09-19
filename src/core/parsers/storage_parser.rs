@@ -33,16 +33,16 @@ impl SectionParser for StorageParser {
                 false => format!("{number}GB")
             };
 
-            product.filter_ids.insert("storage".to_string(), size);
+            product.components.insert("storage_size".to_string(), size);
         }
 
         let title = product.title.to_uppercase().replace(",", ".");
         if title.contains(" NVME") || title.contains("M.2") || title.contains("PCIE") {
-            product.filter_ids.insert("storage_type".to_string(), "NVME".to_string());
+            product.components.insert("storage_type".to_string(), "NVME".to_string());
         } else if title.contains(" SSD") || title.contains("SPATIUM") {
-            product.filter_ids.insert("storage_type".to_string(), "SSD".to_string());
+            product.components.insert("storage_type".to_string(), "SSD".to_string());
         } else {
-            product.filter_ids.insert("storage_type".to_string(), "HDD".to_string());
+            product.components.insert("storage_type".to_string(), "HDD".to_string());
         }
     }
 }

@@ -413,43 +413,6 @@
 .analytics-charts .history-heading span {
   text-align: right;
 }
-.retailer-legend {
-  display: grid;
-  gap: 4px;
-  margin-top: 12px;
-}
-.retailer-legend button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  font-size: 11px;
-  padding: 5px;
-  border-radius: 5px;
-}
-.retailer-legend button:hover {
-  background: var(--soft);
-}
-.retailer-legend button[aria-pressed='false'] {
-  opacity: 0.4;
-}
-.retailer-legend i {
-  width: 16px;
-  height: 3px;
-  border-radius: 3px;
-}
-.retailer-legend strong {
-  margin-left: auto;
-}
-.price-position-chart svg {
-  display: block;
-  width: 100%;
-  margin: 20px 0;
-}
-.price-position-chart text {
-  fill: var(--muted);
-  font-size: 15px;
-}
 .product-dialog .offer-list button > span {
   min-width: 0;
   flex: 1;

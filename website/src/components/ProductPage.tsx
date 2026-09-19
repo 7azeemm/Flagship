@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import type { Product, VariantChart } from '../types';
 import { parseChart, parseProduct, request } from '../lib/api';
-import { safeURL, sectionLabel, stockLabels } from '../lib/catalog';
+import { componentLabel, safeURL, sectionLabel, stockLabels } from '../lib/catalog';
 import { Price, ProductGallery, Specifications } from './ProductCard';
 import { ProductAnalytics } from './ProductAnalytics';
 import { ProductChangeHistory } from './ProductDialog';
@@ -81,8 +81,12 @@ export function ProductPage({
 
   const componentFields = useMemo(() => {
     if (!product) return fields;
-    const available = fields.filter((field) => product.components[field]?.trim());
-    const extras = Object.keys(product.components).filter((field) => !available.includes(field));
+    const available = fields.filter((field) => componentLabel(product.components[field]).trim());
+    const configured = new Set(fields);
+    const extras = Object.keys(product.components).filter(
+      (field) =>
+        !configured.has(field) && componentLabel(product.components[field]).trim().length > 0,
+    );
     return [...available, ...extras];
   }, [fields, product]);
 

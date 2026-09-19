@@ -7,6 +7,7 @@ use serde_json::json;
 use std::fmt;
 use thiserror::Error;
 
+//TODO: some not used
 #[derive(Debug)]
 pub enum ApiError {
     DatabaseError(String),

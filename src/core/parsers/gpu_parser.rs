@@ -20,7 +20,7 @@ impl SectionParser for GPUParser {
 
     fn parse_specs(&self, product: &mut Product, cleaned_title: &str) {
         if let Some(size) = RegexCache::captures(r"(?i)\b(\d+)\s*(?:gb|go|g)\b", cleaned_title, 1) {
-            product.filter_ids.insert("memory_size".to_string(), format!("{size}GB"));
+            product.components.insert("memory_size".to_string(), format!("{size}GB"));
         }
     }
 }

@@ -55,11 +55,11 @@ impl From<&Variant> for VariantDetails {
             section: variant.section,
             fields: variant.fields.clone(),
             representative_product_id: variant.representative_product_id.clone(),
-            lowest_price: variant.data.lowest_price,
-            lowest_price_product_id: variant.data.lowest_price_product_id.clone(),
-            offer_count: variant.data.offer_count,
-            in_stock_count: variant.data.in_stock_count,
-            retailer_count: variant.data.retailer_count,
+            lowest_price: variant.current_snapshot.lowest_price,
+            lowest_price_product_id: variant.current_snapshot.lowest_price_product_id.clone(),
+            offer_count: variant.current_snapshot.offer_count,
+            in_stock_count: variant.current_snapshot.in_stock_count,
+            retailer_count: variant.current_snapshot.retailer_count,
             views: variant.views,
             active: variant.active,
             created_at: variant.created_at,
@@ -103,7 +103,7 @@ pub struct ChartSummary {
 pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>) -> ApiResult<([(&'static str, &'static str); 1], Json<ProductDetailsResponse>)> {
     validate_chart_query(&query)?;
 
-    let product = ProductStorage::get_product(&id).await.ok_or_else(|| ApiError::NotFound("Product not found".into()))?;
+    let product = ProductStorage::find_and_record_view(&id).await.ok_or_else(|| ApiError::NotFound("Product not found".into()))?;
     let chart = match VariantStorage::find_for_product(&product).await {
         Some(variant) => {
             let storage = ProductStorage::get_storage().read().await;
@@ -144,7 +144,7 @@ fn validate_chart_query(query: &ChartQuery) -> ApiResult<()> {
 }
 
 fn build_variant_chart(variant: &Variant, query: &ChartQuery, products: &HashMap<String, Product>) -> VariantChart {
-    build_chart(&variant.history, &variant.data, query, "variant", |snapshot| {
+    build_chart(&variant.history, &variant.current_snapshot, query, "variant", |snapshot| {
         snapshot.lowest_price_product_id.as_ref().and_then(|id| products.get(id)).map(|product| product.retailer.clone())
     })
 }

@@ -135,7 +135,7 @@ impl SectionConfig {
     pub async fn reload() -> Result<usize, String> {
         let mut parsers: HashMap<Section, Arc<dyn SectionParser>> = HashMap::new();
 
-        for config in FileLoader::load_or_default::<Vec<SectionConfig>>("config/sections.json").await? {
+        for config in FileLoader::load_json::<Vec<SectionConfig>>("config/sections.json").await? {
             let section = config.id;
             let config = Arc::new(config);
             let dataset = Dataset::load(section).await?;

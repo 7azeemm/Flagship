@@ -3,17 +3,17 @@ import type { CatalogQuery, PageResponse, SectionInfo, ServerInfo } from '../typ
 import { parsePage, parseServerInfo, request } from '../lib/api';
 import { defaultQuery, apiQueryParams, sectionInfoKey, queryURL, readQuery } from '../lib/catalog';
 
-export function useCatalog(catalogEnabled = true) {
+export function useCatalog(shouldFetchCatalogPage = true) {
   const [query, setQuery] = useState(() => readQuery(window.location));
   const [categories, setCategories] = useState<ServerInfo['categories']>({});
-  const [page, setPage] = useState<PageResponse | null>(null);
-  const [base, setBase] = useState<SectionInfo | null>(null);
+  const [catalogPage, setCatalogPage] = useState<PageResponse | null>(null);
+  const [baselineSectionInfo, setBaselineSectionInfo] = useState<SectionInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
-  const cache = useRef(new Map<string, SectionInfo>());
-  const metadataKey = useRef<string | null>(null);
-  const serverInfo = useRef<ServerInfo | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const sectionInfoCache = useRef(new Map<string, SectionInfo>());
+  const lastSectionInfoKey = useRef<string | null>(null);
+  const serverInfoCache = useRef<ServerInfo | null>(null);
 
   useEffect(() => {
     const pop = () => setQuery(readQuery(window.location));
@@ -25,16 +25,16 @@ export function useCatalog(catalogEnabled = true) {
     const controller = new AbortController();
     setLoading(true);
     setError('');
-    setPage(null);
-    setBase(cache.current.get(query.section) || null);
+    setCatalogPage(null);
+    setBaselineSectionInfo(sectionInfoCache.current.get(query.section) || null);
     const load = async () => {
       try {
         const info =
-          serverInfo.current || parseServerInfo(await request('/info', controller.signal));
+          serverInfoCache.current || parseServerInfo(await request('/info', controller.signal));
         if (controller.signal.aborted) return;
-        serverInfo.current = info;
+        serverInfoCache.current = info;
         setCategories(info.categories);
-        if (!catalogEnabled) return;
+        if (!shouldFetchCatalogPage) return;
         const available = Object.values(info.categories).flat();
         if (!available.length) return;
         const category = available.find(
@@ -45,24 +45,26 @@ export function useCatalog(catalogEnabled = true) {
           await request(
             `${`/${category.id}/products`}?${apiQueryParams(
               query,
-              metadataKey.current !== sectionInfoKey(query),
+              lastSectionInfoKey.current !== sectionInfoKey(query),
             )}`,
             controller.signal,
           ),
         );
         if (controller.signal.aborted) return;
         if (result.section_info) {
-          cache.current.set(query.section, result.section_info);
-          metadataKey.current = sectionInfoKey(query);
+          sectionInfoCache.current.set(query.section, result.section_info);
+          lastSectionInfoKey.current = sectionInfoKey(query);
         }
-        setBase(result.section_info || cache.current.get(query.section) || null);
+        setBaselineSectionInfo(
+          result.section_info || sectionInfoCache.current.get(query.section) || null,
+        );
         if (query.page !== result.page) {
           const next = { ...query, page: result.page };
           window.history.replaceState(null, '', queryURL(next));
           setQuery(next);
           return;
         }
-        setPage(result);
+        setCatalogPage(result);
       } catch (cause) {
         if (!controller.signal.aborted)
           setError(cause instanceof Error ? cause.message : 'The catalog could not be loaded.');
@@ -72,7 +74,7 @@ export function useCatalog(catalogEnabled = true) {
     };
     void load();
     return () => controller.abort();
-  }, [catalogEnabled, query, revision]);
+  }, [shouldFetchCatalogPage, query, reloadNonce]);
 
   const update = (changes: Partial<CatalogQuery>, replace = false) => {
     const next = { ...query, ...changes, page: changes.page ?? 1 };
@@ -82,12 +84,12 @@ export function useCatalog(catalogEnabled = true) {
   return {
     query,
     categories,
-    page,
-    base,
+    catalogPage,
+    baselineSectionInfo,
     loading,
     error,
     update,
-    retry: () => setRevision((value) => value + 1),
+    retry: () => setReloadNonce((value) => value + 1),
     changeSection: (url: string) =>
       update(readQuery(new URL(url.replace(/^\/?/, '/'), window.location.origin))),
     reset: () =>

@@ -7,7 +7,7 @@ use crate::utils::web_client::WebClientType;
 use once_cell::sync::Lazy;
 use scraper::ElementRef;
 use std::str::FromStr;
-//todo: check images
+
 static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
     RetailerConfigBuilder {
         web_client_type: WebClientType::HttpClient,
@@ -19,7 +19,7 @@ static CONFIG: Lazy<RetailerConfig> = Lazy::new(||
         price_sel: "empty",
         original_price_sel: "empty",
         page_desc_sel: "div[itemprop=description]",
-        page_images_sel: "div#gallery-container img",
+        page_images_sel: "div.product img",
         status_sel: None,
         desc_sel: None,
         empty_page_sel: None,

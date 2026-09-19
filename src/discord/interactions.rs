@@ -469,7 +469,7 @@ async fn show_json_editor(
     component: &ComponentInteraction,
     product_id: &str,
 ) -> Result<(), String> {
-    let product = ProductStorage::get(product_id).await.ok_or("Product not found")?;
+    let product = ProductStorage::find_by_id(product_id).await.ok_or("Product not found")?;
     let pretty = serde_json::to_string_pretty(&product)
         .map_err(|error| format!("Failed to serialize product: {error}"))?;
 
@@ -538,7 +538,7 @@ async fn apply_json_edit(
     modal: &ModalInteraction,
     product_id: &str,
 ) -> Result<(), String> {
-    let old = ProductStorage::get(product_id).await.ok_or("Product not found")?;
+    let old = ProductStorage::find_by_id(product_id).await.ok_or("Product not found")?;
     let raw = modal_value(modal, "json")
         .map(str::to_string)
         .unwrap_or_else(|| (0..5).filter_map(|index| modal_value(modal, &format!("json_{index}"))).collect::<String>());

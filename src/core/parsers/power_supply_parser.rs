@@ -21,7 +21,7 @@ impl SectionParser for PowerSupplyParser {
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
         if let Some(watts) = RegexCache::captures(r"(?i)\b(\d{3,4})\s*(?:w|watt|watts)\b", text, 1) {
-            product.filter_ids.insert("wattage".to_string(), format!("{watts} Watts"));
+            product.components.insert("wattage".to_string(), format!("{watts} Watts"));
         }
     }
 }

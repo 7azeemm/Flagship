@@ -40,7 +40,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
                 }
 
                 let size = format!("{}\"", size_str.replace(".0", ""));
-                product.filter_ids.insert("display_size".to_string(), size.clone());
+                product.components.insert("display_size".to_string(), size.clone());
                 specs_list.push(size);
                 found_size = true;
                 break;
@@ -51,7 +51,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     if !found_size {
         if text.replace(",", ".").contains("15.6") {
             let size = "15.6".to_string();
-            product.filter_ids.insert("display_size".to_string(), size.clone());
+            product.components.insert("display_size".to_string(), size.clone());
             specs_list.push(size);
         }
     }
@@ -80,7 +80,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
                 resolution.push('+');
             }
 
-            product.filter_ids.insert("resolution".to_string(), resolution.clone());
+            product.components.insert("resolution".to_string(), resolution.clone());
             specs_list.push(resolution);
             found_resolution = true;
             break;
@@ -95,7 +95,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
         ];
         for (num1, num2, resolution) in resolutions {
             if text.contains(num1) && text.contains(num2) {
-                product.filter_ids.insert("resolution".to_string(), resolution.clone());
+                product.components.insert("resolution".to_string(), resolution.clone());
                 specs_list.push(resolution);
                 break;
             }
@@ -109,7 +109,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     let panel_pattern = r"(?i)\b(IPS|OLED|QLED|LCD)\b";
     if let Some(str) = RegexCache::captures(panel_pattern, text, 1) {
         let panel_type = str.to_uppercase();
-        product.filter_ids.insert("panel_type".to_string(), panel_type.clone());
+        product.components.insert("panel_type".to_string(), panel_type.clone());
         specs_list.push(panel_type);
     };
 
@@ -124,7 +124,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     }
     if let Some(refresh_rate) = refresh_rate && refresh_rate <= 1000 {
         let refresh_rate = format!("{refresh_rate}Hz");
-        product.filter_ids.insert("refresh_rate".to_string(), refresh_rate.clone());
+        product.components.insert("refresh_rate".to_string(), refresh_rate.clone());
         specs_list.push(refresh_rate);
     }
 

@@ -25,9 +25,7 @@ pub async fn get_info<'a>() -> ApiResult<Json<&'a ServerInfo>> {
 }
 
 pub async fn load_categories() {
-    SERVER_INFO
-        .set(ServerInfo {
-            categories: FileLoader::load_or_default(CATEGORIES_PATH).await.expect("Failed to load categories"),
-        })
-        .expect("Failed to set ServerInfo");
+    SERVER_INFO.set(ServerInfo {
+        categories: FileLoader::load_or_create_default(CATEGORIES_PATH).await.expect("Failed to load categories"),
+    }).expect("Failed to set ServerInfo");
 }

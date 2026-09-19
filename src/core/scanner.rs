@@ -99,13 +99,13 @@ impl CatalogScanner {
 
     async fn load_caches() {
         if USE_CACHE {
-            match FileLoader::load_or_default::<HashMap<String, Product>>(PAGE_CACHE_PATH).await {
+            match FileLoader::load_or_create_default::<HashMap<String, Product>>(PAGE_CACHE_PATH).await {
                 Ok(cache) => *PAGE_CACHE.write().await = cache,
                 Err(error) => tracing::error!(%error, "Failed to load page cache"),
             }
         }
 
-        let mut cached_product_info: HashMap<String, CachedProductInfo> = FileLoader::load_or_default(CACHED_PRODUCT_INFO_PATH).await.unwrap_or_else(|error| {
+        let mut cached_product_info: HashMap<String, CachedProductInfo> = FileLoader::load_or_create_default(CACHED_PRODUCT_INFO_PATH).await.unwrap_or_else(|error| {
             tracing::error!(%error, "Failed to load products info");
             HashMap::new()
         });
@@ -119,7 +119,7 @@ impl CatalogScanner {
 
     async fn save_caches(&self, report: &ScanReport) {
         let products = &ProductStorage::get_storage().read().await.products;
-        if USE_CACHE && let Err(error) = FileLoader::save_to_file(PAGE_CACHE_PATH, &products).await {
+        if USE_CACHE && let Err(error) = FileLoader::save_file(PAGE_CACHE_PATH, &products).await {
             tracing::error!(%error, "Failed to save page cache");
         }
 
@@ -127,7 +127,7 @@ impl CatalogScanner {
         for product in &report.removed_items {
             cached_product_info.remove(&product.url);
         }
-        if let Err(error) = FileLoader::save_to_file(CACHED_PRODUCT_INFO_PATH, &*cached_product_info).await {
+        if let Err(error) = FileLoader::save_file(CACHED_PRODUCT_INFO_PATH, &*cached_product_info).await {
             tracing::error!(%error, "Failed to save products info");
         }
     }
@@ -226,10 +226,10 @@ impl CatalogScanner {
             report.metrics.moved_sections += usize::from(Self::normalize_product_section(product));
         }
 
-        ProductStorage::update(products, sections, retailers, report).await;
+        ProductStorage::synchronize_scan_results(products, sections, retailers, report).await;
         self.parse_changed_products(report).await;
-        ProductStorage::commit(report).await;
-        VariantStorage::update(&ProductStorage::get_storage().read().await.products, true).await;
+        ProductStorage::commit_scan_changes(report).await;
+        VariantStorage::sync_from_products(&ProductStorage::get_storage().read().await.products, true).await;
         self.save_caches(report).await;
 
         Ok(())

@@ -1,28 +1,35 @@
 use crate::core::sections::Section;
 use crate::utils::file_loader::FileLoader;
 use crate::utils::serde_ext::JsonExt;
-use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
 
 const OPTIONALS_KEY: &str = "optionals";
 const NAME_FIELD: &str = "name";
 
-#[derive(Debug, Clone, Serialize)]
-pub struct FilterNode {
-    pub id: String,
-    pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Value>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub children: Vec<FilterNode>,
-    #[serde(skip)]
-    pub optional_words: Vec<String>,
-}
-
 #[derive(Default)]
 pub struct Dataset {
     pub nodes: Vec<FilterNode>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FilterNode {
+    pub path: String,
+    pub label: String,
+    pub data: Option<Value>,
+    pub children: Vec<FilterNode>,
+    pub optional_words: Vec<String>,
+}
+
+impl FilterNode {
+    pub fn supports_gpu_platform(&self, section: Section) -> bool {
+        match (section.is_laptop(), self.data.get_str("platform")) {
+            (true, Some("laptop" | "both")) => true,
+            (false, Some("both")) => true,
+            (false, None) => true,
+            _ => false,
+        }
+    }
 }
 
 impl Dataset {
@@ -32,7 +39,7 @@ impl Dataset {
             return Ok(Dataset::default());
         }
 
-        let raw = FileLoader::load_from_file(&dataset_path).await?;
+        let raw = FileLoader::load_json(&dataset_path).await?;
         let mut tree = build_tree(&raw);
         if section == Section::GPU {
             Self::attach_chipsets(&mut tree);
@@ -154,17 +161,17 @@ fn merge_optionals(inherited: &[String], own: Vec<String>) -> Vec<String> {
 }
 
 fn build_node(key: &str, value: &Value, parent: &str, inherited: &[String]) -> FilterNode {
-    let id = join_path(parent, key);
+    let path = join_path(parent, key);
     match value {
         Value::Object(map) => {
             let effective = merge_optionals(inherited, read_optionals(map));
             let children = map
                 .iter()
                 .filter(|(k, _)| *k != OPTIONALS_KEY)
-                .map(|(k, v)| build_node(k, v, &id, &effective))
+                .map(|(k, v)| build_node(k, v, &path, &effective))
                 .collect();
             FilterNode {
-                id,
+                path,
                 label: key.to_string(),
                 data: None,
                 children,
@@ -174,15 +181,15 @@ fn build_node(key: &str, value: &Value, parent: &str, inherited: &[String]) -> F
         Value::Array(items) => FilterNode {
             children: items
                 .iter()
-                .map(|item| build_leaf(item, &id, inherited))
+                .map(|item| build_leaf(item, &path, inherited))
                 .collect(),
-            id,
+            path,
             label: key.to_string(),
             data: None,
             optional_words: inherited.to_vec(),
         },
         other => FilterNode {
-            id,
+            path,
             label: key.to_string(),
             data: Some(other.clone()),
             children: vec![],
@@ -194,7 +201,7 @@ fn build_node(key: &str, value: &Value, parent: &str, inherited: &[String]) -> F
 fn build_leaf(item: &Value, parent: &str, inherited: &[String]) -> FilterNode {
     match item {
         Value::String(s) => FilterNode {
-            id: join_path(parent, s),
+            path: join_path(parent, s),
             label: s.clone(),
             data: None,
             children: vec![],
@@ -206,7 +213,7 @@ fn build_leaf(item: &Value, parent: &str, inherited: &[String]) -> FilterNode {
                 .and_then(Value::as_str)
                 .unwrap_or_default();
             FilterNode {
-                id: join_path(parent, name),
+                path: join_path(parent, name),
                 label: name.to_string(),
                 data: Some(item.clone()),
                 children: vec![],
@@ -214,7 +221,7 @@ fn build_leaf(item: &Value, parent: &str, inherited: &[String]) -> FilterNode {
             }
         }
         other => FilterNode {
-            id: parent.to_string(),
+            path: parent.to_string(),
             label: parent.to_string(),
             data: Some(other.clone()),
             children: vec![],

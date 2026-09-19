@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ArrowUpRight, CalendarDays, Clock3, History, Maximize2, Package } from 'lucide-react';
 import type { Product, VariantChart } from '../types';
-import { fieldLabel, money, safeURL, sectionLabel, stockLabels } from '../lib/catalog';
+import { componentLabel, fieldLabel, money, safeURL, sectionLabel, stockLabels } from '../lib/catalog';
 import { ProductAnalytics } from './ProductAnalytics';
 import { Dialog } from './Dialog';
 import { Price, ProductGallery, Specifications } from './ProductCard';
@@ -20,22 +20,22 @@ const formatDate = (value: string | null) => {
 };
 
 export function ProductDialog({
-  products,
+  offers,
   chart,
   fields,
-  endpoint,
+  detailsEndpoint,
   onClose,
 }: {
-  products: Product[];
+  offers: Product[];
   chart: VariantChart | null;
   fields: string[];
-  endpoint: string;
+  detailsEndpoint: string;
   onClose: () => void;
 }) {
-  const offers = [...products].sort(
+  const sortedOffers = [...offers].sort(
     (a, b) => Number(b.status === 'InStock') - Number(a.status === 'InStock') || a.price - b.price,
   );
-  const [selected, setSelected] = useState(offers[0]);
+  const [selected, setSelected] = useState(sortedOffers[0]);
   const [zoom, setZoom] = useState(false);
   const link = safeURL(selected.url);
 
@@ -83,7 +83,7 @@ export function ProductDialog({
         </section>
 
         <section className="detail-information" aria-label="Product specifications and information">
-          {fields.some((field) => selected.components[field]?.trim()) && (
+          {fields.some((field) => componentLabel(selected.components[field]).trim()) && (
             <div className="detail-panel">
               <div className="detail-panel-heading">
                 <Package size={17} />
@@ -138,13 +138,13 @@ export function ProductDialog({
             </dl>
           </div>
         </section>
-        {offers.length > 1 && endpoint.startsWith('/variants/') && (
+        {sortedOffers.length > 1 && detailsEndpoint.startsWith('/variants/') && (
           <section className="offer-list detail-panel detail-listings">
             <h2>
-              {offers.length} retailer {offers.length === 1 ? 'listing' : 'listings'}
+              {sortedOffers.length} retailer {sortedOffers.length === 1 ? 'listing' : 'listings'}
             </h2>
             <p>Check each retailer’s configuration before choosing.</p>
-            {offers.map((offer) => (
+            {sortedOffers.map((offer) => (
               <button
                 className={selected.id === offer.id ? 'active' : ''}
                 key={offer.id}
@@ -176,9 +176,8 @@ export function ProductDialog({
         <ProductChangeHistory key={selected.id} product={selected} />
         <ProductAnalytics
           initialChart={chart}
-          endpoint={endpoint}
+          endpoint={detailsEndpoint}
           product={selected}
-          products={products}
         />
       </div>
     </Dialog>
@@ -194,11 +193,14 @@ export function ProductChangeHistory({ product }: { product: Product }) {
     if ((field === 'price' || field === 'original_price') && typeof raw === 'number')
       return `${money(raw)} DT`;
     if (field === 'status' && typeof raw === 'string') return stockLabels[raw] || raw;
-    if (Array.isArray(raw)) return raw.length ? raw.map(String).join(', ') : 'None';
+    if (Array.isArray(raw))
+      return raw.length ? raw.map((item) => value(field, item)).join(', ') : 'None';
     if (typeof raw === 'object') {
       const values = Object.entries(raw as Record<string, unknown>);
+      const label = values.find(([key, item]) => key === 'label' && typeof item === 'string');
+      if (label) return label[1] as string;
       return values.length
-        ? values.map(([key, item]) => `${fieldLabel(key)}: ${String(item)}`).join(' · ')
+        ? values.map(([key, item]) => `${fieldLabel(key)}: ${value(key, item)}`).join(' · ')
         : 'None';
     }
     if (typeof raw === 'boolean') return raw ? 'Yes' : 'No';

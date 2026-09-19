@@ -71,7 +71,7 @@ pub enum ErrorStatusFilter {
 
 impl ErrorTracker {
     pub async fn load() {
-        match FileLoader::load_or_default::<ErrorTracker>(ERROR_STATE_PATH).await {
+        match FileLoader::load_or_create_default::<ErrorTracker>(ERROR_STATE_PATH).await {
             Ok(tracker) => *ERROR_TRACKER.write().await = tracker,
             Err(error) => tracing::error!(%error, "Failed to load scrape error state"),
         }
@@ -88,7 +88,7 @@ impl ErrorTracker {
             .collect();
         let mut tracker = ERROR_TRACKER.write().await;
         let summary = tracker.apply(&report.scrape_errors, &healthy_pages, Utc::now());
-        if let Err(error) = FileLoader::save_to_file(ERROR_STATE_PATH, &*tracker).await {
+        if let Err(error) = FileLoader::save_file(ERROR_STATE_PATH, &*tracker).await {
             tracing::error!(%error, "Failed to persist scrape error state");
         }
         summary
@@ -227,7 +227,7 @@ impl ErrorTracker {
         if matched == 0 {
             return Err("The selected errors are no longer in the registry".into());
         }
-        FileLoader::save_to_file(ERROR_STATE_PATH, &*tracker).await?;
+        FileLoader::save_file(ERROR_STATE_PATH, &*tracker).await?;
         Ok(matched)
     }
 

@@ -24,7 +24,7 @@ impl SectionParser for HeadphonesParser {
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
-        product.filter_ids.insert("type".to_string(), match EARPHONES_WORDS.iter().any(|w| upper.contains(w)) {
+        product.components.insert("type".to_string(), match EARPHONES_WORDS.iter().any(|w| upper.contains(w)) {
             true => "Earphones".to_string(),
             false => "Headphones".to_string(),
         });

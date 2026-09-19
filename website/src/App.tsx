@@ -26,12 +26,23 @@ export default function App() {
   const isStatistics = pathname === '/statistics';
   const productMatch = pathname.match(/^\/product\/([^/]+)\/?$/);
   const productId = productMatch ? decodeURIComponent(productMatch[1]) : null;
-  const { query, categories, page, base, loading, error, update, retry, changeSection, reset } =
+  const {
+    query,
+    categories,
+    catalogPage,
+    baselineSectionInfo,
+    loading,
+    error,
+    update,
+    retry,
+    changeSection,
+    reset,
+  } =
     useCatalog(!isHome && !productId && !isStatistics);
   const [selected, setSelected] = useState<{
-    products: Product[];
+    offers: Product[];
     chart: VariantChart | null;
-    endpoint: string;
+    detailsEndpoint: string;
   } | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const [detailStatus, setDetailStatus] = useState('');
@@ -49,16 +60,16 @@ export default function App() {
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }
   }, [query.section, query.page, isHome, isStatistics, productId]);
-  const fields = page?.section_info?.components || base?.components || [];
+  const fields = catalogPage?.section_info?.components || baselineSectionInfo?.components || [];
   const filterProps = {
     query,
-    info: page?.section_info || null,
-    base,
+    info: catalogPage?.section_info || null,
+    baselineSectionInfo,
     update,
     reset,
     disabled: loading,
   };
-  const entries = (page?.items || []).map((item) => {
+  const entries = (catalogPage?.items || []).map((item) => {
     if (item.type === 'product')
       return { id: item.data.id, product: item.data, variant: undefined };
     const variant = item.data;
@@ -75,7 +86,6 @@ export default function App() {
       status: variant.in_stock_count ? 'InStock' : 'OutOfStock',
       url: '',
       description: null,
-      filter_ids: {},
       history: { entries: [] },
       updated_at: null,
       added_at: null,
@@ -85,9 +95,9 @@ export default function App() {
     return { id: variant.id, product, variant };
   });
   const catalogEmpty =
-    !!base &&
+    !!baselineSectionInfo &&
     !hasFilterChanges(query) &&
-    base.statuses.every((status) => status.count === 0);
+    baselineSectionInfo.statuses.every((status) => status.count === 0);
   const openItem = async (item: CatalogItem) => {
     detailRequest.current?.abort();
     const controller = new AbortController();
@@ -111,7 +121,7 @@ export default function App() {
             ? [parseProduct(record.product)]
             : [];
       if (!products.length) throw new Error('No retailer listings are available.');
-      setSelected({ products, chart: parseChart(record.chart), endpoint });
+      setSelected({ offers: products, chart: parseChart(record.chart), detailsEndpoint: endpoint });
       setDetailStatus('');
     } catch (error) {
       if (!controller.signal.aborted)
@@ -154,7 +164,11 @@ export default function App() {
       ) : isStatistics ? (
         <StatisticsPage categories={categories} onNavigate={navigatePath} />
       ) : productId ? (
-        <ProductPage id={productId} fields={base?.components || []} onNavigate={navigatePath} />
+        <ProductPage
+          id={productId}
+          fields={baselineSectionInfo?.components || []}
+          onNavigate={navigatePath}
+        />
       ) : (
         <main className="main-container" id="catalog" tabIndex={-1}>
           <h1 className="sr-only">{sectionLabel(query.section)}</h1>
@@ -172,10 +186,10 @@ export default function App() {
                       'Catalog unavailable'
                     ) : (
                       <>
-                        <strong>{money(page?.total_items ?? 0)}</strong>{' '}
-                        {page?.total_items === 1 ? 'result' : 'results'}
-                        {query.grouped && page && page.total_items < page.total_products && (
-                          <span> · {money(page.total_products)} listings</span>
+                        <strong>{money(catalogPage?.total_items ?? 0)}</strong>{' '}
+                        {catalogPage?.total_items === 1 ? 'result' : 'results'}
+                        {query.grouped && catalogPage && catalogPage.total_items < catalogPage.total_products && (
+                          <span> · {money(catalogPage.total_products)} listings</span>
                         )}
                       </>
                     )}
@@ -193,7 +207,7 @@ export default function App() {
                   {!loading && !error && (
                     <Pagination
                       page={query.page}
-                      total={page?.total_pages || 0}
+                      total={catalogPage?.total_pages || 0}
                       onChange={(value) => update({ page: value })}
                     />
                   )}
@@ -251,7 +265,7 @@ export default function App() {
                       variant={entry.variant}
                       fields={fields}
                       onOpen={() => {
-                        const item = page!.items.find((item) => item.data.id === entry.id);
+                        const item = catalogPage!.items.find((item) => item.data.id === entry.id);
                         if (item) void openItem(item);
                       }}
                     />
@@ -261,7 +275,7 @@ export default function App() {
               {!loading && !error && (
                 <Pagination
                   page={query.page}
-                  total={page?.total_pages || 0}
+                  total={catalogPage?.total_pages || 0}
                   onChange={(value) => update({ page: value })}
                 />
               )}
@@ -286,9 +300,9 @@ export default function App() {
       )}
       {selected && (
         <ProductDialog
-          key={selected.endpoint}
-          endpoint={selected.endpoint}
-          products={selected.products}
+          key={selected.detailsEndpoint}
+          detailsEndpoint={selected.detailsEndpoint}
+          offers={selected.offers}
           chart={selected.chart}
           fields={fields}
           onClose={() => setSelected(null)}

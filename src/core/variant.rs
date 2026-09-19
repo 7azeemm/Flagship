@@ -1,4 +1,3 @@
-use crate::api::filters::STRUCTURED_FILTERS;
 use crate::core::product::{Product, ProductStatus};
 use crate::core::sections::Section;
 use crate::core::storage::ProductStorage;
@@ -31,7 +30,7 @@ pub struct Variant {
     pub fields: HashMap<String, String>,
     pub representative_product_id: Option<String>,
     pub product_ids: HashSet<String>,
-    pub data: VariantSnapshot,
+    pub current_snapshot: VariantSnapshot,
     pub history: Vec<VariantSnapshot>,
     pub views: u64,
     pub active: bool,
@@ -56,7 +55,7 @@ pub struct VariantCatalogRecord {
 
 impl VariantStorage {
     pub async fn load() {
-        let mut storage = FileLoader::load_or_default::<VariantStorage>(VARIANTS_PATH).await.unwrap_or_else(|error| {
+        let mut storage = FileLoader::load_or_create_default::<VariantStorage>(VARIANTS_PATH).await.unwrap_or_else(|error| {
             tracing::error!(%error, "Failed to load variant storage");
             VariantStorage::default()
         });
@@ -67,13 +66,13 @@ impl VariantStorage {
         *VARIANT_STORAGE.write().await = storage;
     }
 
-    pub async fn update(products: &HashMap<String, Product>, record_history: bool) {
+    pub async fn sync_from_products(products: &HashMap<String, Product>, record_history: bool) {
         VARIANT_STORAGE.write().await.synchronize(products, record_history);
         Self::save().await;
     }
 
     async fn save() {
-        if let Err(error) = FileLoader::save_to_file(VARIANTS_PATH, &*VARIANT_STORAGE.read().await).await {
+        if let Err(error) = FileLoader::save_file(VARIANTS_PATH, &*VARIANT_STORAGE.read().await).await {
             tracing::error!(%error, "Failed to save variant storage");
         }
     }
@@ -189,8 +188,7 @@ fn variant_fields(product: &Product, field_keys: &[String]) -> Option<HashMap<St
 }
 
 pub fn component_value<'a>(product: &'a Product, field: &str) -> Option<&'a str> {
-    let set = if STRUCTURED_FILTERS.contains(&field) { &product.components } else { &product.filter_ids };
-    set.get(field).map(String::as_str)
+    product.components.get(field).map(|value| value.label())
 }
 
 fn same_fields(stored: &HashMap<String, String>, requested: &[String]) -> bool {
@@ -204,7 +202,7 @@ fn new_variant(id: &str, product: &Product, field_keys: &[String], now: DateTime
         fields: variant_fields(product, field_keys).unwrap_or_default(),
         representative_product_id: Some(product.id.clone()),
         product_ids: HashSet::new(),
-        data: VariantSnapshot::default(),
+        current_snapshot: VariantSnapshot::default(),
         history: Vec::new(),
         views: 0,
         active: true,
@@ -220,7 +218,7 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
     let lowest = offers.iter().copied().filter(|product| product.status == ProductStatus::InStock)
         .min_by(|a, b| a.price.cmp(&b.price).then_with(|| a.id.cmp(&b.id)));
 
-    variant.data = VariantSnapshot {
+    variant.current_snapshot = VariantSnapshot {
         timestamp: Utc::now(),
         offer_count: offers.len(),
         in_stock_count: offers.iter().filter(|product| product.status == ProductStatus::InStock).count(),
@@ -235,7 +233,7 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
         .map(|product| product.id.clone());
 
     if record_history {
-        let snapshot = &variant.data;
+        let snapshot = &variant.current_snapshot;
         let changed = variant.history.last().is_none_or(|last| {
             last.lowest_price != snapshot.lowest_price
                 || last.lowest_price_product_id != snapshot.lowest_price_product_id

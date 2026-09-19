@@ -13,12 +13,8 @@ use core::storage::ProductStorage;
 use core::tracking::error_tracker::ErrorTracker;
 use core::variant::VariantStorage;
 use dotenv::dotenv;
-use futures::StreamExt;
-use serde::{Deserialize, Serialize};
-use std::error::Error;
 use tokio::net::TcpListener;
-use crate::core::scanner::CatalogScanner;
-use crate::core::tracking::overrides::{ProductOverrides};
+use crate::core::tracking::overrides::ProductOverrides;
 
 #[tokio::main]
 async fn main() {
@@ -38,7 +34,7 @@ async fn main() {
     ProductOverrides::load().await;
     SectionConfig::load().await;
     ProductStorage::load().await;
-    CatalogScanner::schedule().await;
+    // CatalogScanner::schedule().await;
     VariantStorage::load().await;
 
     let api_listener = TcpListener::bind("127.0.0.1:3000".to_string()).await.expect("Failed to bind API port");

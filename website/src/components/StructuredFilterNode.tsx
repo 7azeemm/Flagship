@@ -1,20 +1,23 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { FilterValue } from '../types';
-import { isWithin, nodeStatus } from '../lib/catalog';
+import { filterValue, isWithin, nodeStatus } from '../lib/catalog';
 
 interface Props {
   node: FilterValue;
   depth?: number;
   filterKey: string;
-  selectedIds: string[];
-  onToggle: (key: string, id: string) => void;
+  selectedValues: string[];
+  onToggle: (key: string, node: FilterValue) => void;
 }
-export function StructuredFilterNode({ node, filterKey, selectedIds, onToggle, depth = 0 }: Props) {
-  const [expanded, setExpanded] = useState(() => selectedIds.some((id) => isWithin(id, node.id)));
+export function StructuredFilterNode({ node, filterKey, selectedValues, onToggle, depth = 0 }: Props) {
+  const value = filterValue(node);
+  const [expanded, setExpanded] = useState(() =>
+    selectedValues.some((rule) => isWithin(rule.replace(/^!/, ''), value)),
+  );
   const checkbox = useRef<HTMLInputElement>(null);
   const id = useId();
-  const status = nodeStatus(node, selectedIds);
+  const status = nodeStatus(node, selectedValues);
   useEffect(() => {
     if (checkbox.current) checkbox.current.indeterminate = status === 'partial';
   }, [status]);
@@ -30,7 +33,7 @@ export function StructuredFilterNode({ node, filterKey, selectedIds, onToggle, d
             ref={checkbox}
             type="checkbox"
             checked={status === 'checked'}
-            onChange={() => onToggle(filterKey, node.id)}
+            onChange={() => onToggle(filterKey, node)}
           />
           <span>{node.label}</span>
         </label>
@@ -53,11 +56,11 @@ export function StructuredFilterNode({ node, filterKey, selectedIds, onToggle, d
         <div id={id} className="filter-children">
           {node.children.map((child) => (
             <StructuredFilterNode
-              key={child.id}
+              key={filterValue(child)}
               depth={depth + 1}
               node={child}
               filterKey={filterKey}
-              selectedIds={selectedIds}
+              selectedValues={selectedValues}
               onToggle={onToggle}
             />
           ))}

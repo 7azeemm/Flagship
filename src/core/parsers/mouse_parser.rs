@@ -30,7 +30,7 @@ impl SectionParser for MouseParser {
             || GAMING_WORDS.iter().any(|w| upper.contains(w))
             || product.price >= 20 && GAMING_BRANDS.iter().any(|b| upper.contains(b));
 
-        product.filter_ids.insert("type".to_string(), match for_gaming {
+        product.components.insert("type".to_string(), match for_gaming {
             true => "Gaming".to_string(),
             false => "Office".to_string(),
         });

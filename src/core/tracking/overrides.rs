@@ -17,7 +17,7 @@ pub struct ProductOverrides {
 
 impl ProductOverrides {
     pub async fn load() {
-        match FileLoader::load_or_default(PRODUCT_OVERRIDES_PATH).await {
+        match FileLoader::load_or_create_default(PRODUCT_OVERRIDES_PATH).await {
             Ok(overrides) => *PRODUCT_OVERRIDES.lock().await = overrides,
             Err(err) => tracing::error!("Failed to load product overrides: {err}"),
         }
@@ -28,7 +28,7 @@ impl ProductOverrides {
 
         overrides.products.entry(source_url.to_string()).or_default().push(entry);
 
-        if let Err(err) = FileLoader::save_to_file(PRODUCT_OVERRIDES_PATH, &*overrides).await {
+        if let Err(err) = FileLoader::save_file(PRODUCT_OVERRIDES_PATH, &*overrides).await {
             tracing::error!("Failed to save product overrides: {err}");
         }
     }

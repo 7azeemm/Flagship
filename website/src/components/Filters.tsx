@@ -16,21 +16,21 @@ import { StructuredFilterNode } from './StructuredFilterNode';
 interface Props {
   query: CatalogQuery;
   info: SectionInfo | null;
-  base: SectionInfo | null;
+  baselineSectionInfo: SectionInfo | null;
   update: (changes: Partial<CatalogQuery>) => void;
   reset: () => void;
   disabled: boolean;
 }
-export function Filters({ query, info, base, update, reset, disabled }: Props) {
+export function Filters({ query, info, baselineSectionInfo, update, reset, disabled }: Props) {
   const [search, setSearch] = useState(query.search);
   useEffect(() => setSearch(query.search), [query.search]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [allRetailers, setAllRetailers] = useState(false);
-  const groupFields = base?.group_by || [];
+  const groupFields = baselineSectionInfo?.group_by || [];
   const selectedGroupFields = groupFields
     .filter((field) => field.required || query.groupBy?.includes(field.key))
     .map((field) => field.key);
-  const currentInfo = info || base;
+  const currentInfo = info || baselineSectionInfo;
   const siteCounts = new Map((currentInfo?.sites || []).map((site) => [site.value, site.count]));
   for (const site of query.site) if (!siteCounts.has(site)) siteCounts.set(site, 0);
   const sites = [...siteCounts].map(([value, count]) => ({ value, count }));
@@ -132,20 +132,24 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           </button>
         </form>
       </div>
-      {base && (
+      {baselineSectionInfo && (
         <section className="filter-section">
           <h3>
             Price range <span>DT</span>
           </h3>
           <RangeSlider
-            min={base.min_price}
-            max={base.max_price}
-            valueMin={query.min_price ? Number(query.min_price) : base.min_price}
-            valueMax={query.max_price ? Number(query.max_price) : base.max_price}
+            min={baselineSectionInfo.min_price}
+            max={baselineSectionInfo.max_price}
+            valueMin={
+              query.min_price ? Number(query.min_price) : baselineSectionInfo.min_price
+            }
+            valueMax={
+              query.max_price ? Number(query.max_price) : baselineSectionInfo.max_price
+            }
             onChange={(min, max) =>
               update({
-                min_price: min === base.min_price ? '' : String(min),
-                max_price: max === base.max_price ? '' : String(max),
+                min_price: min === baselineSectionInfo.min_price ? '' : String(min),
+                max_price: max === baselineSectionInfo.max_price ? '' : String(max),
               })
             }
           />
@@ -195,7 +199,7 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           )}
         </div>
       </details>
-      {(info?.filters || base?.filters || []).map((group, index) => (
+      {(info?.filters || baselineSectionInfo?.filters || []).map((group, index) => (
         <details
           className="filter-section"
           key={group.key}
@@ -217,13 +221,13 @@ export function Filters({ query, info, base, update, reset, disabled }: Props) {
           <div className="filter-options tree-options">
             {group.options.map((node) => (
               <StructuredFilterNode
-                key={node.id}
+                key={node.id || node.label}
                 node={node}
                 filterKey={group.key}
-                selectedIds={query.filters[group.key] || []}
-                onToggle={(key, id) =>
+                selectedValues={query.filters[group.key] || []}
+                onToggle={(key, node) =>
                   update({
-                    filters: { ...query.filters, [key]: toggleNode(query.filters[key] || [], id) },
+                    filters: { ...query.filters, [key]: toggleNode(query.filters[key] || [], node) },
                   })
                 }
               />

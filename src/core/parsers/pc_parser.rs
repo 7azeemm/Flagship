@@ -197,8 +197,7 @@ impl SectionParser for PCParser {
         }
 
         if let Some(cpu) = cpu {
-            product.filter_ids.insert("cpu".to_string(), cpu.id);
-            product.components.insert("cpu".to_string(), cpu.label);
+            product.components.insert_structured("cpu".to_string(), cpu.id, cpu.label);
         }
 
         let gpu = match gpu_memory {
@@ -210,33 +209,32 @@ impl SectionParser for PCParser {
             let gpu_label = match gpu.data.get_str("memory_size") {
                 Some(memory) => {
                     let memory = format!("{memory}GB");
-                    product.filter_ids.insert("gpu_memory".to_string(), memory.clone());
+                    product.components.insert("gpu_memory".to_string(), memory.clone());
                     format!("{} {}", gpu.label, memory)
                 }
                 None => gpu.label,
             };
 
-            product.filter_ids.insert("gpu".to_string(), gpu.id);
-            product.components.insert("gpu".to_string(), gpu_label);
+            product.components.insert_structured("gpu".to_string(), gpu.id, gpu_label);
         }
 
         if let Some(memory) = memory {
             let memory_size = format!("{memory}GB");
-            product.filter_ids.insert("memory".to_string(), memory_size.clone());
+            let mut memory_type = None;
+            product.components.insert("memory_size".to_string(), memory_size.clone());
 
-            let mut found_type = false;
-            for memory_type in vec!["DDR3", "DDR4", "DDR5"] {
-                if text.contains(memory_type) {
-                    product.filter_ids.insert("memory_type".to_string(), memory_type.to_string());
-                    product.components.insert("memory".to_string(), format!("{memory_size} {memory_type}"));
-                    found_type = true;
+            for mem_type in vec!["DDR3", "DDR4", "DDR5"] {
+                if text.contains(mem_type) {
+                    product.components.insert("memory_type".to_string(), mem_type.to_string());
+                    memory_type = Some(mem_type);
                     break;
                 }
             }
 
-            if !found_type {
-                product.components.insert("memory".to_string(), memory_size);
-            }
+            product.components.insert("memory".to_string(), match memory_type {
+                Some(memory_type) => format!("{memory_size} {memory_type}"),
+                None => memory_size
+            });
         }
 
         if let Some(storage) = storage {
@@ -245,16 +243,22 @@ impl SectionParser for PCParser {
                 false => format!("{storage}GB"),
             };
 
-            product.filter_ids.insert("storage".to_string(), storage_size.clone());
-            product.components.insert("storage".to_string(), if text.contains("NVME") {
-                format!("{storage_size} NVME")
+            product.components.insert("storage_size".to_string(), storage_size.clone());
+            let storage_type = if text.contains("NVME") {
+                Some("NVME")
             } else if text.contains("SSD") {
-                format!("{storage_size} SSD")
+                Some("SSD")
             } else if text.contains("HDD") {
-                format!("{storage_size} HDD")
+                Some("HDD")
             } else {
-                storage_size
-            });
+                None
+            };
+            if let Some(storage_type) = storage_type {
+                product.components.insert("storage_type".to_string(), storage_type.to_string());
+                product.components.insert("storage".to_string(), format!("{storage_size} {storage_type}"));
+            } else {
+                product.components.insert("storage".to_string(), storage_size);
+            }
         }
     }
 }
@@ -271,7 +275,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
 
         if words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
             return Some(SearchResult {
-                id: node.id.clone(),
+                id: node.path.clone(),
                 label: node.label.clone(),
                 data: node.data.clone(),
             });
@@ -296,7 +300,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
             }
 
             return Some(SearchResult {
-                id: "Others/Intel".to_string(),
+                id: format!("Others/Intel/{label}"),
                 label,
                 data: None,
             });
@@ -306,9 +310,10 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
     // Search for AMD CPUS
     for cpu in vec!["Ryzen 3", "Ryzen 5", "Ryzen 7", "Ryzen 9", "Ryzen"] {
         if RegexCache::matches(&format!("(?i){cpu}"), &text) {
+            let label = format!("AMD {cpu}");
             return Some(SearchResult {
-                id: "Others/AMD".to_string(),
-                label: format!("AMD {cpu}"),
+                id: format!("Others/AMD/{label}"),
+                label,
                 data: None,
             });
         }
@@ -318,7 +323,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
     for cpu in vec!["Quad Core", "Quad-Core", "Dual Core", "Dual-Core", "Arm"] {
         if RegexCache::matches(&format!("(?i){cpu}"), &text) {
             let cpu = cpu.replace("-", " ");
-            let (id, label) = if text.contains("INTEL") {
+            let (parent, label) = if text.contains("INTEL") {
                 ("Others/Intel", format!("Intel {cpu} Processor"))
             } else if text.contains("AMD") {
                 ("Others/AMD", format!("AMD {cpu} Processor"))
@@ -327,7 +332,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
             };
 
             return Some(SearchResult {
-                id: id.to_string(),
+                id: format!("{parent}/{label}"),
                 label,
                 data: None,
             });
@@ -350,11 +355,8 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
         }
 
         // Skip if GPU is not available in that platform
-        match (section.is_laptop(), node.data.get_str("platform")) {
-            (true, Some("laptop" | "both")) => {}
-            (false, Some("both")) => {}
-            (false, None) => {}
-            _ => continue,
+        if !node.supports_gpu_platform(section) {
+            continue;
         }
 
         if words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
@@ -364,7 +366,7 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
                 .join(" ");
             if gpus.is_empty() || gpus.iter().any(|s: &SearchResult| s.label == label) {
                 gpus.push(SearchResult {
-                    id: node.id.clone(),
+                    id: node.path.clone(),
                     label: label.clone(),
                     data: node.data.clone(),
                 });
@@ -387,7 +389,7 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
                         format!("AMD/{iGPU}")
                     } else {
                         eprintln!("Unknown Integrated GPU: {iGPU}");
-                        "Others".to_string()
+                        format!("Others/{iGPU}")
                     };
                     return vec![SearchResult {
                         id,

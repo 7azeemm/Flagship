@@ -6,6 +6,11 @@ export interface Category {
 export interface ServerInfo {
   categories: Record<string, Category[]>;
 }
+export interface StructuredComponent {
+  id: string;
+  label: string;
+}
+export type ComponentValue = string | StructuredComponent;
 export interface Product {
   id: string;
   url: string;
@@ -18,8 +23,7 @@ export interface Product {
   price: number;
   original_price: number | null;
   description: string | null;
-  components: Record<string, string>;
-  filter_ids: Record<string, string>;
+  components: Record<string, ComponentValue>;
   history: ProductHistory;
   updated_at: string | null;
   added_at: string | null;
@@ -45,7 +49,7 @@ export interface VariantSummary {
   images: string[];
   price: number;
   original_price: number | null;
-  components: Record<string, string>;
+  components: Record<string, ComponentValue>;
   offer_count: number;
   retailer_count: number;
   in_stock_count: number;
@@ -77,7 +81,7 @@ export interface VariantChart {
   };
 }
 export interface FilterValue {
-  id: string;
+  id?: string;
   label: string;
   count: number;
   children?: FilterValue[];

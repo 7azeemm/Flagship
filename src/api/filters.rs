@@ -4,7 +4,7 @@ use serde::Serialize;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-pub static STRUCTURED_FILTERS: &[&str] = &["cpu", "gpu", "model"];
+static STRUCTURED_FILTERS: &[&str] = &["cpu", "gpu", "model"];
 
 #[derive(Debug, Serialize)]
 pub struct FilterGroup {
@@ -15,7 +15,8 @@ pub struct FilterGroup {
 
 #[derive(Debug, Serialize)]
 pub struct FilterValue {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub label: String,
     pub count: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -32,22 +33,24 @@ fn extract_numeric_value(label: &str) -> Option<f64> {
     }
     let mut number: f64 = num_str.parse().ok()?;
     if label.contains("TB") {
-        number *= 1024.0; // convert TB to GB-equivalent
+        number *= 1024.0;
     }
     Some(number)
 }
 
 fn sort_options(key: &str, options: &mut [FilterValue]) {
-    static FIXED_SETS: &[(&str, &[&str])] = &[
+    const FIXED_SETS: &[(&str, &[&str])] = &[
         ("gpu", &["RTX", "GTX", "Radeon", "Arc", "Intel", "AMD"]),
         ("cpu", &["Intel", "AMD"]),
     ];
 
     let current_set = FIXED_SETS.iter().find(|(k, _)| k == &key).map(|(_, s)| *s);
-
     options.sort_by(|a, b| {
+        let a_value = a.id.as_deref().unwrap_or(&a.label);
+        let b_value = b.id.as_deref().unwrap_or(&b.label);
+
         // 1) "Others" always last
-        let others_cmp = a.id.ends_with("Others").cmp(&b.id.ends_with("Others"));
+        let others_cmp = a_value.ends_with("Others").cmp(&b_value.ends_with("Others"));
         if others_cmp != Ordering::Equal {
             return others_cmp;
         }
@@ -56,7 +59,6 @@ fn sort_options(key: &str, options: &mut [FilterValue]) {
         if let Some(set) = current_set {
             let a_pos = set.iter().position(|p| a.label.eq_ignore_ascii_case(p));
             let b_pos = set.iter().position(|p| b.label.eq_ignore_ascii_case(p));
-
             match (a_pos, b_pos) {
                 (Some(pa), Some(pb)) => return pa.cmp(&pb),
                 (Some(_), None) => return Ordering::Less,
@@ -78,8 +80,8 @@ fn sort_options(key: &str, options: &mut [FilterValue]) {
         }
     });
 
-    for opt in options.iter_mut() {
-        sort_options(key, &mut opt.children);
+    for option in options {
+        sort_options(key, &mut option.children);
     }
 }
 
@@ -91,7 +93,10 @@ fn collapse_single_child_groups(options: &mut [FilterValue]) {
     // For top keys only
     for node in options.iter_mut() {
         if node.count == 0 && node.children.len() == 1 {
-            if node.label == node.children[0].label || node.id == "Others" && node.children[0].id == "Others/Others" {
+            let child = &node.children[0];
+            let repeated_label = node.label == child.label;
+            let repeated_others = node.id.as_deref() == Some("Others") && child.id.as_deref() == Some("Others/Others");
+            if repeated_label || repeated_others {
                 *node = node.children.pop().unwrap();
             }
         }
@@ -115,69 +120,87 @@ fn insert_count(
     segments: &[&str],
     leaf_label: &str,
     count: usize,
+    structured: bool,
 ) {
-    let seg = segments[0];
-    let id = if prefix.is_empty() { seg.to_string() } else { format!("{prefix}/{seg}") };
-
-    let idx = match nodes.iter().position(|n| n.id == id) {
-        Some(i) => i,
-        None => {
-            nodes.push(FilterValue {
-                id: id.clone(),
-                label: seg.to_string(),
-                count: 0,
-                children: vec![],
-            });
-            nodes.len() - 1
-        }
+    let segment = segments[0];
+    let path = if prefix.is_empty() {
+        segment.to_string()
+    } else {
+        format!("{prefix}/{segment}")
     };
 
+    let index = nodes
+        .iter()
+        .position(|node| if structured {
+            node.id.as_deref() == Some(path.as_str())
+        } else {
+            node.label == segment
+        })
+        .unwrap_or_else(|| {
+            nodes.push(FilterValue {
+                id: structured.then_some(path.clone()),
+                label: segment.to_string(),
+                count: 0,
+                children: Vec::new(),
+            });
+            nodes.len() - 1
+        });
+
     if segments.len() == 1 {
-        nodes[idx].count += count; // direct match on this exact id
+        nodes[index].count += count;
         if !leaf_label.is_empty() {
-            nodes[idx].label = leaf_label.to_string();
+            nodes[index].label = leaf_label.to_string();
         }
     } else {
         insert_count(
-            &mut nodes[idx].children,
-            &id,
+            &mut nodes[index].children,
+            &path,
             &segments[1..],
             leaf_label,
             count,
+            structured,
         );
     }
 }
 
-/// Rolls child counts up into every ancestor.
 fn finalize_counts(options: &mut [FilterValue]) {
-    for node in options.iter_mut() {
+    for node in options {
         finalize_counts(&mut node.children);
-        let children_total: usize = node.children.iter().map(|c| c.count).sum();
-        node.count += children_total;
+        node.count += node.children.iter().map(|child| child.count).sum::<usize>();
     }
 }
 
 fn build_filter_group(key: &str, label: &str, products: &[&Product]) -> FilterGroup {
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for p in products {
-        if let Some(v) = p.filter_ids.get(key) {
-            *counts.entry(v.clone()).or_insert(0) += 1;
-        }
+    let structured = is_structured_component(key);
+    let mut counts: HashMap<String, (String, usize)> = HashMap::new();
+
+    for product in products {
+        let Some(component) = product.components.get(key) else {
+            continue;
+        };
+        let component_label = component.label().to_string();
+        let value = if structured {
+            component
+                .id()
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("Others/{component_label}"))
+        } else {
+            component_label.clone()
+        };
+        let entry = counts.entry(value).or_insert((component_label.clone(), 0));
+        entry.1 += 1;
     }
 
-    let mut options: Vec<FilterValue> = Vec::new();
-    for (id, count) in &counts {
-        let segments: Vec<&str> = id.split('/').collect();
-        let seg_label = segments.last().copied().unwrap_or(id.as_str()).to_string();
-        insert_count(&mut options, "", &segments, &seg_label, *count);
+    let mut options = Vec::new();
+    for (value, (value_label, count)) in counts {
+        let segments: Vec<&str> = value.split('/').collect();
+        insert_count(&mut options, "", &segments, &value_label, count, structured);
     }
 
-    let missing = products
-        .iter()
-        .filter(|p| !p.filter_ids.contains_key(key))
-        .count();
+    let missing = products.iter().filter(|product| !product.components.contains_key(key)).count();
     if missing > 0 {
-        insert_count(&mut options, "", &["Others", "Others"], "Others", missing);
+        let path = if structured { vec!["Others", "Others"] } else { vec!["Others"] };
+        insert_count(&mut options, "", &path, "Others", missing, structured);
     }
 
     collapse_single_child_groups(&mut options);
@@ -196,7 +219,7 @@ fn label_from_key(key: &str, structured: bool) -> String {
         return key.to_uppercase();
     }
     key.split('_')
-        .filter(|s| !s.is_empty())
+        .filter(|part| !part.is_empty())
         .map(|word| {
             let mut chars = word.chars();
             match chars.next() {
@@ -208,7 +231,6 @@ fn label_from_key(key: &str, structured: bool) -> String {
         .join(" ")
 }
 
-/// Products that satisfy every active selection EXCEPT exclude_key's own.
 fn scoped_products<'a>(
     products: &'a [Product],
     selections: &HashMap<String, Vec<String>>,
@@ -216,22 +238,27 @@ fn scoped_products<'a>(
 ) -> Vec<&'a Product> {
     products
         .iter()
-        .filter(|p| {
-            selections.iter().all(|(key, ids)| {
-                key == exclude_key || ids.is_empty() || product_matches_key(p, key, ids)
-            })
-        })
+        .filter(|product| selections.iter().all(|(key, values)| {
+            key == exclude_key || values.is_empty() || product_matches_key(product, key, values)
+        }))
         .collect()
 }
 
-pub fn product_matches_key(product: &Product, key: &str, selected_ids: &[String]) -> bool {
-    let value = product
-        .filter_ids
-        .get(key)
-        .map(String::as_str)
-        .unwrap_or("Others/Others");
-    // The most specific rule wins. !path excludes a child of a selected parent.
-    selected_ids.iter()
+pub fn product_matches_key(product: &Product, key: &str, selected_values: &[String]) -> bool {
+    let structured = is_structured_component(key);
+    let component = product.components.get(key);
+    let value = if structured {
+        component.and_then(|value| value.id()).unwrap_or("Others/Others")
+    } else {
+        component.map(|value| value.label()).unwrap_or("Others")
+    };
+
+    if !structured {
+        return selected_values.iter().any(|selected| selected == value);
+    }
+
+    selected_values
+        .iter()
         .filter(|rule| {
             let path = rule.strip_prefix('!').unwrap_or(rule);
             value == path || value.strip_prefix(path).is_some_and(|rest| rest.starts_with('/'))
@@ -249,10 +276,13 @@ pub fn build_all_filters(
     let mut groups = Vec::with_capacity(keys.len());
 
     for key in keys {
-        let structured = STRUCTURED_FILTERS.contains(&key.as_str());
+        let structured = is_structured_component(key);
         let scoped = scoped_products(products, selections, key);
-        let group = build_filter_group(key, &label_from_key(key, structured), &scoped);
-        groups.push(group);
+        groups.push(build_filter_group(key, &label_from_key(key, structured), &scoped));
     }
     groups
+}
+
+pub fn is_structured_component(field: &str) -> bool {
+    STRUCTURED_FILTERS.contains(&field)
 }

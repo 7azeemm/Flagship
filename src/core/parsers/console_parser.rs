@@ -33,6 +33,6 @@ impl SectionParser for ConsoleParser {
             "Others"
         };
 
-        product.filter_ids.insert("platform".to_string(), console.to_string());
+        product.components.insert("platform".to_string(), console.to_string());
     }
 }

@@ -1307,7 +1307,7 @@ fn product_components(product: &Product) -> String {
     let mut details = product.components.iter().collect::<Vec<_>>();
     details.sort_by(|left, right| left.0.cmp(right.0));
     for (key, value) in details.into_iter().take(16) {
-        lines.push(format!("- **{}**:  `{}`", humanize(key), value));
+        lines.push(format!("- **{}**:  `{}`", humanize(key), value.label()));
     }
     truncate(&lines.join("\n"), 900)
 }

@@ -55,7 +55,7 @@ impl ProductStorage {
 
         for section in Section::iter() {
             let path = format!("data/{section}.json");
-            match FileLoader::load_or_default::<HashMap<String, Product>>(&path).await {
+            match FileLoader::load_or_create_default::<HashMap<String, Product>>(&path).await {
                 Ok(section_products) => products.extend(section_products),
                 Err(error) => tracing::error!(%error, "Failed to load {section} products"),
             }
@@ -65,8 +65,7 @@ impl ProductStorage {
             tracing::error!(%error, "Failed to apply saved product overrides");
         }
 
-        let removed_products = FileLoader::load_or_default::<Vec<Product>>(REMOVED_PRODUCTS_PATH)
-            .await
+        let removed_products = FileLoader::load_or_create_default::<Vec<Product>>(REMOVED_PRODUCTS_PATH).await
             .unwrap_or_else(|error| {
                 tracing::error!(%error, "Failed to load removed products");
                 Vec::new()
@@ -99,12 +98,12 @@ impl ProductStorage {
 
         for (section, products) in by_section {
             let path = format!("data/{section}.json");
-            if let Err(error) = FileLoader::save_to_file(&path, &products).await {
+            if let Err(error) = FileLoader::save_file(&path, &products).await {
                 tracing::error!("Failed to save {section} products in {path}: {error}")
             }
         }
 
-        if save_removed && let Err(error) = FileLoader::save_to_file(REMOVED_PRODUCTS_PATH, &storage.removed_products).await {
+        if save_removed && let Err(error) = FileLoader::save_file(REMOVED_PRODUCTS_PATH, &storage.removed_products).await {
             tracing::error!("Failed to save removed products in {REMOVED_PRODUCTS_PATH}: {error}")
         }
 
@@ -114,7 +113,7 @@ impl ProductStorage {
         );
     }
 
-    pub async fn get(product_id: &str) -> Option<Product> {
+    pub async fn find_by_id(product_id: &str) -> Option<Product> {
         PRODUCT_STORAGE
             .read()
             .await
@@ -123,7 +122,7 @@ impl ProductStorage {
             .cloned()
     }
 
-    pub async fn get_product(product_id: &str) -> Option<Product> {
+    pub async fn find_and_record_view(product_id: &str) -> Option<Product> {
         let mut storage = PRODUCT_STORAGE.write().await;
         let product = storage.products.get_mut(product_id)?;
         product.views = product.views.saturating_add(1);
@@ -169,7 +168,7 @@ impl ProductStorage {
 
         storage.products.insert(product.id.clone(), product);
         Self::save(&storage, sections.into_iter().collect(), false).await;
-        VariantStorage::update(&storage.products, false).await;
+        VariantStorage::sync_from_products(&storage.products, false).await;
         Ok(())
     }
 
@@ -201,7 +200,7 @@ impl ProductStorage {
         }
 
         Self::save(&storage, sections.into_iter().collect(), false).await;
-        VariantStorage::update(&storage.products, false).await;
+        VariantStorage::sync_from_products(&storage.products, false).await;
 
         Ok(summary)
     }
@@ -221,7 +220,7 @@ impl ProductStorage {
         if !update.changes.is_empty() {
             let sections = HashSet::from([old_section, update.product.section]);
             Self::save(&storage, sections.into_iter().collect(), false).await;
-            VariantStorage::update(&storage.products, false).await;
+            VariantStorage::sync_from_products(&storage.products, false).await;
         }
 
         Ok(update)
@@ -230,7 +229,6 @@ impl ProductStorage {
     fn reparse(product: &mut Product) -> Vec<ProductChange> {
         let old = product.clone();
         CatalogScanner::normalize_product_section(product);
-        product.filter_ids.clear();
         product.components.clear();
         product.section.parser().parse(product);
         product.record_changes(&old, false)
@@ -286,15 +284,15 @@ impl ProductStorage {
         storage.removed_products.push(product.clone());
 
         Self::save(&storage, vec![section], true).await;
-        VariantStorage::update(&storage.products, false).await;
+        VariantStorage::sync_from_products(&storage.products, false).await;
         
         Ok(product)
     }
 
-    pub async fn update(
+    pub async fn synchronize_scan_results(
         mut products: Vec<Product>,
         sections: &[Section],
-        sites: &[&'static str],
+        retailers: &[&'static str],
         report: &mut ScanReport,
     ) {
         let started_at = Instant::now();
@@ -306,7 +304,7 @@ impl ProductStorage {
         storage.products.retain(|_, existing| {
             let scope = (existing.retailer.clone(), existing.section);
             let is_in_scope = (sections.is_empty() || sections.contains(&existing.section))
-                && (sites.is_empty() || sites.contains(&existing.retailer.as_str()));
+                && (retailers.is_empty() || retailers.contains(&existing.retailer.as_str()));
             let missing = is_in_scope && !new_product_urls.contains(&existing.url);
 
             if !missing || !scan_scopes.attempted.contains(&scope) || scan_scopes.failed.contains(&scope) {
@@ -368,7 +366,7 @@ impl ProductStorage {
         );
     }
 
-    pub async fn commit(report: &ScanReport) {
+    pub async fn commit_scan_changes(report: &ScanReport) {
         let mut sections = HashSet::new();
         let products = report
             .added_items

@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import type { Product, VariantChart, VariantChartPoint } from '../types';
 import { parseChart, request } from '../lib/api';
-import { productHistoryChart } from '../lib/productHistory';
+import { buildProductHistoryChart } from '../lib/productHistory';
 import { money } from '../lib/catalog';
 
 const RANGES = [
@@ -262,10 +262,9 @@ export function ProductAnalytics({
   initialChart: VariantChart | null;
   endpoint: string;
   product: Product;
-  products?: Product[];
 }) {
   const [chart, setChart] = useState(
-    () => initialChart || productHistoryChart(product, '90d', 'auto'),
+    () => initialChart || buildProductHistoryChart(product, '90d', 'auto'),
   );
   const [range, setRange] = useState(initialChart?.range || '90d');
   const [loading, setLoading] = useState(false);
@@ -280,7 +279,7 @@ export function ProductAnalytics({
       return;
     }
     if (!initialChart) {
-      setChart(productHistoryChart(product, range, 'auto'));
+      setChart(buildProductHistoryChart(product, range, 'auto'));
       setLoading(false);
       setError('');
       return;

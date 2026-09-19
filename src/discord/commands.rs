@@ -166,7 +166,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) -> Result<(), S
     match command.data.name.as_str() {
         "product" => {
             let product = match option(command, "id") {
-                Some(id) => ProductStorage::get(id).await.ok_or_else(|| "Product ID not found".to_string())?,
+                Some(id) => ProductStorage::find_by_id(id).await.ok_or_else(|| "Product ID not found".to_string())?,
                 None => {
                     let query = product_query(command)?;
                     if query_is_empty(&query) {

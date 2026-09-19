@@ -25,7 +25,7 @@ impl SectionParser for KeyboardParser {
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
-        product.filter_ids.insert("type".to_string(), match GAMING_WORDS.iter().any(|w| upper.contains(w)) {
+        product.components.insert("type".to_string(), match GAMING_WORDS.iter().any(|w| upper.contains(w)) {
             true => "Gaming".to_string(),
             false => "Office".to_string(),
         });

@@ -1,4 +1,4 @@
-import type { CatalogQuery, FilterValue, Product } from '../types';
+import type { CatalogQuery, ComponentValue, FilterValue, Product } from '../types';
 
 const labels: Record<string, string> = {
   PC: 'Desktop PCs',
@@ -86,7 +86,7 @@ export function readQuery(location: Pick<Location, 'pathname' | 'search'>): Cata
       filters = Object.fromEntries(
         Object.entries(raw).filter(
           (entry): entry is [string, string[]] =>
-            Array.isArray(entry[1]) && entry[1].every((id) => typeof id === 'string'),
+            Array.isArray(entry[1]) && entry[1].every((value) => typeof value === 'string'),
         ),
       );
   } catch {
@@ -128,7 +128,7 @@ export function queryParams(query: CatalogQuery, metadata = false) {
   if (!query.stock.length) params.set('availability', 'all');
   if (query.groupBy !== null) params.set('group_by', JSON.stringify(query.groupBy));
   params.set('grouping_mode', String(query.grouped));
-  const filters = Object.fromEntries(Object.entries(query.filters).filter(([, ids]) => ids.length));
+  const filters = Object.fromEntries(Object.entries(query.filters).filter(([, values]) => values.length));
   if (Object.keys(filters).length) params.set('filters', JSON.stringify(filters));
   if (metadata) params.set('send_section_info', 'true');
   return params;
@@ -139,33 +139,38 @@ export function queryURL(query: CatalogQuery) {
 }
 export const toggle = (values: string[], value: string) =>
   values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-export const isWithin = (id: string, parent: string) =>
-  id === parent || id.startsWith(`${parent}/`);
 const rulePath = (rule: string) => rule.replace(/^!/, '');
-function selectedAt(id: string, selected: string[]) {
+export const filterValue = (node: FilterValue) => node.id || node.label;
+export const isWithin = (value: string, parent: string) =>
+  value === parent || value.startsWith(`${parent}/`);
+function selectedAt(value: string, selected: string[]) {
   const rule = selected
-    .filter((rule) => isWithin(id, rulePath(rule)))
+    .filter((candidate) => isWithin(value, rulePath(candidate)))
     .sort((a, b) => rulePath(b).length - rulePath(a).length)[0];
   return !!rule && !rule.startsWith('!');
 }
-export function nodeStatus(
-  node: FilterValue,
-  selected: string[],
-): 'checked' | 'partial' | 'unchecked' {
-  const checked = selectedAt(node.id, selected);
+export function nodeStatus(node: FilterValue, selected: string[]): 'checked' | 'partial' | 'unchecked' {
+  const value = filterValue(node);
+  if (!node.id) return selected.includes(value) ? 'checked' : 'unchecked';
+  const checked = selectedAt(value, selected);
   const changedBelow = selected.some(
     (rule) =>
-      rulePath(rule) !== node.id &&
-      isWithin(rulePath(rule), node.id) &&
+      rulePath(rule) !== value &&
+      isWithin(rulePath(rule), value) &&
       !rule.startsWith('!') !== checked,
   );
   return changedBelow ? 'partial' : checked ? 'checked' : 'unchecked';
 }
-export function toggleNode(selected: string[], id: string): string[] {
-  const checked = selectedAt(id, selected);
-  const rest = selected.filter((rule) => !isWithin(rulePath(rule), id));
-  const inherited = selectedAt(id, rest);
-  return checked ? (inherited ? [...rest, `!${id}`] : rest) : inherited ? rest : [...rest, id];
+export function toggleNode(selected: string[], node: FilterValue): string[] {
+  const value = filterValue(node);
+  if (!node.id)
+    return selected.includes(value)
+      ? selected.filter((selectedValue) => selectedValue !== value)
+      : [...selected, value];
+  const checked = selectedAt(value, selected);
+  const rest = selected.filter((rule) => !isWithin(rulePath(rule), value));
+  const inherited = selectedAt(value, rest);
+  return checked ? (inherited ? [...rest, `!${value}`] : rest) : inherited ? rest : [...rest, value];
 }
 export const hasFilterChanges = (query: CatalogQuery) =>
   !!(
@@ -173,7 +178,7 @@ export const hasFilterChanges = (query: CatalogQuery) =>
     query.min_price ||
     query.max_price ||
     query.site.length ||
-    Object.values(query.filters).some((ids) => ids.length) ||
+    Object.values(query.filters).some((values) => values.length) ||
     query.stock.length !== 1 ||
     query.stock[0] !== 'InStock'
   );
@@ -187,9 +192,12 @@ export function safeURL(value: string): string | undefined {
 }
 export function productSpecs(product: Product, fields: string[]) {
   return fields.map((key) => {
-    const value = product.components[key]?.trim();
+    const value = componentLabel(product.components[key]).trim();
     return { key, label: fieldLabel(key), value: value || 'Unknown', unknown: !value };
   });
+}
+export function componentLabel(value: ComponentValue | undefined): string {
+  return typeof value === 'string' ? value : value?.label || '';
 }
 export function pageNumbers(page: number, total: number) {
   const start = Math.max(1, page - 3);
@@ -219,9 +227,9 @@ export function sectionInfoKey(query: CatalogQuery) {
     [...query.site].sort(),
     [...query.stock].sort(),
     Object.entries(query.filters)
-      .filter(([, ids]) => ids.length)
+      .filter(([, values]) => values.length)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, ids]) => [key, [...ids].sort()]),
+      .map(([key, values]) => [key, [...values].sort()]),
   ]);
 }
 export function apiQueryParams(query: CatalogQuery, metadata: boolean) {

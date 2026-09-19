@@ -48,16 +48,22 @@ test('legacy lowercase URLs are recognized and invalid parameters are bounded', 
   assert.equal(query.max_price, '');
   assert.deepEqual(query.filters, {});
   assert.deepEqual(readQuery({ pathname: '/CPU', search: '?filters={broken' }).filters, {});
+  assert.deepEqual(
+    readQuery({ pathname: '/CPU', search: '?filters=%7B%22cpu%22%3A%5B%22Intel%2FCore+i7%22%5D%7D' }).filters,
+    { cpu: ['Intel/Core i7'] },
+  );
 });
 test('parent selections replace descendants without matching unrelated prefixes', () => {
-  assert.deepEqual(toggleNode(['Intel/Core i7', 'AMD'], 'Intel'), ['AMD', 'Intel']);
-  assert.deepEqual(toggleNode(['Intel', 'IntelOther'], 'Intel'), ['IntelOther']);
-  assert.deepEqual(toggleNode(['Intel'], 'Intel/Core i7'), ['Intel', '!Intel/Core i7']);
-  assert.equal(nodeStatus({ id: 'Intel', label: 'Intel', count: 3 }, ['Intel/Core i7']), 'partial');
-  assert.equal(
-    nodeStatus({ id: 'Intel/Core i7', label: 'Core i7', count: 3 }, ['Intel']),
-    'checked',
-  );
+  const coreI7 = { id: 'Intel/Core i7', label: 'Core i7', count: 2 };
+  const intel = { id: 'Intel', label: 'Intel', count: 3, children: [coreI7] };
+  assert.deepEqual(toggleNode(['Intel/Core i7', 'AMD'], intel), ['AMD', 'Intel']);
+  assert.deepEqual(toggleNode(['Intel', 'IntelOther'], intel), ['IntelOther']);
+  assert.deepEqual(toggleNode(['Intel'], coreI7), ['Intel', '!Intel/Core i7']);
+  assert.equal(nodeStatus(intel, ['Intel/Core i7']), 'partial');
+  assert.equal(nodeStatus(coreI7, ['Intel']), 'checked');
+  const connector = { label: 'USB-A/USB-C', count: 1 };
+  assert.deepEqual(toggleNode(['USB-A'], connector), ['USB-A', 'USB-A/USB-C']);
+  assert.equal(nodeStatus(connector, ['USB-A']), 'unchecked');
 });
 test('price ranges handle equal bounds and cannot cross or go out of bounds', () => {
   assert.deepEqual(clampRange(500, 100, 0, 1000), [500, 500]);
@@ -71,14 +77,18 @@ test('API original_price maps correctly and missing availability is not fabricat
     title: 'Laptop',
     price: 1500,
     original_price: 1800,
-    components: { cpu: 'Core i5', memory: '16GB', invalid: 4 },
+    components: {
+      cpu: { id: 'Intel/Core i5/Intel Core i5-14400F', label: 'Intel Core i5-14400F' },
+      memory: '16GB',
+      invalid: 4,
+    },
   });
   assert.equal(product.original_price, 1800);
   assert.equal(product.status, 'Unknown');
   assert.equal(product.image, '');
   assert.deepEqual(
     productSpecs(product, ['memory', 'cpu', 'gpu']).map((spec) => spec.value),
-    ['16GB', 'Core i5', 'Unknown'],
+    ['16GB', 'Intel Core i5-14400F', 'Unknown'],
   );
   assert.throws(() => parseProduct({ title: 'bad', price: 'NaN' }));
 });
@@ -87,6 +97,26 @@ test('product detail responses retain the retailer name', () => {
     parseProduct({ id: 'a', title: 'Laptop', price: 1500, retailer: 'Mytek' }).site,
     'Mytek',
   );
+});
+test('product detail responses accept the backend history array', () => {
+  const product = parseProduct({
+    id: 'a',
+    title: 'Laptop',
+    price: 1500,
+    retailer: 'Mytek',
+    history: [
+      {
+        timestamp: '2026-09-16T10:30:00Z',
+        changes: [{ field: 'price', old_value: 1600, new_value: 1500 }],
+      },
+    ],
+  });
+  assert.equal(product.history.entries.length, 1);
+  assert.deepEqual(product.history.entries[0].changes[0], {
+    field: 'price',
+    old_value: 1600,
+    new_value: 1500,
+  });
 });
 test('response validation rejects malformed data and accepts empty catalogs', () => {
   assert.throws(() => parsePage({ products: [], total_pages: '1' }));
@@ -189,7 +219,7 @@ test('retailer and availability counts render, including zero-count retailers', 
     createElement(Filters, {
       query: defaultQuery(),
       info,
-      base: info,
+      baselineSectionInfo: info,
       update: () => {},
       reset: () => {},
       disabled: false,
@@ -282,7 +312,7 @@ test('grouped API summaries keep the joined-fields label and gallery images', ()
   if (page.items[0].type === 'variant')
     assert.deepEqual(page.items[0].data.images, ['https://example.com/two.jpg']);
 });
-import { productHistoryChart } from './productHistory';
+import { buildProductHistoryChart } from './productHistory';
 test('ungroupable product gets a price and stock chart without variant history', () => {
   const product = parseProduct({
     id: 'standalone',
@@ -292,7 +322,7 @@ test('ungroupable product gets a price and stock chart without variant history',
     added_at: '2026-09-01T00:00:00Z',
     history: null,
   });
-  const chart = productHistoryChart(product, '90d', 'auto', Date.parse('2026-09-07T00:00:00Z'));
+  const chart = buildProductHistoryChart(product, '90d', 'auto', Date.parse('2026-09-07T00:00:00Z'));
   assert.equal(chart.scope, 'product');
   assert.equal(chart.points.length, 2);
   assert.deepEqual(
@@ -324,12 +354,12 @@ test('individual charts reconstruct price changes and respect period and interva
       ],
     },
   });
-  const chart = productHistoryChart(product, '30d', 'scan', Date.parse('2026-09-07T00:00:00Z'));
+  const chart = buildProductHistoryChart(product, '30d', 'scan', Date.parse('2026-09-07T00:00:00Z'));
   assert.equal(chart.points[0].timestamp, '2026-08-08T00:00:00.000Z');
   assert.equal(chart.points[0].lowest_price, 150);
   assert.equal(chart.points.at(-1)?.in_stock_count, 0);
   assert.equal(chart.summary.period_low, 100);
-  assert.equal(productHistoryChart(product, 'all', 'week').interval, 'week');
+  assert.equal(buildProductHistoryChart(product, 'all', 'week').interval, 'week');
 });
 import { classifyPrice, ProductAnalytics } from '../components/ProductAnalytics';
 import { ProductDialog } from '../components/ProductDialog';
@@ -343,13 +373,13 @@ test('product details hide empty components and show listings only for multi-pro
     status: 'InStock',
     components: {},
   });
-  const render = (products: (typeof product)[], endpoint: string) =>
+  const render = (offers: (typeof product)[], detailsEndpoint: string) =>
     renderToStaticMarkup(
       createElement(ProductDialog, {
-        products,
+        offers,
         chart: null,
         fields: ['cpu'],
-        endpoint,
+        detailsEndpoint,
         onClose: () => {},
       }),
     );
@@ -389,10 +419,10 @@ test('product history groups one update and renders every typed field change', (
   });
   const html = renderToStaticMarkup(
     createElement(ProductDialog, {
-      products: [product],
+      offers: [product],
       chart: null,
       fields: [],
-      endpoint: '/products/history-product',
+      detailsEndpoint: '/products/history-product',
       onClose: () => {},
     }),
   );
@@ -401,6 +431,38 @@ test('product history groups one update and renders every typed field change', (
   assert.match(html, /dateTime="2026-09-15T10:30:00Z"/);
   assert.match(html, /150 DT/);
   assert.match(html, /Out of stock/);
+});
+test('product history renders structured component labels instead of object placeholders', () => {
+  const product = parseProduct({
+    id: 'component-history',
+    title: 'Component history',
+    site: 'Shop',
+    price: 120,
+    history: [
+      {
+        timestamp: '2026-09-15T10:30:00Z',
+        changes: [
+          {
+            field: 'components',
+            old_value: { cpu: { id: 'Others/Intel/Intel Core i5', label: 'Intel Core i5' } },
+            new_value: { cpu: { id: 'Intel/Core i5/Intel Core i5-12400', label: 'Intel Core i5-12400' } },
+          },
+        ],
+      },
+    ],
+  });
+  const html = renderToStaticMarkup(
+    createElement(ProductDialog, {
+      offers: [product],
+      chart: null,
+      fields: [],
+      detailsEndpoint: '/products/component-history',
+      onClose: () => {},
+    }),
+  );
+  assert.match(html, /CPU: Intel Core i5/);
+  assert.match(html, /CPU: Intel Core i5-12400/);
+  assert.doesNotMatch(html, /\[object Object\]/);
 });
 test('product page renders the requested price and availability charts without sliders', () => {
   const product = parseProduct({
@@ -453,49 +515,6 @@ test('file-based categories preserve filtered links sharing a section', () => {
   );
   assert.throws(() => parseServerInfo({ Bad: [{ name: 'External', url: '//example.com' }] }));
   assert.throws(() => parseServerInfo({ Bad: [{ name: 'Script', url: 'javascript:alert(1)' }] }));
-});
-
-import { retailerHistory } from './retailerHistory';
-test('retailer comparison uses the lowest available offer and preserves stock gaps', () => {
-  const now = Date.parse('2026-09-08T00:00:00Z');
-  const first = parseProduct({
-    id: 'a',
-    title: 'A',
-    site: 'Shop',
-    price: 120,
-    status: 'InStock',
-    added_at: '2026-09-01T00:00:00Z',
-    history: {
-      entries: [
-        {
-          timestamp: '2026-09-03T00:00:00Z',
-          changes: [{ field: 'price', old_value: 100, new_value: 120 }],
-        },
-        {
-          timestamp: '2026-09-02T00:00:00Z',
-          changes: [{ field: 'status', old_value: 'OutOfStock', new_value: 'InStock' }],
-        },
-      ],
-    },
-  });
-  const second = { ...first, id: 'b', price: 150, history: { entries: [] } };
-  const alone = retailerHistory([first], 'all', 'scan', now)[0];
-  assert.equal(alone.points[0].lowest_price, null);
-  assert.equal(alone.low, 100);
-  assert.equal(alone.high, 120);
-  const combined = retailerHistory([first, second], 'all', 'scan', now)[0];
-  assert.equal(combined.points[0].lowest_price, 150);
-  assert.equal(combined.current, 120);
-  assert.equal(combined.low, 100);
-  assert.equal(combined.high, 150);
-  const unavailable = retailerHistory(
-    [{ ...first, status: 'OutOfStock', history: { entries: [] } }],
-    'all',
-    'scan',
-    now,
-  )[0];
-  assert.equal(unavailable.current, null);
-  assert.equal(unavailable.low, null);
 });
 
 test('category search and grouping defaults survive shared URLs', () => {

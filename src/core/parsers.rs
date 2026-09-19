@@ -11,7 +11,7 @@ pub mod power_supply_parser;
 pub mod storage_parser;
 
 use crate::core::dataset::{Dataset, SearchResult};
-use crate::core::product::Product;
+use crate::core::product::{Product};
 use crate::core::sections::{Section, SectionConfig};
 use crate::utils::regex_cache::RegexCache;
 use crate::utils::serde_ext::JsonExt;
@@ -20,6 +20,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::Arc;
+use crate::api::filters::{is_structured_component};
 
 const PROXIMITY_THRESHOLD: usize = 40;
 
@@ -82,25 +83,26 @@ pub trait SectionParser: Send + Sync {
         }
 
         let memory_size = match product.section {
-            Section::GPU => product.filter_ids.get("memory_size").map(|s| s.replace("GB", "")),
+            Section::GPU => product.components.get("memory_size").map(|s| s.label().replace("GB", "")),
             _ => None,
         };
 
         let text = format!("{cleaned_title} | {}", product.description).to_uppercase();
         
-        if let Some(result) = self.search_in_dataset(&text, memory_size.as_ref()) {
+        if let Some(result) = self.search_in_dataset(product.section, &text, memory_size.as_ref()) {
             if let Some(field) = &self.config().main_field {
-                product.components.insert(field.to_string(), result.label);
-                product.filter_ids.insert(field.to_string(), result.id);
+                if is_structured_component(field) {
+                    product.components.insert_structured(field.to_string(), result.id, result.label);
+                } else {
+                    product.components.insert(field.to_string(), result.label);
+                }
             }
             if let Some(Value::Object(obj)) = result.data {
                 for (key, value) in obj {
                     if let Some(value) = value.as_str() && !value.is_empty() {
-                        if self.config().components.contains(&key) {
-                            product.components.insert(key.clone(), value.to_string());
-                        }
-                        if self.config().filters.contains(&key) && !product.filter_ids.contains_key(&key) {
-                            product.filter_ids.insert(key, value.to_string());
+                        if (self.config().components.contains(&key) || self.config().filters.contains(&key))
+                            && !product.components.contains_key(&key) {
+                            product.components.insert(key, value.to_string());
                         }
                     }
                 }
@@ -109,7 +111,7 @@ pub trait SectionParser: Send + Sync {
         }
     }
 
-    fn search_in_dataset(&self, text: &str, memory_size: Option<&String>) -> Option<SearchResult> {
+    fn search_in_dataset(&self, section: Section, text: &str, memory_size: Option<&String>) -> Option<SearchResult> {
         for node in &self.dataset().nodes {
             if !words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
                 continue;
@@ -117,17 +119,21 @@ pub trait SectionParser: Send + Sync {
 
             if self.config().id != Section::GPU {
                 return Some(SearchResult {
-                    id: node.id.clone(),
+                    id: node.path.clone(),
                     label: node.label.clone(),
                     data: node.data.clone(),
                 });
+            }
+
+            if !node.supports_gpu_platform(section) {
+                continue;
             }
 
             let Some(chipset_data) = &node.data else { continue; };
             let chipset_size = chipset_data.get_str("memory_size");
             if chipset_size == memory_size.map(|x| x.as_str()) || memory_size.is_none() {
                 return Some(SearchResult {
-                    id: node.id.clone(),
+                    id: node.path.clone(),
                     label: node.label.clone(),
                     data: Some(chipset_data.clone()),
                 });

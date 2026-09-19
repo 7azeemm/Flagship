@@ -8,19 +8,19 @@ use tokio::fs::{create_dir_all, read_to_string, write};
 pub struct FileLoader;
 
 impl FileLoader {
-    pub async fn load_from_file<T: DeserializeOwned>(path: &str) -> Result<T, String> {
+    pub async fn load_json<T: DeserializeOwned>(path: &str) -> Result<T, String> {
         let content = read_to_string(path).await.map_err(|e| format!("Failed to load {path}: {e}"))?;
         Ok(serde_json::from_str(&content).map_err(|e| format!("Failed to load {path}: {e}"))?)
     }
 
-    pub async fn load_or_default<T: DeserializeOwned + Serialize + Default>(path: &str) -> Result<T, String> {
+    pub async fn load_or_create_default<T: DeserializeOwned + Serialize + Default>(path: &str) -> Result<T, String> {
         match read_to_string(path).await {
             Ok(content) => {
                 // File exists, parse the content
                 serde_json::from_str(&content).map_err(|e| format!("Failed to parse {path}: {e}"))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Self::create_path_if_absent(path).await?;
+                Self::ensure_parent_directory(path).await?;
 
                 // File not found, create default content
                 let default_val = T::default();
@@ -35,8 +35,8 @@ impl FileLoader {
         }
     }
 
-    pub async fn save_to_file<T: Serialize>(path: &str, data: &T) -> Result<(), String> {
-        Self::create_path_if_absent(path).await?;
+    pub async fn save_file<T: Serialize>(path: &str, data: &T) -> Result<(), String> {
+        Self::ensure_parent_directory(path).await?;
 
         let json = serde_json::to_string_pretty(data)
             .map_err(|e| format!("Failed to serialize data for {path}: {e}"))?;
@@ -46,7 +46,7 @@ impl FileLoader {
         Ok(())
     }
 
-    async fn create_path_if_absent(path: &str) -> Result<(), String> {
+    async fn ensure_parent_directory(path: &str) -> Result<(), String> {
         if let Some(parent) = Path::new(path).parent() {
             if !parent.exists() {
                 create_dir_all(parent)
@@ -57,7 +57,7 @@ impl FileLoader {
         Ok(())
     }
 
-    pub async fn load_csv(path: &str) -> Result<Vec<Value>, String> {
+    pub async fn read_csv_records(path: &str) -> Result<Vec<Value>, String> {
         let file = File::open(path).map_err(|err| format!("Failed to open file: {err}"))?;
         let mut csv_reader = csv::Reader::from_reader(file);
 

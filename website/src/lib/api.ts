@@ -10,6 +10,7 @@ import type {
   HomeProduct,
   HomepageData,
   StatisticsData,
+  ComponentValue,
 } from '../types';
 
 const origin = '/api';
@@ -17,14 +18,20 @@ const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const strings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
-const stringMap = (value: unknown): Record<string, string> =>
-  record(value)
-    ? Object.fromEntries(
-        Object.entries(value).filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string',
-        ),
-      )
-    : {};
+const componentMap = (value: unknown): Record<string, ComponentValue> => {
+  if (!record(value)) return {};
+  const components: [string, ComponentValue][] = [];
+  for (const [key, component] of Object.entries(value)) {
+    if (typeof component === 'string') components.push([key, component]);
+    else if (
+      record(component) &&
+      typeof component.id === 'string' &&
+      typeof component.label === 'string'
+    )
+      components.push([key, { id: component.id, label: component.label }]);
+  }
+  return Object.fromEntries(components);
+};
 const number = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 const invalid = () => new Error('The catalog returned an unexpected response. Please try again.');
@@ -39,9 +46,14 @@ const facetCounts = (value: unknown) => {
 
 const productHistory = (value: unknown): Product['history'] => {
   if (value === undefined || value === null) return { entries: [] };
-  if (!record(value) || !Array.isArray(value.entries)) throw invalid();
+  const entries = Array.isArray(value)
+    ? value
+    : record(value) && Array.isArray(value.entries)
+      ? value.entries
+      : null;
+  if (!entries) throw invalid();
   return {
-    entries: value.entries.map((entry) => {
+    entries: entries.map((entry) => {
       if (
         !record(entry) ||
         typeof entry.timestamp !== 'string' ||
@@ -95,8 +107,7 @@ export function parseProduct(value: unknown): Product {
     status: typeof value.status === 'string' ? value.status : 'Unknown',
     original_price: number(value.original_price) ? value.original_price : null,
     description: typeof value.description === 'string' ? value.description : null,
-    components: stringMap(value.components),
-    filter_ids: stringMap(value.filter_ids),
+    components: componentMap(value.components),
     history: productHistory(value.history),
     updated_at: typeof value.updated_at === 'string' ? value.updated_at : null,
     added_at: typeof value.added_at === 'string' ? value.added_at : null,
@@ -122,7 +133,7 @@ function parseVariant(value: unknown): VariantSummary {
     image: typeof value.image === 'string' ? value.image : '',
     images: strings(value.images) ? value.images : [],
     original_price: number(value.original_price) ? value.original_price : null,
-    components: stringMap(value.components),
+    components: componentMap(value.components),
     offer_count: value.offer_count,
     retailer_count: value.retailer_count,
     in_stock_count: value.in_stock_count,
@@ -183,13 +194,13 @@ function parseNode(value: unknown, depth = 0): FilterValue {
   if (
     depth > 20 ||
     !record(value) ||
-    typeof value.id !== 'string' ||
+    (value.id !== undefined && typeof value.id !== 'string') ||
     typeof value.label !== 'string' ||
     !number(value.count)
   )
     throw invalid();
   return {
-    id: value.id,
+    ...(typeof value.id === 'string' ? { id: value.id } : {}),
     label: value.label,
     count: value.count,
     children: Array.isArray(value.children)
