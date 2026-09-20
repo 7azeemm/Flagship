@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="postgres@aws-0-eu-west-1.pooler.supabase.com" uuid="bfbef0ae-7637-4ceb-83a3-e6857717def3">
-      <driver-ref>postgresql</driver-ref>
+    <data-source source="LOCAL" name="mythos" uuid="52e78d51-ba8e-431d-b962-7322e3b7174d">
+      <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
-      <jdbc-driver>org.postgresql.Driver</jdbc-driver>
-      <jdbc-url>jdbc:postgresql://aws-0-eu-west-1.pooler.supabase.com:5432/postgres</jdbc-url>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/state/mythos.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
   </component>

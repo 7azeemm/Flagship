@@ -7,8 +7,8 @@ use crate::core::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::core::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::core::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
 use crate::core::variant::VariantStorage;
+use crate::database::Database;
 use crate::discord::events::{DiscordEvent, ProductChangeKind, ScanCatalogMetrics, ScanSectionMetric, ScanSiteMetric, ScanSummary, emit};
-use crate::utils::file_loader::FileLoader;
 use crate::utils::regex_cache::RegexCache;
 use crate::utils::web_client::WebClientType;
 use chrono::{Duration, Utc};
@@ -31,8 +31,7 @@ static USE_CACHE: bool = false;
 static CATALOG_SCANNER: OnceLock<Arc<CatalogScanner>> = OnceLock::new();
 static PAGE_CACHE: Lazy<RwLock<HashMap<String, Product>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 pub static CACHED_PRODUCT_INFO: Lazy<RwLock<HashMap<String, CachedProductInfo>>> = Lazy::new(|| RwLock::new(HashMap::new()));
-const CACHED_PRODUCT_INFO_PATH: &str = "state/cached_product_info.json";
-const PAGE_CACHE_PATH: &str = "state/cache.json";
+const PAGE_CACHE_STATE: &str = "page_cache";
 const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
 const SCAN_INTERVAL_TIME: Duration = Duration::hours(2);
 const HTTP_RETAILER_CONCURRENCY: usize = 15;
@@ -99,13 +98,13 @@ impl CatalogScanner {
 
     async fn load_caches() {
         if USE_CACHE {
-            match FileLoader::load_or_create_default::<HashMap<String, Product>>(PAGE_CACHE_PATH).await {
+            match Database::load_state::<HashMap<String, Product>>(PAGE_CACHE_STATE).await {
                 Ok(cache) => *PAGE_CACHE.write().await = cache,
                 Err(error) => tracing::error!(%error, "Failed to load page cache"),
             }
         }
 
-        let mut cached_product_info: HashMap<String, CachedProductInfo> = FileLoader::load_or_create_default(CACHED_PRODUCT_INFO_PATH).await.unwrap_or_else(|error| {
+        let mut cached_product_info: HashMap<String, CachedProductInfo> = Database::load_product_info_cache().await.unwrap_or_else(|error| {
             tracing::error!(%error, "Failed to load products info");
             HashMap::new()
         });
@@ -119,7 +118,7 @@ impl CatalogScanner {
 
     async fn save_caches(&self, report: &ScanReport) {
         let products = &ProductStorage::get_storage().read().await.products;
-        if USE_CACHE && let Err(error) = FileLoader::save_file(PAGE_CACHE_PATH, &products).await {
+        if USE_CACHE && let Err(error) = Database::save_state(PAGE_CACHE_STATE, &products).await {
             tracing::error!(%error, "Failed to save page cache");
         }
 
@@ -127,7 +126,7 @@ impl CatalogScanner {
         for product in &report.removed_items {
             cached_product_info.remove(&product.url);
         }
-        if let Err(error) = FileLoader::save_file(CACHED_PRODUCT_INFO_PATH, &*cached_product_info).await {
+        if let Err(error) = Database::save_product_info_cache(&*cached_product_info).await {
             tracing::error!(%error, "Failed to save products info");
         }
     }

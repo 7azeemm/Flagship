@@ -1,21 +1,18 @@
 use crate::core::product::{Product, ProductChange, ProductStatus};
 use crate::core::scanner::CatalogScanner;
 use crate::core::sections::Section;
-use crate::core::tracking::overrides::ProductOverrides;
 use crate::core::tracking::scan_report::ScanReport;
 use crate::core::variant::VariantStorage;
-use crate::utils::file_loader::FileLoader;
+use crate::database::Database;
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use strum::IntoEnumIterator;
 use tokio::sync::{Mutex, RwLock};
 
 static PRODUCT_STORAGE: Lazy<RwLock<ProductStorage>> = Lazy::new(|| RwLock::new(ProductStorage::default()));
-const REMOVED_PRODUCTS_PATH: &str = "state/removed_products.json";
 
 #[derive(Clone, Default)]
 pub struct ProductStorage {
@@ -51,25 +48,10 @@ pub struct ProductQuery {
 impl ProductStorage {
     pub async fn load() {
         let start_time = Instant::now();
-        let mut products = HashMap::new();
-
-        for section in Section::iter() {
-            let path = format!("data/{section}.json");
-            match FileLoader::load_or_create_default::<HashMap<String, Product>>(&path).await {
-                Ok(section_products) => products.extend(section_products),
-                Err(error) => tracing::error!(%error, "Failed to load {section} products"),
-            }
-        }
-
-        // if let Err(error) = ProductOverrides::apply_saved(&mut products).await {
-        //     tracing::error!(%error, "Failed to apply saved product overrides");
-        // }
-
-        let removed_products = FileLoader::load_or_create_default::<Vec<Product>>(REMOVED_PRODUCTS_PATH).await
-            .unwrap_or_else(|error| {
-                tracing::error!(%error, "Failed to load removed products");
-                Vec::new()
-            });
+        let (products, removed_products) = Database::load_products().await.unwrap_or_else(|error| {
+            tracing::error!(%error, "Failed to load product storage");
+            (HashMap::new(), Vec::new())
+        });
 
         let mut storage = PRODUCT_STORAGE.write().await;
         storage.products = products;
@@ -85,26 +67,9 @@ impl ProductStorage {
 
     pub async fn save(storage: &ProductStorage, sections: Vec<Section>, save_removed: bool) {
         let start_time = Instant::now();
-        let mut by_section: HashMap<Section, HashMap<&String, &Product>> = sections
-            .into_iter()
-            .map(|section| (section, HashMap::new()))
-            .collect();
-
-        for (id, product) in &storage.products {
-            by_section.entry(product.section).and_modify(|map| {
-                map.insert(id, product);
-            });
-        }
-
-        for (section, products) in by_section {
-            let path = format!("data/{section}.json");
-            if let Err(error) = FileLoader::save_file(&path, &products).await {
-                tracing::error!("Failed to save {section} products in {path}: {error}")
-            }
-        }
-
-        if save_removed && let Err(error) = FileLoader::save_file(REMOVED_PRODUCTS_PATH, &storage.removed_products).await {
-            tracing::error!("Failed to save removed products in {REMOVED_PRODUCTS_PATH}: {error}")
+        let removed_products = save_removed.then_some(storage.removed_products.as_slice());
+        if let Err(error) = Database::save_products(&storage.products, &sections, removed_products).await {
+            tracing::error!(%error, "Failed to save product storage")
         }
 
         tracing::info!(
@@ -367,7 +332,7 @@ impl ProductStorage {
     }
 
     pub async fn commit_scan_changes(report: &ScanReport) {
-        let mut sections = HashSet::new();
+        let mut sections = report.removed_items.iter().map(|product| product.section).collect::<HashSet<_>>();
         let products = report
             .added_items
             .iter()

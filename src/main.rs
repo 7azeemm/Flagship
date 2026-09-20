@@ -1,10 +1,12 @@
 pub mod api;
 pub mod core;
+pub mod database;
 pub mod discord;
 pub mod utils;
 
 use crate::api::endpoints::info;
 use crate::api::server;
+use crate::database::Database;
 use crate::utils::logger::setup_logging;
 use crate::utils::serde_ext::JsonExt;
 use crate::utils::web_client::WebClient;
@@ -26,6 +28,7 @@ async fn main() {
     println!("Starting...");
     dotenv().ok();
     setup_logging();
+    Database::init().await.expect("Failed to initialize SQLite database");
 
     discord::bot::start().await;
     ErrorTracker::load().await;

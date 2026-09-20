@@ -1,14 +1,14 @@
 ## Todo list
 
-- [ ]  Change histroy field
-- [ ]  Remove ids from CPU, and GPU datasets
-- [ ]  idk
+- [X]  Change histroy field
+- [X]  Remove ids from CPU, and GPU datasets
+- [X]  idk
 - [ ]  New-category detector in retailers
 - [ ]  User Accounts
 - [ ]  Alerts System
-- [ ]  Statistics Page
+- [X]  Statistics Page
 - [ ]  Collect Statistics from website (+ discord command)
-- [ ]  Homepage
+- [X]  Homepage
 - [ ]  Wishlist
 - [ ]  Legal Page
 - [ ]  Payment

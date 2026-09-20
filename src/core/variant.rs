@@ -1,7 +1,7 @@
 use crate::core::product::{Product, ProductStatus};
 use crate::core::sections::Section;
 use crate::core::storage::ProductStorage;
-use crate::utils::file_loader::FileLoader;
+use crate::database::Database;
 use chrono::{DateTime, Utc};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,6 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-const VARIANTS_PATH: &str = "state/variants.json";
 static VARIANT_STORAGE: Lazy<RwLock<VariantStorage>> = Lazy::new(|| RwLock::new(VariantStorage::default()));
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,7 +55,7 @@ pub struct VariantCatalogRecord {
 
 impl VariantStorage {
     pub async fn load() {
-        let mut storage = FileLoader::load_or_create_default::<VariantStorage>(VARIANTS_PATH).await.unwrap_or_else(|error| {
+        let mut storage = Database::load_variants::<VariantStorage>().await.unwrap_or_else(|error| {
             tracing::error!(%error, "Failed to load variant storage");
             VariantStorage::default()
         });
@@ -73,7 +72,8 @@ impl VariantStorage {
     }
 
     async fn save() {
-        if let Err(error) = FileLoader::save_file(VARIANTS_PATH, &*VARIANT_STORAGE.read().await).await {
+        let storage = VARIANT_STORAGE.read().await;
+        if let Err(error) = Database::save_variants(storage.variants.iter()).await {
             tracing::error!(%error, "Failed to save variant storage");
         }
     }

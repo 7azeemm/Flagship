@@ -1,12 +1,12 @@
 use crate::core::tracking::scan_report::{ScanReport, ScrapeError};
-use crate::utils::file_loader::FileLoader;
+use crate::database::Database;
 use chrono::{DateTime, Duration, Utc};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tokio::sync::RwLock;
 
-const ERROR_STATE_PATH: &str = "state/errors.json";
+const ERROR_STATE: &str = "error_tracker";
 const ERROR_HISTORY_DURATION: Duration = Duration::days(31);
 static ERROR_TRACKER: Lazy<RwLock<ErrorTracker>> = Lazy::new(|| RwLock::new(ErrorTracker::default()));
 
@@ -71,7 +71,7 @@ pub enum ErrorStatusFilter {
 
 impl ErrorTracker {
     pub async fn load() {
-        match FileLoader::load_or_create_default::<ErrorTracker>(ERROR_STATE_PATH).await {
+        match Database::load_state::<ErrorTracker>(ERROR_STATE).await {
             Ok(tracker) => *ERROR_TRACKER.write().await = tracker,
             Err(error) => tracing::error!(%error, "Failed to load scrape error state"),
         }
@@ -88,7 +88,7 @@ impl ErrorTracker {
             .collect();
         let mut tracker = ERROR_TRACKER.write().await;
         let summary = tracker.apply(&report.scrape_errors, &healthy_pages, Utc::now());
-        if let Err(error) = FileLoader::save_file(ERROR_STATE_PATH, &*tracker).await {
+        if let Err(error) = Database::save_state(ERROR_STATE, &*tracker).await {
             tracing::error!(%error, "Failed to persist scrape error state");
         }
         summary
@@ -227,7 +227,7 @@ impl ErrorTracker {
         if matched == 0 {
             return Err("The selected errors are no longer in the registry".into());
         }
-        FileLoader::save_file(ERROR_STATE_PATH, &*tracker).await?;
+        Database::save_state(ERROR_STATE, &*tracker).await?;
         Ok(matched)
     }
 

@@ -20,10 +20,10 @@ To browse saved products without starting the scraper or Discord bot, first run
 - Product records with retailer links, prices, availability, component identifiers, and change-history fields.
 - An Axum API with search, price and stock filters, retailer selection, sorting, pagination, and experimental product grouping.
 - A market overview and product price-history charts based on saved observations.
-- JSON product exports, page and description caches, and scraping-cycle reports.
+- SQLite-backed products, variants, caches, and scraping state.
 
 > [!IMPORTANT]
-> Catalog-only mode loads saved products from `data/<Section>.json`. A fresh checkout without product data shows an empty catalog. Parser and grouping accuracy are still being refined; the website does not correct inconsistent product records or provide tracking and alert services.
+> Catalog-only mode loads saved products from `state/mythos.db`. A fresh database shows an empty catalog. Parser and grouping accuracy are still being refined; the website does not correct inconsistent product records or provide tracking and alert services.
 
 ## Platform roadmap
 
@@ -47,10 +47,11 @@ These are planned capabilities, not a list of features already available in this
 | [config/sections.json](config/sections.json) | Category rules, filters, and grouping fields |
 | [config/datasets](config/datasets) | Reference data used during parsing |
 | [src/core/scanner.rs](src/core/scanner.rs) | Collection, parsing, caching, and update cycles |
-| [src/core/storage.rs](src/core/storage.rs) | In-memory product storage, updates, and JSON exports |
+| [src/core/storage.rs](src/core/storage.rs) | In-memory product storage and updates |
+| [src/database.rs](src/database.rs) | SQLite initialization and durable runtime storage |
 | [src/api](src/api) | HTTP routes, queries, filters, and responses |
 
-The data flow is retailer adapters or cached pages → normalization and change detection → product storage → API responses. Products are exported to `data/<Section>.json`; cycle reports go to `reports/`.
+The data flow is retailer adapters or cached pages → normalization and change detection → SQLite-backed product storage → API responses.
 
 ## Local development
 
@@ -68,6 +69,8 @@ cargo run --locked
 ```
 
 The Cargo package is still named `PriceTracker`; the project is now called **Mythos**. Run commands from the repository root so relative configuration and data paths resolve correctly.
+
+Runtime data is stored in `state/mythos.db` by default. Set `DATABASE_URL` to another SQLite URL, such as `sqlite://state/development.db`, to use a different file. The schema is created and upgraded automatically at startup.
 
 The normal server binds to `0.0.0.0:3000`; catalog-only mode binds to `127.0.0.1:3000`. The website makes same-origin API requests, and permissive CORS is disabled. The catalog is read-only and has no account authentication. For deployment, use an HTTPS reverse proxy.
 
@@ -101,19 +104,3 @@ When enabling live collection, review retailer access policies and use appropria
 ## Contributing
 
 Useful contributions include reproducible parser failures, sanitized sample pages, normalization improvements, and focused API fixes. Discuss larger changes before implementing them so they fit the platform roadmap.
-# Development price history
-
-The homepage and `/statistics` use recorded price changes. To preview or add a repeatable month of sample changes to the local saved catalog, stop the server and run:
-
-```powershell
-python scripts/simulate_price_history.py
-python scripts/simulate_price_history.py --apply
-```
-
-Restart the server with `--serve-only` to inspect the generated charts without scraping. The script backs up every changed file in `data/.price-history-backup`. Restore the original catalog with:
-
-```powershell
-python scripts/simulate_price_history.py --restore
-```
-
-The generated changes are for development only. A normal scan may overwrite the modified prices.
