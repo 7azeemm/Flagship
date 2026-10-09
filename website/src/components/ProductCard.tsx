@@ -10,9 +10,13 @@ import {
   Monitor,
   Tag,
   Zap,
+  Heart,
 } from 'lucide-react';
 import type { Product, VariantSummary } from '../types';
 import { money, productSpecs, safeURL, stockLabels } from '../lib/catalog';
+import { useAuth } from '../lib/auth';
+import { componentDetailsTarget } from '../lib/componentDetails';
+import { ComponentDetailsDialog } from './ComponentDetailsDialog';
 
 export function ProductImage({
   product,
@@ -25,9 +29,9 @@ export function ProductImage({
   eager?: boolean;
   alt?: string;
 }) {
-  const [failed, setFailed] = useState(false);
+  const [failedURL, setFailedURL] = useState<string | null>(null);
   const url = safeURL(src);
-  return !url || failed ? (
+  return !url || failedURL === url ? (
     <span className="image-fallback">
       <ImageOff size={28} />
       <span>Image unavailable</span>
@@ -38,7 +42,7 @@ export function ProductImage({
       alt={alt}
       loading={eager ? 'eager' : 'lazy'}
       referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
+      onError={() => setFailedURL(url)}
     />
   );
 }
@@ -68,7 +72,9 @@ export function ProductGallery({
   useEffect(() => setIndex(0), [product.id]);
   const current = images[Math.min(index, images.length - 1)];
   const move = (step: number) =>
-    setIndex((value) => (value + step + images.length) % images.length);
+    setIndex(
+      (value) => (Math.min(value, images.length - 1) + step + images.length) % images.length,
+    );
   return (
     <div
       className={`product-gallery ${className === 'product-image' ? 'card-gallery' : 'detail-gallery'}`}
@@ -119,27 +125,62 @@ const icons = {
   display: Monitor,
   model: Tag,
 };
+export function sortComponentFields(fields: string[]) {
+  const recognized = Object.keys(icons);
+  const rank = (field: string) => {
+    const index = recognized.indexOf(field);
+    return index < 0 ? recognized.length : index;
+  };
+  return [...fields].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
 export function Specifications({ product, fields }: { product: Product; fields: string[] }) {
+  const [component, setComponent] = useState<ReturnType<typeof componentDetailsTarget>>(null);
+  useEffect(() => setComponent(null), [product.id]);
   return (
-    <dl className={`specification-grid ${fields.length === 1 ? 'single-spec' : ''}`}>
-      {productSpecs(product, fields).map(({ key, label, value, unknown }) => {
-        const Icon = icons[key as keyof typeof icons] || Tag;
-        return (
-          <div
-            key={key}
-            data-component={key}
-            className={`specification ${unknown ? 'specification-unknown' : ''}`}
-            title={`${label}: ${value}`}
-          >
-            <Icon size={15} />
-            <div>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
+    <>
+      <dl className={`specification-grid ${fields.length === 1 ? 'single-spec' : ''}`}>
+        {productSpecs(product, fields).map(({ key, label, value, unknown }) => {
+          const Icon = icons[key as keyof typeof icons] || Tag;
+          const target = componentDetailsTarget(key, product.components[key], product.section);
+          return (
+            <div
+              key={key}
+              data-component={key}
+              className={`specification ${unknown ? 'specification-unknown' : ''} ${target ? 'specification-clickable' : ''}`}
+              title={`${label}: ${value}`}
+            >
+              <Icon size={15} />
+              <div>
+                <dt>{label}</dt>
+                <dd>{value}</dd>
+              </div>
+              {target && (
+                <button
+                  type="button"
+                  className="specification-action"
+                  aria-label={`View ${label} details for ${value}`}
+                  aria-haspopup="dialog"
+                  title={`View ${label} specifications`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setComponent(target);
+                  }}
+                >
+                  <ArrowUpRight size={12} aria-hidden="true" />
+                </button>
+              )}
             </div>
-          </div>
-        );
-      })}
-    </dl>
+          );
+        })}
+      </dl>
+      {component && (
+        <ComponentDetailsDialog
+          key={`${component.kind}:${component.id}:${component.platform}`}
+          component={component}
+          onClose={() => setComponent(null)}
+        />
+      )}
+    </>
   );
 }
 export function Price({ product, from = false }: { product: Product; from?: boolean }) {
@@ -172,6 +213,8 @@ export function ProductCard({
   onOpen: () => void;
 }) {
   const grouped = !!variant;
+  const targetType = grouped ? 'variant' : 'product';
+  const targetId = variant?.id || product.id;
   const name = variant?.title ?? product.title;
   const discount =
     !grouped &&
@@ -183,13 +226,21 @@ export function ProductCard({
   const url = safeURL(product.url);
   return (
     <article className="product-card">
+      <WishlistButton targetType={targetType} targetId={targetId} name={name} />
       <ProductGallery
         product={product}
         className="product-image"
         onOpen={onOpen}
         label={`View ${name}`}
       >
-        {discount > 0 && <span className="discount">−{discount}%</span>}
+        {discount > 0 && (
+          <span
+            className="discount"
+            title="Retailer-advertised discount, not a Flagship deal rating"
+          >
+            −{discount}%
+          </span>
+        )}
         {grouped && (
           <span className="offer-badge">
             <Layers3 size={13} />
@@ -227,5 +278,54 @@ export function ProductCard({
         )}
       </div>
     </article>
+  );
+}
+
+export function WishlistButton({
+  targetType,
+  targetId,
+  name,
+}: {
+  targetType: 'variant' | 'product';
+  targetId: string;
+  name: string;
+}) {
+  const { user, isSaved, toggleSaved } = useAuth();
+  const saved = isSaved(targetType, targetId);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <>
+      <button
+        type="button"
+        className={`wishlist-button ${saved ? 'saved' : ''}`}
+        aria-label={saved ? `Remove ${name} from wishlist` : `Save ${name} to wishlist`}
+        aria-pressed={saved}
+        disabled={saving}
+        title={saved ? 'Remove from wishlist' : 'Save to wishlist'}
+        onClick={async () => {
+          if (!user || !user.email_verified) {
+            window.dispatchEvent(new Event('flagship:signin'));
+            return;
+          }
+          setSaving(true);
+          setError('');
+          try {
+            await toggleSaved(targetType, targetId);
+          } catch {
+            setError('Couldn’t update your wishlist. Please try again.');
+          } finally {
+            setSaving(false);
+          }
+        }}
+      >
+        <Heart size={16} strokeWidth={1.7} fill={saved ? 'currentColor' : 'none'} />
+      </button>
+      {error && (
+        <span className="wishlist-error" role="alert" onClick={() => setError('')}>
+          {error}
+        </span>
+      )}
+    </>
   );
 }

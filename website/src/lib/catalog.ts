@@ -1,6 +1,17 @@
-import type { CatalogQuery, ComponentValue, FilterValue, Product } from '../types';
+import type { CatalogQuery, ComponentValue, FilterValue, Product, ServerInfo } from '../types';
+
+export const defaultStockStatuses = ['InStock', 'Arriving', 'OnDemand'] as const;
+let catalogDefaults: ServerInfo['defaults'] = {
+  stock: [...defaultStockStatuses],
+  section: '',
+  sort: 'price_asc',
+};
+export function configureCatalogDefaults(defaults: ServerInfo['defaults']) {
+  catalogDefaults = { ...defaults, stock: [...defaults.stock] };
+}
 
 const labels: Record<string, string> = {
+  All: 'All categories',
   PC: 'Desktop PCs',
   GamingPC: 'Gaming PCs',
   AllInOnePC: 'All-in-one PCs',
@@ -39,13 +50,21 @@ export const fieldLabel = (key: string) =>
     ({
       cpu: 'CPU',
       gpu: 'GPU',
+      gpu_memory: 'GPU memory',
       memory: 'RAM',
       ram: 'RAM',
+      memory_size: 'RAM size',
+      memory_type: 'RAM type',
       model: 'Model',
       display: 'Display',
       storage: 'Storage',
+      storage_size: 'Storage size',
     }) as Record<string, string>
-  )[key] || key.replaceAll('_', ' ').replace(/^./, (c) => c.toUpperCase());
+  )[key] ||
+  key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
 export const stockLabels: Record<string, string> = {
   InStock: 'In stock',
   OutOfStock: 'Out of stock',
@@ -56,15 +75,15 @@ export const stockLabels: Record<string, string> = {
 };
 export const money = (value: number) =>
   new Intl.NumberFormat('en-TN', { maximumFractionDigits: 0 }).format(value);
-export const defaultQuery = (section = 'GamingLaptop'): CatalogQuery => ({
+export const defaultQuery = (section = catalogDefaults.section): CatalogQuery => ({
   section,
   search: '',
   min_price: '',
   max_price: '',
   site: [],
-  stock: ['InStock'],
+  stock: [...catalogDefaults.stock],
   filters: {},
-  sort: 'price_asc',
+  sort: catalogDefaults.sort,
   grouped: null,
   groupBy: null,
   page: 1,
@@ -74,7 +93,7 @@ export function readQuery(location: Pick<Location, 'pathname' | 'search'>): Cata
   const path = location.pathname.replace(/^\/+|\/+$/g, '');
   const section =
     Object.keys(labels).find((key) => key.toLowerCase() === path.toLowerCase()) ||
-    (/^[A-Za-z]+$/.test(path) ? path : 'GamingLaptop');
+    (/^[A-Za-z]+$/.test(path) ? path : catalogDefaults.section);
   const price = (key: string) => {
     const value = params.get(key);
     return value && /^\d+$/.test(value) && Number(value) <= 2147483647 ? value : '';
@@ -102,7 +121,7 @@ export function readQuery(location: Pick<Location, 'pathname' | 'search'>): Cata
       ? params.getAll('stock')
       : params.get('availability') === 'all'
         ? []
-        : ['InStock'],
+        : [...catalogDefaults.stock],
     filters,
     groupBy: (() => {
       try {
@@ -113,7 +132,18 @@ export function readQuery(location: Pick<Location, 'pathname' | 'search'>): Cata
       }
     })(),
     grouped: params.has('grouping_mode') ? params.get('grouping_mode') !== 'false' : null,
-    sort: params.get('sort') === 'price_desc' ? 'price_desc' : 'price_asc',
+    sort:
+      params.get('sort') === 'newest'
+        ? 'newest'
+        : params.get('sort') === 'best_deals'
+          ? 'best_deals'
+          : params.get('sort') === 'discount_desc'
+            ? 'discount_desc'
+            : params.get('sort') === 'price_desc'
+              ? 'price_desc'
+              : params.get('sort') === 'price_asc'
+                ? 'price_asc'
+                : catalogDefaults.sort,
     page: Math.min(1000000, Math.max(1, parseInt(params.get('page') || '1', 10) || 1)),
   };
 }
@@ -128,7 +158,9 @@ export function queryParams(query: CatalogQuery, metadata = false) {
   if (!query.stock.length) params.set('availability', 'all');
   if (query.groupBy !== null) params.set('group_by', JSON.stringify(query.groupBy));
   if (query.grouped !== null) params.set('grouping_mode', String(query.grouped));
-  const filters = Object.fromEntries(Object.entries(query.filters).filter(([, values]) => values.length));
+  const filters = Object.fromEntries(
+    Object.entries(query.filters).filter(([, values]) => values.length),
+  );
   if (Object.keys(filters).length) params.set('filters', JSON.stringify(filters));
   if (metadata) params.set('send_section_info', 'true');
   return params;
@@ -149,7 +181,10 @@ function selectedAt(value: string, selected: string[]) {
     .sort((a, b) => rulePath(b).length - rulePath(a).length)[0];
   return !!rule && !rule.startsWith('!');
 }
-export function nodeStatus(node: FilterValue, selected: string[]): 'checked' | 'partial' | 'unchecked' {
+export function nodeStatus(
+  node: FilterValue,
+  selected: string[],
+): 'checked' | 'partial' | 'unchecked' {
   const value = filterValue(node);
   if (!node.id) return selected.includes(value) ? 'checked' : 'unchecked';
   const checked = selectedAt(value, selected);
@@ -170,7 +205,13 @@ export function toggleNode(selected: string[], node: FilterValue): string[] {
   const checked = selectedAt(value, selected);
   const rest = selected.filter((rule) => !isWithin(rulePath(rule), value));
   const inherited = selectedAt(value, rest);
-  return checked ? (inherited ? [...rest, `!${value}`] : rest) : inherited ? rest : [...rest, value];
+  return checked
+    ? inherited
+      ? [...rest, `!${value}`]
+      : rest
+    : inherited
+      ? rest
+      : [...rest, value];
 }
 export const hasFilterChanges = (query: CatalogQuery) =>
   !!(
@@ -179,8 +220,8 @@ export const hasFilterChanges = (query: CatalogQuery) =>
     query.max_price ||
     query.site.length ||
     Object.values(query.filters).some((values) => values.length) ||
-    query.stock.length !== 1 ||
-    query.stock[0] !== 'InStock'
+    query.stock.length !== catalogDefaults.stock.length ||
+    query.stock.some((status) => !catalogDefaults.stock.includes(status))
   );
 export function safeURL(value: string): string | undefined {
   try {
@@ -235,7 +276,8 @@ export function sectionInfoKey(query: CatalogQuery) {
 export function apiQueryParams(query: CatalogQuery, metadata: boolean) {
   const params = queryParams(query, metadata);
   params.delete('group_by');
-  if (query.grouped !== false) (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
+  if (query.grouped !== false)
+    (query.groupBy ?? []).forEach((key) => params.append('group_by', key));
   return params;
 }
 

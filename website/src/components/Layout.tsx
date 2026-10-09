@@ -3,22 +3,31 @@ import {
   ArrowUpRight,
   ChevronDown,
   Cpu,
-  Info,
   LoaderCircle,
   Moon,
   Search,
+  Heart,
+  Bell,
+  LogOut,
+  Settings,
   Sun,
+  Store,
+  Hammer,
+  Sparkles,
 } from 'lucide-react';
-import type { ServerInfo } from '../types';
+import type { Product, ServerInfo } from '../types';
 import { readQuery, sectionLabel } from '../lib/catalog';
-import { parseSearchSuggestions, request } from '../lib/api';
+import { parseGlobalSearch, request } from '../lib/api';
 import '../header.css';
+import { accountName, accountRequest, useAuth } from '../lib/auth';
+
+type SearchOption = Pick<Product, 'id' | 'title' | 'section' | 'image' | 'price'>;
 
 export function Brand() {
   return (
     <span className="brand">
-      <img src="/favicon.svg" alt="" width="34" height="34" />
-      mythos<span className="brand-period">.</span>
+      <img src="/icon.png" alt="" width="34" height="34" />
+      Flagship<span className="brand-period">.</span>
     </span>
   );
 }
@@ -31,7 +40,8 @@ export const Header = memo(function Header({
   onSection,
   onProduct,
   onHome,
-  onAbout,
+  onNavigate,
+  onSignIn,
 }: {
   section: string;
   locationKey: string;
@@ -40,24 +50,63 @@ export const Header = memo(function Header({
   onSection: (url: string) => void;
   onProduct: (id: string) => void;
   onHome: () => void;
-  onAbout: () => void;
+  onNavigate: (path: string) => void;
+  onSignIn: () => void;
 }) {
+  const { user, wishlist, loading: authLoading, signOut } = useAuth();
+  const [alertCount, setAlertCount] = useState(0);
+  useEffect(() => {
+    setAlertCount(0);
+    if (!user) return;
+    let controller: AbortController | undefined;
+    const refresh = () => {
+      if (document.hidden) return;
+      controller?.abort();
+      const next = new AbortController();
+      controller = next;
+      void accountRequest<{ count: number }>('/alerts/count', { signal: next.signal })
+        .then(({ count }) => {
+          if (!next.signal.aborted) setAlertCount(count);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('flagship:alerts-changed', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      controller?.abort();
+      clearInterval(timer);
+      window.removeEventListener('flagship:alerts-changed', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [user?.id]);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [signOutError, setSignOutError] = useState('');
+  const accountRoot = useRef<HTMLDivElement>(null);
+  const accountTrigger = useRef<HTMLButtonElement>(null);
   const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'dark');
   const [open, setOpen] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [left, setLeft] = useState(12);
   const [search, setSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<ReturnType<typeof parseSearchSuggestions>>([]);
+  const [suggestions, setSuggestions] = useState<SearchOption[]>([]);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchTotalPages, setSearchTotalPages] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [searchMoreLoading, setSearchMoreLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
+  const [searchMoreError, setSearchMoreError] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const root = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const panel = useRef<HTMLDivElement>(null);
+  const searchMoreController = useRef<AbortController | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastScrollY = useRef(window.scrollY);
   const scrollDistance = useRef(0);
+  const collapsed = hidden && !accountOpen && !open;
   const cancelClose = () => {
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = null;
@@ -75,14 +124,18 @@ export const Header = memo(function Header({
   useEffect(() => {
     setHidden(false);
     setOpen(null);
+    setAccountOpen(false);
+    setSearchOpen(false);
     lastScrollY.current = window.scrollY;
     scrollDistance.current = 0;
   }, [locationKey]);
   useEffect(() => {
     const outside = (event: PointerEvent) => {
+      if (!accountRoot.current?.contains(event.target as Node)) setAccountOpen(false);
       if (!root.current?.contains(event.target as Node)) {
         setOpen(null);
         setSearchOpen(false);
+        setAccountOpen(false);
       }
     };
     document.addEventListener('pointerdown', outside);
@@ -95,18 +148,35 @@ export const Header = memo(function Header({
     const value = search.trim();
     setActiveSuggestion(-1);
     setSearchError(false);
+    setSearchMoreError(false);
+    setSuggestions([]);
+    setSearchPage(1);
+    setSearchTotalPages(0);
+    searchMoreController.current?.abort();
+    searchMoreController.current = null;
+    setSearchMoreLoading(false);
     if (value.length < 2) {
-      setSuggestions([]);
       setSearchLoading(false);
       return;
     }
     const controller = new AbortController();
     setSearchLoading(true);
     const timer = window.setTimeout(() => {
-      request(`/search/suggestions?q=${encodeURIComponent(value)}`, controller.signal)
-        .then(parseSearchSuggestions)
-        .then((items) => {
-          if (!controller.signal.aborted) setSuggestions(items);
+      request(`/search?q=${encodeURIComponent(value)}&page=1`, controller.signal)
+        .then(parseGlobalSearch)
+        .then((result) => {
+          if (controller.signal.aborted) return;
+          setSuggestions(
+            result.items.map(({ id, title, section, image, price }) => ({
+              id,
+              title,
+              section,
+              image,
+              price,
+            })),
+          );
+          setSearchPage(result.page);
+          setSearchTotalPages(result.total_pages);
         })
         .catch(() => {
           if (!controller.signal.aborted) {
@@ -121,6 +191,7 @@ export const Header = memo(function Header({
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      searchMoreController.current?.abort();
     };
   }, [search]);
   useEffect(() => {
@@ -128,12 +199,18 @@ export const Header = memo(function Header({
     const onScroll = () => {
       if (frame) return;
       frame = requestAnimationFrame(() => {
-        const next = Math.max(0, window.scrollY);
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        const next = Math.min(maxScroll, Math.max(0, window.scrollY));
         const delta = next - lastScrollY.current;
         const headerHeight = root.current?.offsetHeight || 0;
         if (Math.sign(delta) !== Math.sign(scrollDistance.current)) scrollDistance.current = 0;
         scrollDistance.current += delta;
-        if (next <= headerHeight) {
+        if (
+          next <= headerHeight ||
+          open ||
+          accountOpen ||
+          root.current?.contains(document.activeElement)
+        ) {
           scrollDistance.current = 0;
           setHidden(false);
         } else if (scrollDistance.current > 18) {
@@ -148,12 +225,19 @@ export const Header = memo(function Header({
         frame = 0;
       });
     };
+    const onResize = () => {
+      setHidden(false);
+      lastScrollY.current = window.scrollY;
+      scrollDistance.current = 0;
+    };
     window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onResize);
       if (frame) cancelAnimationFrame(frame);
     };
-  }, []);
+  }, [open, accountOpen]);
   useLayoutEffect(() => {
     if (!open) return;
     const position = () => {
@@ -208,7 +292,7 @@ export const Header = memo(function Header({
     setTheme(next);
     document.documentElement.dataset.theme = next;
     try {
-      localStorage.setItem('mythos-theme', next);
+      localStorage.setItem('flagship-theme', next);
     } catch {
       /* Storage is optional. */
     }
@@ -219,23 +303,48 @@ export const Header = memo(function Header({
         getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),
       );
   };
-  const submitSearch = (item?: (typeof suggestions)[number]) => {
+  const loadMoreSearch = async () => {
     const value = search.trim();
-    if (!value) return;
-    if (item) {
-      setSearch(item.title);
-      setSearchOpen(false);
-      onProduct(item.id);
-      return;
+    if (value.length < 2 || searchMoreController.current || searchPage >= searchTotalPages) return;
+    const controller = new AbortController();
+    searchMoreController.current = controller;
+    setSearchMoreLoading(true);
+    setSearchMoreError(false);
+    try {
+      const result = parseGlobalSearch(
+        await request(
+          `/search?q=${encodeURIComponent(value)}&page=${searchPage + 1}`,
+          controller.signal,
+        ),
+      );
+      if (controller.signal.aborted) return;
+      setSuggestions((current) => {
+        const seen = new Set(current.map((item) => item.id));
+        const more = result.items
+          .filter((item) => !seen.has(item.id))
+          .map(({ id, title, section, image, price }) => ({ id, title, section, image, price }));
+        return [...current, ...more];
+      });
+      setSearchPage(result.page);
+      setSearchTotalPages(result.total_pages);
+    } catch {
+      if (!controller.signal.aborted) setSearchMoreError(true);
+    } finally {
+      if (searchMoreController.current === controller) {
+        searchMoreController.current = null;
+        if (!controller.signal.aborted) setSearchMoreLoading(false);
+      }
     }
-    const target = section || 'GamingLaptop';
+  };
+  const selectSearchProduct = (item: SearchOption) => {
+    setSearch(item.title);
     setSearchOpen(false);
-    onSection(`/${target}?search=${encodeURIComponent(value)}`);
+    onProduct(item.id);
   };
   const children = open ? categories[open] || [] : [];
   return (
     <header
-      className={`masthead ${hidden ? 'masthead-hidden' : ''}`}
+      className={`masthead ${collapsed ? 'masthead-collapsed' : ''}`}
       ref={root}
       onFocusCapture={() => setHidden(false)}
       onBlur={(event) => {
@@ -255,7 +364,7 @@ export const Header = memo(function Header({
         <a
           className="masthead-brand"
           href="/"
-          aria-label="Mythos home"
+          aria-label="Flagship home"
           onClick={(event) => {
             if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
               event.preventDefault();
@@ -265,9 +374,9 @@ export const Header = memo(function Header({
             }
           }}
         >
-          <img src="/favicon.svg" alt="" width="30" height="30" />
+          <img src="/icon.png" alt="" width="30" height="30" />
           <span>
-            mythos<b>.</b>
+            Flagship<b>.</b>
           </span>
         </a>
         <form
@@ -275,7 +384,11 @@ export const Header = memo(function Header({
           role="search"
           onSubmit={(event) => {
             event.preventDefault();
-            submitSearch(activeSuggestion >= 0 ? suggestions[activeSuggestion] : undefined);
+            if (activeSuggestion >= 0 && suggestions[activeSuggestion]) {
+              selectSearchProduct(suggestions[activeSuggestion]);
+            } else {
+              void loadMoreSearch();
+            }
           }}
         >
           <Search size={18} aria-hidden="true" />
@@ -286,7 +399,6 @@ export const Header = memo(function Header({
               setSearchOpen(true);
             }}
             onFocus={() => {
-              setHidden(false);
               setOpen(null);
               setSearchOpen(true);
             }}
@@ -298,11 +410,13 @@ export const Header = memo(function Header({
                 event.preventDefault();
                 setActiveSuggestion((value) => Math.max(-1, value - 1));
               } else if (event.key === 'Escape') {
+                event.stopPropagation();
                 setSearchOpen(false);
               }
             }}
             placeholder="Search products…"
-            aria-label="Search the Mythos catalog"
+            aria-label="Search the Flagship catalog"
+            role="combobox"
             aria-autocomplete="list"
             aria-expanded={searchOpen && search.trim().length >= 2}
             aria-controls="masthead-search-results"
@@ -310,71 +424,241 @@ export const Header = memo(function Header({
               activeSuggestion >= 0 ? `search-result-${activeSuggestion}` : undefined
             }
           />
-          {searchLoading && (
+          {(searchLoading || searchMoreLoading) && (
             <LoaderCircle className="masthead-search-spinner" size={16} aria-label="Searching" />
           )}
           {searchOpen && search.trim().length >= 2 && (
-            <div className="masthead-search-panel" id="masthead-search-results" role="listbox">
-              {suggestions.length ? (
-                <>
-                  <p>Products</p>
-                  {suggestions.map((item, index) => (
-                    <button
-                      type="button"
-                      id={`search-result-${index}`}
-                      role="option"
-                      aria-selected={activeSuggestion === index}
-                      className={activeSuggestion === index ? 'active' : ''}
-                      key={item.id}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => submitSearch(item)}
-                    >
-                      <span className="masthead-result-image">
-                        {item.image && <img src={item.image} alt="" />}
-                      </span>
-                      <span className="masthead-result-copy">
-                        <strong>{item.title}</strong>
-                        <small>
-                          {sectionLabel(item.section)} · {item.price.toLocaleString('en-TN')} DT
-                        </small>
-                      </span>
-                      <ArrowUpRight size={15} />
-                    </button>
-                  ))}
+            <div className="masthead-search-panel">
+              {suggestions.length > 0 && <p>Products</p>}
+              <div
+                id="masthead-search-results"
+                role="listbox"
+                aria-label="Product suggestions"
+                aria-busy={searchLoading || searchMoreLoading}
+              >
+                {suggestions.map((item, index) => (
                   <button
                     type="button"
-                    className="masthead-search-all"
-                    onClick={() => submitSearch()}
+                    id={`search-result-${index}`}
+                    role="option"
+                    aria-selected={activeSuggestion === index}
+                    className={activeSuggestion === index ? 'active' : ''}
+                    key={item.id}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => selectSearchProduct(item)}
                   >
-                    See results for “{search.trim()}” <ArrowUpRight size={15} />
+                    <span className="masthead-result-image">
+                      {item.image && <img src={item.image} alt="" />}
+                    </span>
+                    <span className="masthead-result-copy">
+                      <strong>{item.title}</strong>
+                      <small>
+                        {sectionLabel(item.section)} · {item.price.toLocaleString('en-TN')} DT
+                      </small>
+                    </span>
+                    <ArrowUpRight size={15} />
                   </button>
-                </>
-              ) : searchError ? (
+                ))}
+              </div>
+              {!suggestions.length && searchError ? (
                 <div className="masthead-search-empty">
                   <strong>Search is temporarily unavailable</strong>
                   <span>Please try again in a moment.</span>
                 </div>
-              ) : !searchLoading ? (
+              ) : !suggestions.length && !searchLoading ? (
                 <div className="masthead-search-empty">
-                  <strong>No exact matches yet</strong>
+                  <strong>No products found</strong>
                   <span>Try a model, brand, or component name.</span>
                 </div>
               ) : null}
+              {searchMoreError && (
+                <div className="masthead-search-more-error" role="status">
+                  Couldn’t load more products. Try again.
+                </div>
+              )}
+              {searchPage < searchTotalPages && (
+                <button
+                  type="button"
+                  className="masthead-search-all"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => void loadMoreSearch()}
+                  disabled={searchMoreLoading}
+                >
+                  {searchMoreLoading ? (
+                    <>
+                      Loading more products <LoaderCircle size={15} className="spin" />
+                    </>
+                  ) : searchMoreError ? (
+                    <>
+                      Try again <ArrowUpRight size={15} />
+                    </>
+                  ) : (
+                    <>
+                      Load more
+                      <ArrowUpRight size={15} />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </form>
         <div className="masthead-actions">
+          {[
+            { label: 'Marketplace', icon: Store },
+            { label: 'PC builder', icon: Hammer },
+          ].map(({ label, icon: Icon }) => (
+            <button
+              type="button"
+              className="masthead-coming-soon"
+              key={label}
+              disabled
+              title={`${label} · Coming soon`}
+              aria-label={`${label} · Coming soon`}
+            >
+              <Icon size={17} />
+              <span>{label}</span>
+              <small>Soon</small>
+            </button>
+          ))}
+          {[
+            { path: '/support', label: 'Support', icon: Sparkles },
+            { path: '/wishlist', label: 'Wishlist', icon: Heart },
+            { path: '/alerts', label: 'Alerts', icon: Bell },
+          ].map(({ path, label, icon: Icon }) => (
+            <a
+              key={path}
+              className={
+                path === '/support'
+                  ? 'masthead-action-link masthead-support'
+                  : 'masthead-action-link'
+              }
+              href={path}
+              title={label}
+              aria-label={
+                label === 'Wishlist' && user
+                  ? `Wishlist (${wishlist.length} saved)`
+                  : label === 'Alerts' && user
+                    ? `Alerts (${alertCount} active)`
+                    : label
+              }
+              aria-current={locationKey === path ? 'page' : undefined}
+              onClick={(event) => {
+                if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                  event.preventDefault();
+                  if (!user && (path === '/wishlist' || path === '/alerts')) {
+                    onSignIn();
+                  } else {
+                    onNavigate(path);
+                  }
+                }
+              }}
+            >
+              <Icon size={17} />
+              {path === '/support' && <span>Support</span>}
+              {path === '/wishlist' && user && wishlist.length > 0 && (
+                <span className="masthead-action-count" aria-hidden="true">
+                  {wishlist.length > 99 ? '99+' : wishlist.length}
+                </span>
+              )}
+              {path === '/alerts' && user && alertCount > 0 && (
+                <span className="masthead-action-count" aria-hidden="true">
+                  {alertCount > 99 ? '99+' : alertCount}
+                </span>
+              )}
+            </a>
+          ))}
           <button
             role="switch"
             aria-checked={theme === 'dark'}
             aria-label={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
+            title={theme === 'dark' ? 'Use light mode' : 'Use dark mode'}
             onClick={changeTheme}
           >
             {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
           </button>
-          <button onClick={onAbout} aria-label="About Mythos">
-            <Info size={17} />
-          </button>
+          {!authLoading &&
+            (user ? (
+              <div
+                className="account-menu-wrap"
+                ref={accountRoot}
+                onBlur={(event) => {
+                  if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget))
+                    setAccountOpen(false);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.stopPropagation();
+                    setAccountOpen(false);
+                    accountTrigger.current?.focus();
+                  }
+                }}
+              >
+                <button
+                  ref={accountTrigger}
+                  className="account-trigger"
+                  aria-label="Account menu"
+                  aria-expanded={accountOpen}
+                  aria-controls="account-popover"
+                  onClick={() => setAccountOpen((value) => !value)}
+                >
+                  <span className="account-avatar">
+                    {accountName(user).slice(0, 1).toUpperCase()}
+                  </span>
+                  <ChevronDown size={12} />
+                </button>
+                {accountOpen && (
+                  <div className="account-menu" id="account-popover" tabIndex={-1}>
+                    <div className="account-menu-identity">
+                      <span className="account-avatar">
+                        {accountName(user).slice(0, 1).toUpperCase()}
+                      </span>
+                      <div>
+                        <strong>{user.given_name ? accountName(user) : 'Your account'}</strong>
+                        <small>{user.email}</small>
+                      </div>
+                    </div>
+                    <a
+                      href="/settings"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        setAccountOpen(false);
+                        onNavigate('/settings');
+                      }}
+                    >
+                      <Settings size={15} />
+                      <span>Account settings</span>
+                    </a>
+                    <div className="account-menu-divider" />
+                    <button
+                      onClick={() =>
+                        void signOut()
+                          .then(() => {
+                            setAccountOpen(false);
+                            onNavigate('/');
+                          })
+                          .catch(() => setSignOutError('Couldn’t sign out. Please try again.'))
+                      }
+                    >
+                      <LogOut size={15} />
+                      Sign out
+                    </button>
+                    {signOutError && <small role="alert">{signOutError}</small>}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <a
+                className="masthead-signin"
+                href="/login"
+                onClick={(event) => {
+                  event.preventDefault();
+                  onSignIn();
+                }}
+              >
+                Sign in
+              </a>
+            ))}
         </div>
       </div>
       <div className="masthead-category-row">
@@ -418,7 +702,33 @@ export const Header = memo(function Header({
               </button>
             ))}
           </nav>
-          <a className="masthead-statistics-link" href="/statistics">Statistics <ArrowUpRight size={13} /></a>
+          <nav className="masthead-page-links" aria-label="Explore Flagship">
+            {[
+              ['/statistics', 'Statistics'],
+              ['/activity', 'Catalog activity'],
+              ['/future-plans', 'Future plans'],
+            ].map(([path, label]) => (
+              <a
+                key={path}
+                className={
+                  path === '/support'
+                    ? 'masthead-statistics-link masthead-support'
+                    : 'masthead-statistics-link'
+                }
+                href={path}
+                aria-current={locationKey.split('?')[0] === path ? 'page' : undefined}
+                onClick={(event) => {
+                  if (!event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+                    event.preventDefault();
+                    onNavigate(path);
+                  }
+                }}
+              >
+                {path === '/support' && <Sparkles size={13} />}
+                {label} {path !== '/support' && <ArrowUpRight size={13} />}
+              </a>
+            ))}
+          </nav>
         </div>
       </div>
       {open && (
@@ -459,13 +769,7 @@ export const Header = memo(function Header({
     </header>
   );
 });
-export function Footer({
-  onSection,
-  onAbout,
-}: {
-  onSection: (section: string) => void;
-  onAbout: () => void;
-}) {
+export function Footer({ onSection }: { onSection: (section: string) => void }) {
   return (
     <footer className="site-footer">
       <div className="footer-main">
@@ -476,7 +780,9 @@ export function Footer({
         </div>
         <div className="footer-links">
           <h2>Explore the catalog</h2>
-          <a href="/statistics">Statistics <ArrowUpRight size={13} /></a>
+          <a href="/statistics">
+            Statistics <ArrowUpRight size={13} />
+          </a>
           {['GamingLaptop', 'GPU', 'Monitor'].map((section) => (
             <a
               href={`/${section}`}
@@ -500,14 +806,18 @@ export function Footer({
             Compare prices and specifications in one place. Purchase directly from the retailer you
             choose.
           </p>
-          <button className="text-button" onClick={onAbout}>
-            How Mythos works <ArrowUpRight size={14} />
-          </button>
+          <div className="footer-contact">
+            <a href="mailto:contact@flagship.example">contact@flagship.example</a>
+            <small>Placeholder email</small>
+          </div>
         </div>
       </div>
       <div className="footer-bottom">
-        <span>© {new Date().getFullYear()} Mythos</span>
+        <span>© {new Date().getFullYear()} Flagship</span>
         <p>Prices and availability may change. Confirm details with the retailer.</p>
+        <a className="footer-legal" href="/legal">
+          Terms & privacy
+        </a>
         <span>Tunisia / TND</span>
       </div>
     </footer>

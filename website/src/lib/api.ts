@@ -11,7 +11,10 @@ import type {
   HomepageData,
   StatisticsData,
   ComponentValue,
+  ComponentDetails,
+  GlobalSearchData,
 } from '../types';
+import { defaultStockStatuses } from './catalog';
 
 const origin = '/api';
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -35,6 +38,20 @@ const componentMap = (value: unknown): Record<string, ComponentValue> => {
 const number = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 const invalid = () => new Error('The catalog returned an unexpected response. Please try again.');
+export function parseComponentDetails(value: unknown): ComponentDetails {
+  if (
+    !record(value) ||
+    (value.kind !== 'CPU' && value.kind !== 'GPU') ||
+    typeof value.id !== 'string' ||
+    typeof value.label !== 'string' ||
+    !record(value.specifications) ||
+    !Object.values(value.specifications).every(
+      (item) => typeof item === 'string' || typeof item === 'boolean' || number(item),
+    )
+  )
+    throw invalid();
+  return value as unknown as ComponentDetails;
+}
 const facetCounts = (value: unknown) => {
   if (
     !Array.isArray(value) ||
@@ -113,6 +130,7 @@ export function parseProduct(value: unknown): Product {
     added_at: typeof value.added_at === 'string' ? value.added_at : null,
     views: number(value.views) ? value.views : 0,
     missing_group_fields: strings(value.missing_group_fields) ? value.missing_group_fields : [],
+    removed_at: typeof value.removed_at === 'string' ? value.removed_at : null,
   };
 }
 function parseVariant(value: unknown): VariantSummary {
@@ -130,9 +148,7 @@ function parseVariant(value: unknown): VariantSummary {
     id: value.id,
     title: typeof value.title === 'string' ? value.title : value.id,
     representative_product_id:
-      typeof value.representative_product_id === 'string'
-        ? value.representative_product_id
-        : '',
+      typeof value.representative_product_id === 'string' ? value.representative_product_id : '',
     section: value.section,
     price: value.price,
     image: typeof value.image === 'string' ? value.image : '',
@@ -178,6 +194,25 @@ export function parseChart(value: unknown): VariantChart | null {
     )
       throw invalid();
     return {
+      retailer_prices: record(point.retailer_prices)
+        ? (Object.fromEntries(
+            Object.entries(point.retailer_prices)
+              .filter(([, prices]) => record(prices))
+              .map(([retailer, prices]) => [
+                retailer,
+                Object.fromEntries(
+                  Object.entries(prices as Record<string, unknown>).filter(
+                    ([, price]) => number(price) && price > 0,
+                  ),
+                ),
+              ]),
+          ) as Record<string, Record<string, number>>)
+        : null,
+      status_counts: record(point.status_counts)
+        ? (Object.fromEntries(
+            Object.entries(point.status_counts).filter(([, count]) => number(count) && count >= 0),
+          ) as Record<string, number>)
+        : null,
       timestamp: point.timestamp,
       lowest_price: point.lowest_price as number | null,
       lowest_price_retailer: point.lowest_price_retailer as string | null,
@@ -187,6 +222,13 @@ export function parseChart(value: unknown): VariantChart | null {
     };
   });
   return {
+    combination_fields: record(value.combination_fields)
+      ? Object.fromEntries(
+          Object.entries(value.combination_fields).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        )
+      : {},
     scope: value.scope === 'product' ? 'product' : 'variant',
     range: value.range,
     interval: value.interval,
@@ -314,16 +356,43 @@ export function parseServerInfo(value: unknown): ServerInfo {
           if (!record(child) || typeof child.name !== 'string') throw invalid();
           const path = typeof child.url === 'string' ? child.url : child.id;
           if (typeof path !== 'string' || !/^\/?[A-Za-z]+(?:\?[^#]*)?$/.test(path)) throw invalid();
-          const url = new URL(`/${path.replace(/^\//, '')}`, 'https://mythos.local');
+          const url = new URL(`/${path.replace(/^\//, '')}`, 'https://flagship.local');
           const href = url.pathname + url.search;
           if (urls.has(href)) throw invalid();
           urls.add(href);
-          return { id: url.pathname.slice(1), name: child.name, url: href };
+          return {
+            id: url.pathname.slice(1),
+            name: child.name,
+            url: href,
+            ...(child.featured === true ? { featured: true } : {}),
+          };
         }),
       ];
     }),
   );
-  return { categories };
+  const defaults = record(value.defaults) ? value.defaults : {};
+  return {
+    categories,
+    defaults: {
+      stock: Array.isArray(defaults.stock)
+        ? defaults.stock.filter((v): v is string => typeof v === 'string')
+        : [...defaultStockStatuses],
+      section:
+        typeof defaults.section === 'string'
+          ? defaults.section
+          : Object.values(categories).flat()[0]?.id || '',
+      sort:
+        defaults.sort === 'newest'
+          ? 'newest'
+          : defaults.sort === 'best_deals'
+            ? 'best_deals'
+            : defaults.sort === 'discount_desc'
+              ? 'discount_desc'
+              : defaults.sort === 'price_desc'
+                ? 'price_desc'
+                : 'price_asc',
+    },
+  };
 }
 
 const nullableNumber = (value: unknown): value is number | null => value === null || number(value);
@@ -350,7 +419,7 @@ export function parseHomeProduct(value: unknown): HomeProduct {
     !nullableString(value.badge)
   )
     throw invalid();
-  return value as unknown as HomeProduct;
+  return { ...value, evidence: parseDealEvidence(value.evidence) } as unknown as HomeProduct;
 }
 
 export function parseHomepage(value: unknown): HomepageData {
@@ -420,6 +489,10 @@ export function parseHomepage(value: unknown): HomepageData {
     generated_at: value.generated_at,
     coverage: value.coverage as unknown as HomepageData['coverage'],
     hero_deal: value.hero_deal === null ? null : parseHomeProduct(value.hero_deal),
+    featured_sections: Array.isArray(value.featured_sections)
+      ? value.featured_sections.filter((v): v is string => typeof v === 'string')
+      : [],
+    market_today: parseMarketToday(value.market_today),
     market_views: marketViews,
     deals: value.deals.map(parseHomeProduct),
     new_products: value.new_products.map(parseHomeProduct),
@@ -427,9 +500,33 @@ export function parseHomepage(value: unknown): HomepageData {
   };
 }
 
-export function parseSearchSuggestions(value: unknown): HomeProduct[] {
-  if (!Array.isArray(value)) throw invalid();
-  return value.map(parseHomeProduct);
+function parseMarketToday(value: unknown): HomepageData['market_today'] {
+  if (!record(value) || typeof value.date !== 'string' || !number(value.price_drops))
+    throw invalid();
+  return {
+    date: value.date,
+    price_drops: value.price_drops,
+    biggest_drop: value.biggest_drop === null ? null : parseHomeProduct(value.biggest_drop),
+  };
+}
+
+export function parseGlobalSearch(value: unknown): GlobalSearchData {
+  if (
+    !record(value) ||
+    typeof value.query !== 'string' ||
+    !Array.isArray(value.items) ||
+    !number(value.total_items) ||
+    !number(value.total_pages) ||
+    !number(value.page)
+  )
+    throw invalid();
+  return {
+    query: value.query,
+    items: value.items.map(parseProduct),
+    total_items: value.total_items,
+    total_pages: value.total_pages,
+    page: value.page,
+  };
 }
 
 export function parseStatistics(value: unknown): StatisticsData {
@@ -443,6 +540,10 @@ export function parseStatistics(value: unknown): StatisticsData {
     !Array.isArray(value.facets) ||
     !strings(value.retailers) ||
     !number(value.configuration_count) ||
+    !number(value.configuration_page) ||
+    !number(value.configuration_pages) ||
+    !Array.isArray(value.category_trends) ||
+    !Array.isArray(value.highlights) ||
     !Array.isArray(value.configurations)
   )
     throw invalid();
@@ -465,11 +566,17 @@ export function parseStatistics(value: unknown): StatisticsData {
           !number(item.price_comparisons)
         )
           throw invalid();
+        const inStock = optionalCount(item.in_stock_offers);
+        if (inStock !== undefined && inStock > item.offers) throw invalid();
         return {
           name: item.name,
           offers: item.offers,
+          in_stock_offers: inStock,
           lowest_price_wins: item.lowest_price_wins,
           price_comparisons: item.price_comparisons,
+          within_two_percent: optionalCount(item.within_two_percent),
+          two_to_five_percent: optionalCount(item.two_to_five_percent),
+          above_five_percent: optionalCount(item.above_five_percent),
         };
       }),
     };
@@ -502,7 +609,12 @@ export function parseStatistics(value: unknown): StatisticsData {
         !number(point.sample_size)
       )
         throw invalid();
-      return { timestamp: point.timestamp, value: point.value, sample_size: point.sample_size };
+      return {
+        timestamp: point.timestamp,
+        value: point.value,
+        sample_size: point.sample_size,
+        break_before: point.break_before === true,
+      };
     });
     return { ...raw, points } as StatisticsData['explorer_charts'][number];
   };
@@ -532,6 +644,8 @@ export function parseStatistics(value: unknown): StatisticsData {
       !nullableString(item.product_id) ||
       !number(item.offers) ||
       !number(item.retailer_count) ||
+      !nullableNumber(item.current_price) ||
+      !number(item.in_stock) ||
       !Array.isArray(item.price_points) ||
       !Array.isArray(item.availability_points)
     )
@@ -546,26 +660,355 @@ export function parseStatistics(value: unknown): StatisticsData {
           !number(point.sample_size)
         )
           throw invalid();
-        return { timestamp: point.timestamp, value: point.value, sample_size: point.sample_size };
+        return {
+          timestamp: point.timestamp,
+          value: point.value,
+          sample_size: point.sample_size,
+          break_before: point.break_before === true,
+        };
       });
     return {
       id: item.id,
       title: item.title,
       product_id: item.product_id,
+      section: typeof item.section === 'string' ? item.section : undefined,
       offers: item.offers,
       retailer_count: item.retailer_count,
+      current_price: item.current_price,
+      in_stock: item.in_stock,
       price_points: points(item.price_points),
       availability_points: points(item.availability_points),
     };
   });
+  if (value.matching_products != null && !Array.isArray(value.matching_products)) throw invalid();
+  if (
+    value.catalog_filters != null &&
+    (!record(value.catalog_filters) || !Object.values(value.catalog_filters).every(strings))
+  )
+    throw invalid();
   return {
+    catalog_filters:
+      value.catalog_filters == null ? null : (value.catalog_filters as Record<string, string[]>),
+    matching_products:
+      value.matching_products == null ? null : value.matching_products.map(parseHomeProduct),
+    supported_sections: Array.isArray(value.supported_sections)
+      ? value.supported_sections.filter((section): section is string => typeof section === 'string')
+      : [],
     generated_at: value.generated_at,
     last_scan_at: value.last_scan_at,
+    price_changes: parsePriceChanges(value.price_changes),
+    configuration_summary: parseConfigurationSummary(value.configuration_summary),
+    offer_summary: parseOfferSummary(value.offer_summary),
     retailer_overviews: retailerOverviews,
     explorer_charts: value.explorer_charts.map(chart),
     facets,
     retailers: value.retailers,
     configuration_count: value.configuration_count,
+    configuration_page: value.configuration_page,
+    configuration_pages: value.configuration_pages,
+    highlights: value.highlights.map(parseHomeProduct),
+    category_trends: value.category_trends.map((item: unknown) => {
+      if (
+        !record(item) ||
+        typeof item.section !== 'string' ||
+        !nullableNumber(item.change_percent) ||
+        !number(item.comparable_offers) ||
+        !nullableString(item.since)
+      )
+        throw invalid();
+      return {
+        section: item.section,
+        change_percent: item.change_percent,
+        comparable_offers: item.comparable_offers,
+        since: item.since,
+      };
+    }),
     configurations,
   };
+}
+
+function optionalCount(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (!number(value) || !Number.isInteger(value) || value < 0) throw invalid();
+  return value;
+}
+
+export function parsePriceChanges(raw: unknown): StatisticsData['price_changes'] {
+  if (raw === undefined || raw === null) return null;
+  if (
+    !record(raw) ||
+    !nullableString(raw.since) ||
+    typeof raw.until !== 'string' ||
+    !['fell', 'rose', 'unchanged'].includes(String(raw.selected)) ||
+    !Array.isArray(raw.offers)
+  )
+    throw invalid();
+  for (const key of [
+    'compared_offers',
+    'excluded_offers',
+    'fell',
+    'rose',
+    'unchanged',
+    'page',
+    'pages',
+  ]) {
+    if (optionalCount(raw[key]) === undefined) throw invalid();
+  }
+  if (
+    Number(raw.fell) + Number(raw.rose) + Number(raw.unchanged) !== raw.compared_offers ||
+    Number(raw.page) < 1 ||
+    Number(raw.pages) < Number(raw.page) ||
+    !Number.isFinite(Date.parse(raw.until)) ||
+    (raw.since !== null && !Number.isFinite(Date.parse(raw.since)))
+  )
+    throw invalid();
+  const offers = raw.offers.map((offer: unknown) => {
+    if (
+      !record(offer) ||
+      typeof offer.id !== 'string' ||
+      typeof offer.title !== 'string' ||
+      typeof offer.retailer !== 'string' ||
+      !number(offer.before) ||
+      offer.before <= 0 ||
+      !number(offer.after) ||
+      offer.after <= 0 ||
+      !number(offer.change_percent) ||
+      typeof offer.in_stock !== 'boolean'
+    )
+      throw invalid();
+    return {
+      id: offer.id,
+      title: offer.title,
+      retailer: offer.retailer,
+      before: offer.before,
+      after: offer.after,
+      change_percent: offer.change_percent,
+      in_stock: offer.in_stock,
+    };
+  });
+  const summary = parsePriceChangeSummary(raw.summary);
+  if (summary && (summary.fell.count !== raw.fell || summary.rose.count !== raw.rose))
+    throw invalid();
+  let magnitude_bands: NonNullable<StatisticsData['price_changes']>['magnitude_bands'] = null;
+  if (raw.magnitude_bands !== undefined && raw.magnitude_bands !== null) {
+    const boundaries = [0, 2, 5, 10, 20];
+    if (!Array.isArray(raw.magnitude_bands) || raw.magnitude_bands.length !== boundaries.length)
+      throw invalid();
+    magnitude_bands = raw.magnitude_bands.map((band: unknown, index: number) => {
+      if (
+        !record(band) ||
+        band.from !== boundaries[index] ||
+        band.to !== (boundaries[index + 1] ?? null) ||
+        optionalCount(band.fell) === undefined ||
+        optionalCount(band.rose) === undefined
+      )
+        throw invalid();
+      return {
+        from: Number(band.from),
+        to: band.to as number | null,
+        fell: Number(band.fell),
+        rose: Number(band.rose),
+      };
+    });
+    if (
+      magnitude_bands.reduce((sum, band) => sum + band.fell, 0) !== raw.fell ||
+      magnitude_bands.reduce((sum, band) => sum + band.rose, 0) !== raw.rose
+    )
+      throw invalid();
+  }
+  return { ...raw, offers, summary, magnitude_bands } as NonNullable<
+    StatisticsData['price_changes']
+  >;
+}
+
+function parsePriceChangeSummary(
+  raw: unknown,
+): NonNullable<StatisticsData['price_changes']>['summary'] {
+  if (raw === undefined || raw === null) return null;
+  if (!record(raw)) throw invalid();
+  const direction = (
+    value: unknown,
+    sign: number,
+  ): import('../types').PriceChangeDirectionSummary => {
+    if (!record(value) || optionalCount(value.count) === undefined) throw invalid();
+    const fields = [
+      'average_percent',
+      'average_amount_dt',
+      'largest_percent',
+      'largest_amount_dt',
+    ] as const;
+    if (value.count === 0) {
+      if (fields.some((field) => value[field] !== null)) throw invalid();
+    } else {
+      if (fields.some((field) => !number(value[field]) || Number(value[field]) * sign <= 0))
+        throw invalid();
+      if (
+        Math.abs(Number(value.largest_percent)) + 1e-9 < Math.abs(Number(value.average_percent)) ||
+        Math.abs(Number(value.largest_amount_dt)) + 1e-9 <
+          Math.abs(Number(value.average_amount_dt)) ||
+        !Number.isInteger(value.largest_amount_dt) ||
+        (sign < 0 && Number(value.largest_percent) <= -100)
+      )
+        throw invalid();
+    }
+    return {
+      count: Number(value.count),
+      average_percent: value.average_percent as number | null,
+      average_amount_dt: value.average_amount_dt as number | null,
+      largest_percent: value.largest_percent as number | null,
+      largest_amount_dt: value.largest_amount_dt as number | null,
+    };
+  };
+  return { fell: direction(raw.fell, -1), rose: direction(raw.rose, 1) };
+}
+
+export function parseOfferSummary(raw: unknown): StatisticsData['offer_summary'] {
+  if (raw == null) return null;
+  if (
+    !record(raw) ||
+    !Array.isArray(raw.price_bands) ||
+    [
+      'offer_count',
+      'available_offers',
+      'priced_offers',
+      'available_priced_offers',
+      'retailer_count',
+    ].some((key) => optionalCount(raw[key]) === undefined)
+  )
+    throw invalid();
+  const total = Number(raw.offer_count);
+  const available = Number(raw.available_offers);
+  const priced = Number(raw.priced_offers);
+  const availablePriced = Number(raw.available_priced_offers);
+  const retailers = Number(raw.retailer_count);
+  if (
+    available > total ||
+    priced > total ||
+    availablePriced > available ||
+    availablePriced > priced ||
+    retailers > total ||
+    (total > 0 && retailers === 0) ||
+    (priced === 0
+      ? raw.average_price !== null
+      : !number(raw.average_price) || raw.average_price <= 0)
+  )
+    throw invalid();
+  const bands = raw.price_bands.map((band: unknown) => {
+    if (
+      !record(band) ||
+      optionalCount(band.from) === undefined ||
+      optionalCount(band.count) === undefined ||
+      (band.to !== null &&
+        (optionalCount(band.to) === undefined || Number(band.to) <= Number(band.from)))
+    )
+      throw invalid();
+    return { from: Number(band.from), to: band.to as number | null, count: Number(band.count) };
+  });
+  if (
+    bands.reduce((sum, band) => sum + band.count, 0) !== availablePriced ||
+    (availablePriced > 0 && !bands.length) ||
+    bands.some((band, index) =>
+      index === 0 ? band.from !== 0 : bands[index - 1].to !== band.from,
+    ) ||
+    (bands.length > 0 && bands.at(-1)!.to !== null)
+  )
+    throw invalid();
+  return {
+    offer_count: total,
+    available_offers: available,
+    priced_offers: priced,
+    available_priced_offers: availablePriced,
+    retailer_count: retailers,
+    average_price: raw.average_price as number | null,
+    price_bands: bands,
+  };
+}
+
+export function parseConfigurationSummary(raw: unknown): StatisticsData['configuration_summary'] {
+  if (raw === undefined || raw === null) return null;
+  if (
+    !record(raw) ||
+    ['configuration_count', 'available_configurations', 'shared_configurations'].some(
+      (key) => optionalCount(raw[key]) === undefined,
+    ) ||
+    !Array.isArray(raw.price_bands) ||
+    !Array.isArray(raw.spread_bands)
+  )
+    throw invalid();
+  const configurationCount = Number(raw.configuration_count);
+  const available = Number(raw.available_configurations);
+  const shared = Number(raw.shared_configurations);
+  if (shared > available || available > configurationCount) throw invalid();
+  for (const field of ['average_spread_percent', 'average_spread_dt']) {
+    if (shared === 0 ? raw[field] !== null : !number(raw[field]) || Number(raw[field]) < 0)
+      throw invalid();
+  }
+  const priceBands = raw.price_bands.map((value: unknown) => {
+    if (
+      !record(value) ||
+      optionalCount(value.from) === undefined ||
+      optionalCount(value.count) === undefined ||
+      (value.to !== null &&
+        (optionalCount(value.to) === undefined || Number(value.to) <= Number(value.from)))
+    )
+      throw invalid();
+    return { from: Number(value.from), to: value.to as number | null, count: Number(value.count) };
+  });
+  if (
+    priceBands.reduce((total, band) => total + band.count, 0) !== available ||
+    (available > 0 && priceBands.length === 0) ||
+    priceBands.some((band, index) =>
+      index === 0 ? band.from !== 0 : priceBands[index - 1].to !== band.from,
+    ) ||
+    (priceBands.length > 0 && priceBands[priceBands.length - 1].to !== null)
+  )
+    throw invalid();
+  const spreadBands = raw.spread_bands.map((value: unknown) => {
+    if (
+      !record(value) ||
+      typeof value.label !== 'string' ||
+      optionalCount(value.count) === undefined
+    )
+      throw invalid();
+    return { label: value.label, count: Number(value.count) };
+  });
+  if (
+    spreadBands.reduce((total, band) => total + band.count, 0) !== shared ||
+    new Set(spreadBands.map((band) => band.label)).size !== spreadBands.length
+  )
+    throw invalid();
+  return {
+    configuration_count: configurationCount,
+    available_configurations: available,
+    shared_configurations: shared,
+    average_spread_percent: raw.average_spread_percent as number | null,
+    average_spread_dt: raw.average_spread_dt as number | null,
+    price_bands: priceBands,
+    spread_bands: spreadBands,
+  };
+}
+
+export function parseDealEvidence(value: unknown): import('../types').DealEvidence | null {
+  if (
+    !record(value) ||
+    !['new_low', 'recent_drop', 'enough_history'].every((key) => typeof value[key] === 'boolean') ||
+    !['typical_price', 'history_saving_percent', 'next_best_price', 'gap_percent'].every((key) =>
+      nullableNumber(value[key]),
+    ) ||
+    !nullableString(value.next_best_retailer) ||
+    !number(value.retailer_count) ||
+    !record(value.comparison_fields) ||
+    !Object.values(value.comparison_fields).every((item) => typeof item === 'string')
+  )
+    return null;
+  return value as unknown as import('../types').DealEvidence;
+}
+export function parseDeals(value: unknown): Record<string, import('../types').DealEvidence> {
+  if (!record(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([id, raw]) => {
+      const deal = parseDealEvidence(raw);
+      return deal ? [[id, deal]] : [];
+    }),
+  );
 }

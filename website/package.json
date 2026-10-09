@@ -1,5 +1,5 @@
 {
-  "name": "mythos-website",
+  "name": "flagship-website",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -14,7 +14,10 @@
     "format": "prettier --write src scripts public/theme.js index.html *.json vite.config.ts",
     "format:check": "prettier --check src scripts public/theme.js index.html *.json vite.config.ts",
     "test:smoke": "node scripts/smoke.mjs",
-    "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts"
+    "test:startup": "node scripts/startup-smoke.mjs",
+    "test:overrides": "node scripts/overrides-smoke.mjs",
+    "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts",
+    "test:auth": "node scripts/auth-smoke.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.546.0",

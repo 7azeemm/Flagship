@@ -1,247 +1,333 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowRight,
   BarChart3,
-  CalendarDays,
+  ChevronRight,
+  Clock3,
   Info,
   RefreshCw,
+  SlidersHorizontal,
   Store,
 } from 'lucide-react';
 import type { ServerInfo, StatisticChart, StatisticsData } from '../types';
 import { parseStatistics, request } from '../lib/api';
-import { money, sectionLabel } from '../lib/catalog';
+import { fieldLabel, money, sectionLabel } from '../lib/catalog';
+import {
+  historyLabel,
+  insightParams,
+  insightRanges,
+  statisticsAPIParams,
+  priceTick,
+  readInsightQuery,
+  rankRetailers,
+  minimumRetailerComparisons,
+  shortDate,
+  signedPercent,
+  type InsightQuery,
+  type InsightView,
+} from '../lib/insights';
 import { MarketTrendChart } from './MarketTrendChart';
+import { ShareButton } from './ShareButton';
+import { StatisticsSelect } from './StatisticsSelect';
+import { StatisticsPriceChanges } from './StatisticsPriceChanges';
+import { RetailerLandscape } from './RetailerLandscape';
+import { ConfigurationStatistics } from './ConfigurationStatistics';
+import { ConfigurationMatches } from './ConfigurationMatches';
 import '../statistics.css';
+import '../configuration-statistics.css';
+import '../retailer-landscape.css';
 
-const ranges = [
-  ['7d', '7 days'],
-  ['30d', '30 days'],
-  ['90d', '90 days'],
-  ['180d', '6 months'],
-  ['1y', '1 year'],
-  ['all', 'All time'],
-];
 const statisticsCache = new Map<string, { data: StatisticsData; updated: number }>();
-
-type RetailerMeasure = 'lowest' | 'offers';
-
-function RetailerComparison({
-  overviews,
-  sections,
-}: {
-  overviews: StatisticsData['retailer_overviews'];
-  sections: string[];
-}) {
-  const [measure, setMeasure] = useState<RetailerMeasure>('lowest');
-  const [section, setSection] = useState('All');
-  const [expanded, setExpanded] = useState(false);
-  const overview = overviews[section] || overviews.All;
-  if (!overview) return null;
-  const hasPriceComparisons = overview.retailers.some((item) => item.price_comparisons > 0);
-  const activeMeasure = measure === 'lowest' && !hasPriceComparisons ? 'offers' : measure;
-  const choices: { id: RetailerMeasure; label: string }[] = [
-    { id: 'lowest', label: 'Lowest-price wins' },
-    { id: 'offers', label: 'Catalog size' },
-  ];
-  const ranked = overview.retailers
-    .map((item) => ({
-      ...item,
-      value:
-        activeMeasure === 'lowest'
-          ? item.price_comparisons > 0
-            ? (item.lowest_price_wins / item.price_comparisons) * 100
-            : null
-          : item.offers,
-    }))
-    .sort((a, b) => (b.value ?? -1) - (a.value ?? -1) || b.offers - a.offers || a.name.localeCompare(b.name));
-  const entries = expanded ? ranked : ranked.slice(0, 8);
-  const max = activeMeasure === 'offers' ? Math.max(1, ...ranked.map((item) => item.value ?? 0)) : 100;
-  const scope = section === 'All' ? 'all categories' : sectionLabel(section).toLowerCase();
-  const explanation =
-    activeMeasure === 'lowest'
-      ? `Current in-stock prices within ${money(overview.comparable_configurations)} shared configurations in ${scope}. Each retailer's percentage is its lowest-price wins divided by the configurations where it has a matching offer. Ties count; check the comparison count for small samples.`
-      : `Number of tracked offers in ${scope} at the latest catalog snapshot.${hasPriceComparisons ? '' : ' No shared products are available for a price comparison yet.'}`;
-  return (
-    <div className="retailer-comparison">
-      <div className="retailer-comparison-top">
-        <div>
-          <span className="home-kicker">Retailer comparison</span>
-          <h3>Where retailers stand</h3>
-          <p>{explanation}</p>
-        </div>
-        <div className="retailer-comparison-tools">
-          <label>
-            Category
-            <select
-              value={section}
-              onChange={(event) => {
-                setSection(event.target.value);
-                if (!overviews[event.target.value]?.retailers.some((item) => item.price_comparisons > 0)) setMeasure('offers');
-                setExpanded(false);
-              }}
-            >
-              <option value="All">All categories</option>
-              {sections
-                .filter((item) => overviews[item])
-                .map((item) => (
-                  <option key={item} value={item}>
-                    {sectionLabel(item)}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <div className="retailer-measures" role="group" aria-label="Retailer measure">
-            {choices.map((choice) => (
-              <button
-                key={choice.id}
-                type="button"
-                className={activeMeasure === choice.id ? 'active' : ''}
-                aria-pressed={activeMeasure === choice.id}
-                disabled={choice.id === 'lowest' && !hasPriceComparisons}
-                title={choice.id === 'lowest' && !hasPriceComparisons ? 'No shared products are available for comparison' : undefined}
-                onClick={() => {
-                  setMeasure(choice.id);
-                  setExpanded(false);
-                }}
-              >
-                {choice.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {entries.length > 0 ? (
-        <div
-          className="retailer-bars"
-          aria-label={`Retailers ranked by ${choices.find((choice) => choice.id === activeMeasure)?.label.toLowerCase()}`}
-        >
-          {entries.map((item, index) => (
-            <div className="retailer-bar-row" key={item.name}>
-              <span className="retailer-bar-rank">{String(index + 1).padStart(2, '0')}</span>
-              <strong title={item.name}>{item.name}</strong>
-              <span className="retailer-bar-track">
-                <span style={{ width: `${((item.value ?? 0) / max) * 100}%` }} />
-              </span>
-              <span className="retailer-bar-value">
-                {activeMeasure === 'offers' ? money(item.offers) : item.value === null ? '—' : `${item.value.toFixed(0)}%`}
-                <small>
-                  {activeMeasure === 'lowest'
-                    ? item.value === null
-                      ? 'No shared matches'
-                      : item.price_comparisons < 5
-                        ? `${item.lowest_price_wins}/${item.price_comparisons} · small sample`
-                        : `${item.lowest_price_wins}/${item.price_comparisons} comparisons`
-                    : 'tracked offers'}
-                </small>
-              </span>
-            </div>
-          ))}
-          <div className="retailer-bar-axis" aria-hidden="true">
-            <div>
-              <span>0</span>
-              <span>{activeMeasure === 'offers' ? `${money(Math.round(max / 2))}` : '50%'}</span>
-              <span>{activeMeasure === 'offers' ? `${money(max)} offers` : '100%'}</span>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="statistics-empty retailer-empty">
-          <Store size={26} />
-          <strong>No retailer listings in this category</strong>
-          <span>Listings will appear here after a catalog scan.</span>
-        </div>
-      )}
-      <div className="retailer-comparison-foot">
-        <span>
-          {money(ranked.length)} retailers in this view
-          {!expanded && ranked.length > 8 ? ' · top eight shown' : ''}
-        </span>
-        {ranked.length > 8 && (
-          <button type="button" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? 'Show top eight' : `Show all ${money(ranked.length)}`}
-          </button>
-        )}
-      </div>
-    </div>
-  );
+const views: { id: InsightView; name: string; icon: typeof BarChart3 }[] = [
+  { id: 'overview', name: 'Overview', icon: BarChart3 },
+  { id: 'retailers', name: 'Retailers', icon: Store },
+  { id: 'explorer', name: 'Configurations', icon: SlidersHorizontal },
+];
+const marketMetrics = [
+  { metric: 'index', label: 'Price movement' },
+  { metric: 'availability', label: 'In-stock rate' },
+] as const;
+function changeColor(value: number | null | undefined) {
+  return value != null && value > 0.05
+    ? 'insight-up'
+    : value != null && value < -0.05
+      ? 'insight-down'
+      : '';
 }
-
 function valueLabel(chart: StatisticChart, value: number) {
   if (chart.metric === 'availability') return `${value.toFixed(1)}%`;
-  if (chart.metric === 'index') return `${value > 100 ? '+' : ''}${(value - 100).toFixed(1)}%`;
+  if (chart.metric === 'index') return signedPercent(value - 100);
   return `${money(Math.round(value))} DT`;
 }
-
-function axisLabel(chart: StatisticChart, value: number) {
-  if (chart.metric === 'availability') return `${Math.round(value)}%`;
-  if (chart.metric === 'index')
-    return `${Math.abs(value - 100) < 0.05 ? '0.0' : (value - 100).toFixed(1)}%`;
-  return value >= 1000 ? `${(value / 1000).toFixed(1)}k DT` : `${Math.round(value)} DT`;
-}
-
-function StatisticVisual({ chart }: { chart: StatisticChart }) {
-  const points = chart.points;
-  const last = points.at(-1);
-  const first = points[0];
-  const title = chart.title;
+function StatisticVisual({ chart, controls }: { chart: StatisticChart; controls?: ReactNode }) {
+  const last = chart.points.at(-1);
+  const title =
+    chart.metric === 'lowest_price'
+      ? 'Lowest price'
+      : marketMetrics.find((item) => item.metric === chart.metric)?.label || chart.title;
   return (
     <article className="statistics-card">
+      {controls}
       <div className="statistics-card-heading">
         <div>
-          <span>
-            {sectionLabel(chart.section)} · {chart.range.toUpperCase()}
-          </span>
+          <span>{sectionLabel(chart.section)}</span>
           <h3>{title}</h3>
           <p>{chart.description}</p>
         </div>
-        {last && <strong>{valueLabel(chart, last.value)}</strong>}
+        {last && (
+          <strong className={chart.metric === 'index' ? changeColor(last.value - 100) : ''}>
+            {valueLabel(chart, last.value)}
+          </strong>
+        )}
       </div>
-      {points.length > 1 ? (
+      {chart.points.length > 1 ? (
         <MarketTrendChart
-          title={`${title} over time: ${valueLabel(chart, first.value)} to ${valueLabel(chart, last!.value)}`}
-          points={points.map((point) => ({
+          title={`${title} for ${sectionLabel(chart.section)}`}
+          points={chart.points.map((point) => ({
             timestamp: point.timestamp,
-            value: point.value,
+            value: chart.metric === 'index' ? point.value - 100 : point.value,
             sampleSize: point.sample_size,
+            breakBefore: point.break_before,
           }))}
-          valueLabel={(value) => valueLabel(chart, value)}
-          tickLabel={(value) => axisLabel(chart, value)}
-          baseline={chart.metric === 'index' ? 100 : undefined}
+          valueLabel={(value) =>
+            chart.metric === 'index' ? signedPercent(value) : valueLabel(chart, value)
+          }
+          tickLabel={(value) =>
+            chart.metric === 'index'
+              ? signedPercent(value)
+              : chart.metric === 'availability'
+                ? `${value.toFixed(1)}%`
+                : priceTick(value)
+          }
+          baseline={chart.metric === 'index' ? 0 : undefined}
+          colorBySign={chart.metric === 'index'}
           minimumPadding={chart.metric === 'index' ? 0.5 : chart.metric === 'availability' ? 2 : 4}
+          maximumValue={chart.metric === 'availability' ? 100 : undefined}
         />
       ) : (
         <div className="statistics-empty">
-          <BarChart3 size={27} />
+          <BarChart3 size={26} />
           <strong>Not enough history yet</strong>
           <span>
             {chart.metric === 'index'
-              ? 'At least five comparable offers across two observations are needed.'
-              : 'This chart needs at least two supported observations.'}
+              ? 'We need five comparable offers across two observations.'
+              : chart.metric === 'availability' && chart.id === 'availability'
+                ? 'We need two snapshots with at least five eligible offers each.'
+                : 'We need at least two supported snapshots.'}
           </span>
         </div>
       )}
       <div className="statistics-card-meta">
+        <span>{historyLabel(chart.points)}</span>
         <span>
-          {money(chart.matching_offers)} matching offers · {chart.retailer_count} retailers
-        </span>
-        <span>
-          {chart.metric === 'index'
-            ? `${money(chart.comparable_offers)} comparable in latest interval`
-            : last
-              ? `${money(last.sample_size)} in latest point`
-              : 'No sample yet'}
+          {money(chart.metric === 'index' ? chart.comparable_offers : last?.sample_size || 0)}{' '}
+          offers in latest {chart.metric === 'index' ? 'comparison' : 'point'}
         </span>
       </div>
       <details>
         <summary>
-          <Info size={14} /> How to read this chart
+          <Info size={14} /> How this is calculated
         </summary>
         <p>{chart.note}</p>
       </details>
     </article>
   );
 }
-
+function MarketOverview({
+  charts,
+  metric,
+  onMetricChange,
+  includeLowestPrice = false,
+}: {
+  charts: StatisticChart[];
+  metric: InsightQuery['metric'];
+  onMetricChange: (metric: InsightQuery['metric']) => void;
+  includeLowestPrice?: boolean;
+}) {
+  const selectedMetric =
+    metric === 'availability'
+      ? 'availability'
+      : includeLowestPrice && metric === 'lowest_price'
+        ? 'lowest_price'
+        : 'index';
+  const metrics = includeLowestPrice
+    ? [...marketMetrics, { metric: 'lowest_price' as const, label: 'Lowest price' }]
+    : marketMetrics;
+  const chart = charts.find((item) => item.metric === selectedMetric) || charts[0];
+  const controls = (
+    <div className="insight-metric-switch" role="group" aria-label="Chart metric">
+      {metrics.map((item) => (
+        <button
+          key={item.metric}
+          aria-pressed={selectedMetric === item.metric}
+          onClick={() => onMetricChange(item.metric)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+  if (!chart)
+    return (
+      <div className="statistics-empty">
+        <BarChart3 size={26} />
+        <strong>No market observations yet</strong>
+        <span>Choose another category or check back after the next scan.</span>
+      </div>
+    );
+  return <StatisticVisual chart={chart} controls={controls} />;
+}
+function RetailerComparison({
+  overview,
+  section,
+  range,
+  measure,
+  onMeasureChange,
+  onNavigate,
+}: {
+  overview: StatisticsData['retailer_overviews'][string] | undefined;
+  section: string;
+  range: string;
+  measure: InsightQuery['retailerMeasure'];
+  onMeasureChange: (measure: InsightQuery['retailerMeasure']) => void;
+  onNavigate: (path: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!overview)
+    return (
+      <div className="statistics-empty">
+        <Store />
+        <strong>No retailer observations yet</strong>
+      </div>
+    );
+  const ranked = rankRetailers(overview.retailers, measure);
+  const maximum = measure !== 'offers' ? 100 : Math.max(1, ...ranked.map((item) => item.value));
+  const priceDataReady = overview.retailers.some((item) => item.within_two_percent !== undefined);
+  return (
+    <section className="retailer-comparison">
+      <div className="insight-section-heading">
+        <div>
+          <h2>{measure === 'price' ? 'Price ranking' : 'In-stock offer coverage'}</h2>
+          <p>
+            {measure === 'price'
+              ? 'Competitive prices, ranked with more weight given to stronger samples.'
+              : 'Retailers ranked by the number of individual products currently in stock.'}
+          </p>
+        </div>
+        <div className="retailer-measures" role="group" aria-label="Retailer measure">
+          <button aria-pressed={measure === 'price'} onClick={() => onMeasureChange('price')}>
+            Price ranking
+          </button>
+          <button aria-pressed={measure === 'offers'} onClick={() => onMeasureChange('offers')}>
+            Offer coverage
+          </button>
+        </div>
+      </div>
+      <div className="insight-retailer-context">
+        <span>{measure === 'price' ? 'Current prices' : 'In-stock products only'}</span>
+        <span>
+          {measure === 'price'
+            ? `${money(overview.comparable_configurations)} shared configurations · ${sectionLabel(section)}`
+            : `${money(ranked.reduce((total, item) => total + item.value, 0))} products in stock · ${sectionLabel(section)}`}
+        </span>
+        {measure !== 'offers' && (
+          <span>Retailers with {minimumRetailerComparisons}+ comparisons</span>
+        )}
+      </div>
+      {measure === 'price' && !priceDataReady ? (
+        <div className="statistics-empty">
+          <strong>Retailer price comparison data is not available yet.</strong>
+        </div>
+      ) : (
+        <div className="retailer-bars">
+          {(expanded ? ranked : ranked.slice(0, 8)).map((item, index) => (
+            <div className="retailer-bar-row" key={item.name}>
+              <span className="retailer-bar-rank">{String(index + 1).padStart(2, '0')}</span>
+              <a
+                href={`/statistics?${new URLSearchParams({ view: 'explorer', section, range, retailer: item.name })}`}
+                onClick={(event) => {
+                  if (
+                    event.button ||
+                    event.ctrlKey ||
+                    event.metaKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  event.preventDefault();
+                  onNavigate(event.currentTarget.pathname + event.currentTarget.search);
+                }}
+              >
+                <strong>{item.name}</strong>
+              </a>
+              <span className="retailer-bar-track" aria-hidden="true">
+                <span style={{ width: `${(item.value / maximum) * 100}%` }} />
+              </span>
+              <span className="retailer-bar-value">
+                {measure !== 'offers' ? `${item.value.toFixed(1)} / 100` : money(item.value)}
+                <small>
+                  {measure === 'price'
+                    ? `${item.competitiveShare.toFixed(0)}% within 2% · ${item.price_comparisons} comparisons`
+                    : 'in-stock products'}
+                </small>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {!ranked.length && (
+        <div className="statistics-empty">
+          <Store />
+          <strong>
+            {measure !== 'offers'
+              ? 'No retailers have five shared comparisons yet.'
+              : 'No retailers have in-stock products yet.'}
+          </strong>
+          <span>
+            {measure !== 'offers'
+              ? 'Choose another category or view offer coverage.'
+              : 'Choose another category.'}
+          </span>
+        </div>
+      )}
+      <div className="retailer-comparison-foot">
+        <span>
+          {ranked.length} retailers match
+          {!expanded && ranked.length > 8 ? ' · top eight shown' : ''}
+        </span>
+        {ranked.length > 8 && (
+          <button onClick={() => setExpanded((value) => !value)}>
+            {expanded ? 'Show top eight' : `Show all ${ranked.length}`}
+          </button>
+        )}
+      </div>
+      <details className="insight-method">
+        <summary>
+          <Info size={14} /> Understand this comparison
+        </summary>
+        <p>
+          Price ranking rewards stores whose cheapest in-stock offer is the lowest or within 2% of
+          the lowest price for a matching configuration. For example, 1,020 DT qualifies when the
+          lowest price is 1,000 DT. Each configuration needs at least two retailers to compare.
+        </p>
+        <p>
+          The purple bar shows a score out of 100, adjusted for sample size. A retailer with 19
+          qualifying prices out of 22 comparisons scores 66.7; a retailer with 5 out of 5 scores
+          56.6. More comparisons give a strong result more weight. Retailers need at least
+          {minimumRetailerComparisons} comparisons to appear. The percentage below the score is the
+          actual share cheapest or within 2%.
+        </p>
+        <p>
+          The score uses the lower bound of a 95% Wilson interval. Each retailer contributes its
+          cheapest in-stock offer per configuration, using the category’s grouping fields. Product
+          mixes and sample sizes differ between retailers. Offer coverage counts individual products
+          marked in stock, including multiple listings with the same specifications. On-demand,
+          arriving, and out-of-stock products are excluded.
+        </p>
+      </details>
+    </section>
+  );
+}
 export function StatisticsPage({
   categories,
   onNavigate,
@@ -249,38 +335,60 @@ export function StatisticsPage({
   categories: ServerInfo['categories'];
   onNavigate: (path: string) => void;
 }) {
-  const [section, setSection] = useState('Memory');
-  const [range, setRange] = useState('30d');
-  const [retailer, setRetailer] = useState('');
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [query, setQuery] = useState(() => readInsightQuery(window.location.search));
   const [data, setData] = useState<StatisticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [selectedConfiguration, setSelectedConfiguration] = useState<string | null>(null);
-
+  const refinementRef = useRef<HTMLDivElement>(null);
+  const refinementFocus = useRef<string | null>(null);
   useEffect(() => {
-    document.title = 'Statistics — Mythos';
+    if (query.view !== 'explorer') {
+      refinementFocus.current = null;
+      return;
+    }
+    if (!data || !refinementFocus.current) return;
+    if (document.activeElement === document.body) {
+      const field = [
+        ...(refinementRef.current?.querySelectorAll<HTMLDivElement>('.statistics-select') || []),
+      ].find((element) => element.dataset.label === refinementFocus.current);
+      field
+        ?.querySelector<HTMLButtonElement>('.statistics-select-trigger')
+        ?.focus({ preventScroll: true });
+    }
+    refinementFocus.current = null;
+  }, [data, query.view]);
+  useEffect(() => {
+    document.title = 'Market statistics — Flagship';
   }, []);
   useEffect(() => {
+    const restore = () => {
+      if (window.location.pathname === '/statistics') {
+        const next = readInsightQuery(window.location.search);
+        setQuery(next);
+      }
+    };
+    window.addEventListener('popstate', restore);
+    return () => window.removeEventListener('popstate', restore);
+  }, []);
+  const change = (patch: Partial<InsightQuery>) => {
+    const next = { ...query, ...patch };
+    if (next.section === 'All') next.filters = {};
+    setQuery(next);
+    window.history.pushState(null, '', `/statistics?${insightParams(next)}`);
+  };
+  const path = `/stats?${statisticsAPIParams(query)}`;
+  useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({
-      section,
-      range,
-      filters: JSON.stringify(filters),
-    });
-    if (retailer) params.set('retailer', retailer);
-    const path = `/stats?${params}`;
     const cached = statisticsCache.get(path);
-    if (cached && Date.now() - cached.updated < 30_000) {
+    setError('');
+    if (cached && revision === 0 && Date.now() - cached.updated < 30_000) {
       setData(cached.data);
       setLoading(false);
-      setError('');
-      return () => controller.abort();
+      return;
     }
+    setData(null);
     setLoading(true);
-    setError('');
-    setSelectedConfiguration(null);
     request(path, controller.signal)
       .then(parseStatistics)
       .then((result) => {
@@ -299,282 +407,414 @@ export function StatisticsPage({
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [section, range, retailer, filters, revision]);
-
+  }, [path, revision]);
   const sections = [
     ...new Set(
       Object.values(categories)
         .flat()
-        .map((item) => item.id),
+        .map((category) => category.id),
     ),
-  ];
-  if (!sections.includes('Memory')) sections.unshift('Memory');
-  const activeRefinements = Object.keys(filters).length + (retailer ? 1 : 0);
-  const explorer = data?.explorer_charts[0];
-  const visibleFacets = explorer?.section === section ? data?.facets || [] : [];
-  const visibleRetailers = explorer?.section === section ? data?.retailers || [] : [];
-  const configuration =
-    data?.configurations.find((item) => item.id === selectedConfiguration) ||
-    data?.configurations[0];
-  const configurationChart = (kind: 'lowest_price' | 'availability'): StatisticChart | null =>
-    data && configuration
-      ? {
-          id: `${configuration.id}-${kind}`,
-          title: kind === 'lowest_price' ? 'Lowest available price' : 'In-stock offers',
-          description: configuration.title,
-          section: explorer!.section,
-          filters: explorer!.filters,
-          metric: kind,
-          range: explorer!.range,
-          matching_offers: configuration.offers,
-          retailer_count: configuration.retailer_count,
-          comparable_offers: 0,
-          points:
-            kind === 'lowest_price'
-              ? configuration.price_points
-              : configuration.availability_points,
-          note:
-            kind === 'lowest_price'
-              ? 'Lowest recorded in-stock price among offers in this configuration. Missing stock periods are not connected to a known price.'
-              : 'Percentage of offers in this configuration recorded as in stock at each observation.',
-        }
-      : null;
+  ].filter((id) =>
+    data
+      ? data.supported_sections.includes(id)
+      : [
+          'PC',
+          'GamingPC',
+          'AllInOnePC',
+          'MiniPC',
+          'Laptop',
+          'GamingLaptop',
+          'MacBook',
+          'CPU',
+          'GPU',
+          'Smartphone',
+        ].includes(id),
+  );
+  const charts = data?.explorer_charts || [];
+  const index = charts.find((chart) => chart.metric === 'index');
+  const priceChanges = data?.price_changes || null;
+  const stock = charts.find((chart) => chart.metric === 'availability');
+  const overviewRef = useRef<HTMLDivElement>(null);
+  const revealOverview = useRef(false);
+  useEffect(() => {
+    if (data && revealOverview.current && query.view === 'overview') {
+      overviewRef.current?.scrollIntoView({ block: 'start' });
+      overviewRef.current?.focus({ preventScroll: true });
+      revealOverview.current = false;
+    }
+  }, [data, query.view]);
+  const activeFilters = Object.keys(query.filters).length + Number(!!query.retailer);
   return (
-    <main className="statistics-main" id="statistics-content" tabIndex={-1}>
-      <div className="statistics-hero">
-        <span className="home-kicker">The numbers behind the market</span>
-        <h1>The tech market, in focus.</h1>
-        <p>
-          See how retailers compare, then explore recorded prices and availability for the products
-          you care about.
-        </p>
-        {data?.last_scan_at && (
-          <div className="statistics-freshness">
-            <CalendarDays size={16} />
-            Last scan {new Date(data.last_scan_at).toLocaleString()}
-          </div>
-        )}
-      </div>
-      <section className="statistics-section" aria-labelledby="retailer-title">
-        <div className="statistics-section-heading">
-          <div>
-            <span className="home-kicker">The retailer picture</span>
-            <h2 id="retailer-title">More than price alone</h2>
-          </div>
-          <p>Compare current listings and lowest-price wins.</p>
-        </div>
-        {data ? (
-          <RetailerComparison overviews={data.retailer_overviews} sections={sections} />
-        ) : loading ? (
-          <div className="statistics-loading">Loading retailer comparison…</div>
-        ) : null}
-      </section>
-      <section className="statistics-section" aria-labelledby="explorer-title">
-        <div className="statistics-section-heading">
-          <div>
-            <span className="home-kicker">Make it specific</span>
-            <h2 id="explorer-title">Explore the market</h2>
-          </div>
-          <p>One set of filters updates every chart and the matching configurations below.</p>
-        </div>
-        <div className="statistics-workbench">
-          <div className="statistics-workbench-head">
-            <div>
-              <span className="home-kicker">Chart setup</span>
-              <h3>Choose what to explore</h3>
-            </div>
-            <div className="statistics-primary-filters">
-              <label className="statistics-category-select">
-                Category
-                <select
-                  value={section}
-                  onChange={(event) => {
-                    setSection(event.target.value);
-                    setFilters({});
-                    setRetailer('');
-                  }}
-                >
-                  {sections.map((item) => (
-                    <option key={item} value={item}>
-                      {sectionLabel(item)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="statistics-category-select">
-                Period
-                <select value={range} onChange={(event) => setRange(event.target.value)}>
-                  {ranges.map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-          <div className="statistics-refine">
-            <div className="statistics-refine-heading">
-              <strong>Retailer & specifications</strong>
-              {activeRefinements > 0 && <span>{activeRefinements} active</span>}
-            </div>
-              <div className="statistics-refine-body" id="statistics-refinements">
-                <label>
-                  Retailer
-                  <select value={retailer} onChange={(event) => setRetailer(event.target.value)}>
-                    <option value="">All retailers</option>
-                    {visibleRetailers.map((item) => (
-                      <option key={item} value={item}>
-                        {item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {visibleFacets.map((facet) => (
-                  <label key={facet.key}>
-                    {facet.label}
-                    <select
-                      value={filters[facet.key] || ''}
-                      onChange={(event) =>
-                        setFilters((current) => {
-                          const next = { ...current };
-                          if (event.target.value) next[facet.key] = event.target.value;
-                          else delete next[facet.key];
-                          return next;
-                        })
-                      }
-                    >
-                      <option value="">Any</option>
-                      {facet.options.map((option) => (
-                        <option key={option.value} value={option.value} disabled={option.count === 0 && filters[facet.key] !== option.value}>
-                          {option.value} ({option.count})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-                {activeRefinements > 0 && (
-                  <button
-                    type="button"
-                    className="statistics-clear"
-                    onClick={() => {
-                      setRetailer('');
-                      setFilters({});
-                    }}
-                  >
-                    Clear refinements
-                  </button>
-                )}
-              </div>
-          </div>
-        </div>
-        {loading && data && (
-          <p className="statistics-updating" role="status">
-            Updating this view…
-          </p>
-        )}
-        {data && <div className="statistics-chart-grid">{data.explorer_charts.map((chart) => <StatisticVisual key={chart.id} chart={chart} />)}</div>}
-        {data && (
-          <div className="statistics-configurations">
-            <div className="statistics-config-heading">
-              <h3>Matching configurations</h3>
-              <p>
-                Showing up to 12 of {money(data.configuration_count)} current configurations. Narrow
-                the filters to find a specific one.
-              </p>
-            </div>
-            {data.configurations.length ? (
+    <main
+      className="statistics-main insights-page statistics-dashboard"
+      id="statistics-content"
+      tabIndex={-1}
+    >
+      <header className="insights-header">
+        <div>
+          <h1>Market statistics</h1>
+          <p className="insight-updated">
+            <Clock3 size={13} />
+            {data ? (
               <>
-                <div
-                  className="statistics-config-list"
-                  role="group"
-                  aria-label="Matching configurations"
-                >
-                  {data.configurations.map((item) => (
-                    <button
-                      key={item.id}
-                      className={configuration?.id === item.id ? 'active' : ''}
-                      aria-pressed={configuration?.id === item.id}
-                      onClick={() => setSelectedConfiguration(item.id)}
-                    >
-                      <strong>{item.title}</strong>
-                      <span>
-                        {item.offers} {item.offers === 1 ? 'offer' : 'offers'} ·{' '}
-                        {item.retailer_count} {item.retailer_count === 1 ? 'retailer' : 'retailers'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-                {configuration && (
-                  <div className="statistics-config-detail">
-                    <div className="statistics-config-title">
-                      <h4>{configuration.title}</h4>
-                      {configuration.product_id && (
-                        <a
-                          href={`/product/${encodeURIComponent(configuration.product_id)}`}
-                          onClick={(event) => {
-                            if (
-                              event.button === 0 &&
-                              !event.ctrlKey &&
-                              !event.metaKey &&
-                              !event.shiftKey &&
-                              !event.altKey
-                            ) {
-                              event.preventDefault();
-                              onNavigate(
-                                `/product/${encodeURIComponent(configuration.product_id!)}`,
-                              );
-                            }
-                          }}
-                        >
-                          View an offer <ArrowRight size={14} />
-                        </a>
-                      )}
-                    </div>
-                    <div className="statistics-config-charts">
-                      {configurationChart('lowest_price') && (
-                        <StatisticVisual chart={configurationChart('lowest_price')!} />
-                      )}
-                      {configurationChart('availability') && (
-                        <StatisticVisual chart={configurationChart('availability')!} />
-                      )}
-                    </div>
-                  </div>
-                )}
+                {data.last_scan_at ? 'Last scan' : 'Snapshot'}{' '}
+                <time dateTime={data.last_scan_at || data.generated_at}>
+                  {new Date(data.last_scan_at || data.generated_at).toLocaleString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </time>
               </>
             ) : (
-              <p className="statistics-no-config">
-                No matching configurations. Try broader filters.
-              </p>
+              'Recorded prices across Tunisian retailers'
             )}
+          </p>
+        </div>
+        <ShareButton
+          title="Market statistics — Flagship"
+          path={`/statistics?${insightParams(query)}`}
+        />
+      </header>
+      <nav className="insight-tabs" aria-label="Statistics views">
+        {views.map(({ id, name, icon: Icon }) => (
+          <button
+            key={id}
+            aria-current={query.view === id ? 'page' : undefined}
+            onClick={() => change({ view: id })}
+          >
+            <Icon size={16} />
+            {name}
+          </button>
+        ))}
+      </nav>
+      <div className="insight-toolbar">
+        <label>
+          Category
+          <select
+            aria-label="Category"
+            value={query.section}
+            onChange={(event) => {
+              change({
+                section: event.target.value,
+                filters: {},
+                retailer: '',
+              });
+            }}
+          >
+            <option value="All">All categories</option>
+            {query.section !== 'All' && !sections.includes(query.section) && (
+              <option value={query.section}>{sectionLabel(query.section)}</option>
+            )}
+            {sections.map((section) => (
+              <option key={section} value={section}>
+                {sectionLabel(section)}
+              </option>
+            ))}
+          </select>
+        </label>
+        {query.view !== 'retailers' && (
+          <div className="insight-period-control">
+            <span id="insight-period-label">Period</span>
+            <div className="insight-periods" role="group" aria-labelledby="insight-period-label">
+              {insightRanges.map(([value, label]) => (
+                <button
+                  key={value}
+                  aria-pressed={query.range === value}
+                  onClick={() => change({ range: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
-        {error && (
-          <div className="statistics-error" role="alert">
-            <p>{error}</p>
-            <button onClick={() => setRevision((value) => value + 1)}>
-              <RefreshCw size={15} /> Try again
-            </button>
-          </div>
-        )}
-      </section>
-      <div className="statistics-back">
-        <a
-          href="/"
-          onClick={(event) => {
-            if (
-              event.button === 0 &&
-              !event.ctrlKey &&
-              !event.metaKey &&
-              !event.shiftKey &&
-              !event.altKey
-            ) {
-              event.preventDefault();
-              onNavigate('/');
-            }
-          }}
-        >
-          Back to discovery <ArrowRight size={16} />
-        </a>
+        <span className="insight-toolbar-context">
+          {query.view === 'retailers'
+            ? 'Current prices and stock'
+            : query.view === 'explorer'
+              ? 'History uses this period · offer summaries are current'
+              : 'Recorded history within this period'}
+        </span>
       </div>
+      {query.view === 'explorer' && (
+        <div className="insight-refinements">
+          <h2 className="insight-refine-heading">
+            <SlidersHorizontal size={16} />{' '}
+            {query.section === 'All' ? 'Retailer' : 'Retailer & specifications'}{' '}
+            {activeFilters ? `(${activeFilters} active)` : ''}
+          </h2>
+          <div id="insight-refine-body" className="statistics-refine-body" ref={refinementRef}>
+            <StatisticsSelect
+              label="Retailer"
+              value={query.retailer}
+              options={[
+                { value: '', label: 'All retailers' },
+                ...(query.retailer && !data?.retailers.includes(query.retailer)
+                  ? [{ value: query.retailer, label: query.retailer }]
+                  : []),
+                ...(data?.retailers.map((retailer) => ({ value: retailer, label: retailer })) ||
+                  []),
+              ]}
+              onChange={(retailer) => {
+                refinementFocus.current = 'Retailer';
+                change({ retailer });
+              }}
+            />
+            {query.section !== 'All' &&
+              data?.facets.map((facet) => (
+                <StatisticsSelect
+                  key={facet.key}
+                  label={fieldLabel(facet.key)}
+                  value={query.filters[facet.key] || ''}
+                  options={[
+                    { value: '', label: 'Any' },
+                    ...facet.options.map((option) => ({
+                      value: option.value,
+                      label: option.value,
+                      count: option.count,
+                      disabled: option.count === 0 && query.filters[facet.key] !== option.value,
+                    })),
+                  ]}
+                  onChange={(value) => {
+                    refinementFocus.current = fieldLabel(facet.key);
+                    const filters = { ...query.filters };
+                    if (value) filters[facet.key] = value;
+                    else delete filters[facet.key];
+                    change({ filters });
+                  }}
+                />
+              ))}
+          </div>
+          {activeFilters > 0 && (
+            <div className="insight-active-filters">
+              {query.retailer && <span>{query.retailer}</span>}
+              {Object.entries(query.filters).map(([key, value]) => (
+                <span key={key}>
+                  {fieldLabel(key)}: {value}
+                </span>
+              ))}
+              <button onClick={() => change({ retailer: '', filters: {} })}>
+                Clear refinements
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {error && (
+        <div className="statistics-error" role="alert">
+          <strong>We couldn’t load this view.</strong>
+          <p>{error}</p>
+          <button onClick={() => setRevision((value) => value + 1)}>
+            <RefreshCw size={15} /> Try again
+          </button>
+        </div>
+      )}
+      {loading && (
+        <div className="insight-loading" role="status">
+          <span />
+          <span />
+          <span />
+          <p>Loading market observations…</p>
+        </div>
+      )}
+      {data && query.view === 'retailers' && (
+        <>
+          <RetailerComparison
+            key={`comparison-${query.section}`}
+            section={query.section}
+            range={query.range}
+            overview={data.retailer_overviews[query.section]}
+            measure={query.retailerMeasure}
+            onMeasureChange={(retailerMeasure) => change({ retailerMeasure })}
+            onNavigate={onNavigate}
+          />
+          <RetailerLandscape
+            key={`landscape-${query.section}`}
+            overview={data.retailer_overviews[query.section]}
+            section={query.section}
+            range={query.range}
+            onNavigate={onNavigate}
+          />
+        </>
+      )}
+      {data && query.view === 'overview' && (
+        <>
+          <div className="insight-summary">
+            <article>
+              <span>Price change</span>
+              <strong
+                className={changeColor(
+                  index?.points.at(-1) ? index.points.at(-1)!.value - 100 : null,
+                )}
+              >
+                {index?.points.length ? signedPercent(index.points.at(-1)!.value - 100) : '—'}
+              </strong>
+              <small>
+                {index?.points.length
+                  ? `Comparable offers · since ${shortDate(index.points[0].timestamp)}`
+                  : 'Collecting comparable history'}
+              </small>
+            </article>
+            <article>
+              <span>In-stock rate</span>
+              <strong>
+                {stock?.points.length ? `${stock.points.at(-1)!.value.toFixed(1)}%` : '—'}
+              </strong>
+              <small>
+                {money(index?.matching_offers || 0)} matching offers · {index?.retailer_count || 0}{' '}
+                {index?.retailer_count === 1 ? 'retailer' : 'retailers'}
+              </small>
+            </article>
+            <article>
+              <span>Retailers tracked</span>
+              <strong>{index?.retailer_count || 0}</strong>
+              <small>{sectionLabel(query.section)} · current coverage</small>
+            </article>
+          </div>
+          <div
+            className="insight-main-chart"
+            ref={overviewRef}
+            tabIndex={-1}
+            role="region"
+            aria-label={`${sectionLabel(query.section)} market trend`}
+          >
+            <MarketOverview
+              charts={charts}
+              metric={query.metric}
+              onMetricChange={(metric) => change({ metric })}
+            />
+          </div>
+          <section className="insight-price-changes" aria-label="Price changes during this period">
+            <StatisticsPriceChanges data={priceChanges} />
+          </section>
+          <section className="insight-category-section">
+            <div className="insight-section-heading">
+              <div>
+                <h2>Compare categories</h2>
+                <p>Price movements within this period. Select a row to explore its market.</p>
+              </div>
+              <button className="insight-text-action" onClick={() => change({ view: 'retailers' })}>
+                Compare retailers <ArrowRight size={15} />
+              </button>
+            </div>
+            <div className="insight-category-table">
+              <table aria-label="Category price comparisons">
+                <thead>
+                  <tr>
+                    <th scope="col">Category</th>
+                    <th scope="col">Price change</th>
+                    <th scope="col">Compared offers</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.category_trends.map((trend) => {
+                    const selectCategory = () => {
+                      revealOverview.current = trend.section !== query.section;
+                      if (!revealOverview.current)
+                        overviewRef.current?.scrollIntoView({ block: 'start' });
+                      change({
+                        section: trend.section,
+                        filters: {},
+                        retailer: '',
+                      });
+                    };
+                    return (
+                      <tr
+                        key={trend.section}
+                        className={trend.section === query.section ? 'is-selected' : ''}
+                        onClick={selectCategory}
+                      >
+                        <th scope="row">
+                          <button
+                            aria-pressed={trend.section === query.section}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              selectCategory();
+                            }}
+                          >
+                            <span>
+                              {sectionLabel(trend.section)}
+                              <small>
+                                {trend.since
+                                  ? `Since ${shortDate(trend.since)}`
+                                  : 'Collecting history'}
+                              </small>
+                            </span>
+                            <ChevronRight size={15} />
+                          </button>
+                        </th>
+                        <td>
+                          <strong className={changeColor(trend.change_percent)}>
+                            {trend.change_percent == null
+                              ? '—'
+                              : signedPercent(trend.change_percent)}
+                          </strong>
+                        </td>
+                        <td>{money(trend.comparable_offers)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+      {data && query.view === 'explorer' && (
+        <>
+          <ConfigurationStatistics
+            data={data.offer_summary}
+            section={query.section}
+            lowestPrice={
+              data.offer_summary?.available_priced_offers
+                ? (charts.find((chart) => chart.metric === 'lowest_price')?.points.at(-1)?.value ??
+                  null)
+                : null
+            }
+          />
+          {(data.offer_summary?.offer_count || 0) > 0 && (
+            <section className="configuration-history" aria-label="History for matching offers">
+              <div className="insight-section-heading">
+                <div>
+                  <h2>Matching offers over time</h2>
+                  <p>
+                    Price movement, in-stock rate and lowest in-stock prices for your selected
+                    filters.
+                  </p>
+                </div>
+              </div>
+              <MarketOverview
+                charts={charts}
+                metric={query.metric}
+                includeLowestPrice
+                onMetricChange={(metric) => change({ metric })}
+              />
+            </section>
+          )}
+          <ConfigurationMatches
+            products={data.matching_products}
+            section={query.section}
+            retailer={query.retailer}
+            filters={query.filters}
+            catalogFilters={data.catalog_filters}
+            onNavigate={onNavigate}
+          />
+          {(index?.matching_offers || 0) > 0 && (
+            <section
+              className="configuration-period-changes"
+              aria-label="Price changes for selected specifications"
+            >
+              <StatisticsPriceChanges data={priceChanges} />
+            </section>
+          )}
+        </>
+      )}
+      <p className="insight-page-note">
+        <Info size={14} /> Based on recorded offers in categories that support grouping. Prices and
+        stock may change between scans.
+      </p>
     </main>
   );
 }

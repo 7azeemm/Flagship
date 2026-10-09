@@ -1,0 +1,170 @@
+.price-change-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.65fr) minmax(0, 2fr);
+  gap: 32px;
+  align-items: center;
+  margin: 26px 0 8px;
+}
+.price-change-totals {
+  display: grid;
+  gap: 12px;
+}
+.price-change-total {
+  padding: 16px 18px;
+  background: color-mix(in srgb, currentColor 5%, var(--surface));
+  border: 1px solid color-mix(in srgb, currentColor 18%, var(--border));
+  border-radius: 12px;
+}
+.price-change-total > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.price-change-total strong {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 9px;
+  font-size: 27px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.price-change-total strong small {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.price-change-total p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.price-change-size {
+  margin: 0;
+  min-width: 0;
+}
+.price-change-size figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.price-change-size h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.price-change-key,
+.price-change-key span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.price-change-key {
+  gap: 16px;
+}
+.price-change-key i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+.price-change-key .is-fall {
+  background: var(--price-down);
+}
+.price-change-key .is-rise {
+  background: var(--price-up);
+}
+.price-change-columns {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+.price-change-column-pair {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  height: 176px;
+  border-bottom: 1px solid var(--border);
+}
+.price-change-column {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  flex: 1;
+  max-width: 36px;
+  min-width: 0;
+  height: 100%;
+}
+.price-change-column > strong {
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.price-change-column > span {
+  display: block;
+  width: 100%;
+  flex-shrink: 0;
+  border-radius: 5px 5px 0 0;
+  background: currentColor;
+}
+.price-change-band-label {
+  display: block;
+  margin-top: 10px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.price-change-size > p {
+  margin: 16px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+.insight-price-changes {
+  margin-top: 24px;
+}
+@media (max-width: 760px) {
+  .price-change-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .price-change-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .price-change-layout {
+    margin-top: 20px;
+  }
+  .price-change-total {
+    padding: 13px 11px;
+  }
+  .price-change-total strong {
+    font-size: 24px;
+    gap: 5px;
+  }
+  .price-change-total p {
+    font-size: 10px;
+    line-height: 1.5;
+  }
+  .price-change-columns {
+    gap: 6px;
+  }
+  .price-change-column-pair {
+    gap: 3px;
+    height: 150px;
+  }
+  .price-change-column > strong {
+    font-size: 9px;
+  }
+  .price-change-band-label {
+    font-size: 9px;
+  }
+}

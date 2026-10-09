@@ -9,7 +9,14 @@ import {
   X,
 } from 'lucide-react';
 import type { CatalogQuery, SectionInfo } from '../types';
-import { fieldLabel, groupingEnabled, hasFilterChanges, stockLabels, toggle, toggleNode } from '../lib/catalog';
+import {
+  fieldLabel,
+  groupingEnabled,
+  hasFilterChanges,
+  stockLabels,
+  toggle,
+  toggleNode,
+} from '../lib/catalog';
 import { RangeSlider } from './RangeSlider';
 import { StructuredFilterNode } from './StructuredFilterNode';
 
@@ -29,7 +36,11 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
   const groupFields = baselineSectionInfo?.group_by || [];
   const grouped = groupingEnabled(query, baselineSectionInfo);
   const selectedGroupFields = groupFields
-    .filter((field) => field.required || (query.groupBy === null ? field.default : query.groupBy.includes(field.key)))
+    .filter(
+      (field) =>
+        field.required ||
+        (query.groupBy === null ? field.default : query.groupBy.includes(field.key)),
+    )
     .map((field) => field.key);
   const currentInfo = info || baselineSectionInfo;
   const sites = useMemo(() => {
@@ -70,11 +81,7 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
             <span>Group offers</span>
             <strong>{grouped ? 'On' : 'Off'}</strong>
           </button>
-          <div
-            className="group-fields"
-            aria-label="Group products by"
-            aria-disabled={!grouped}
-          >
+          <div className="group-fields" aria-label="Group products by" aria-disabled={!grouped}>
             {groupFields.map((field) => (
               <button
                 key={field.key}
@@ -144,12 +151,8 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
           <RangeSlider
             min={baselineSectionInfo.min_price}
             max={baselineSectionInfo.max_price}
-            valueMin={
-              query.min_price ? Number(query.min_price) : baselineSectionInfo.min_price
-            }
-            valueMax={
-              query.max_price ? Number(query.max_price) : baselineSectionInfo.max_price
-            }
+            valueMin={query.min_price ? Number(query.min_price) : baselineSectionInfo.min_price}
+            valueMax={query.max_price ? Number(query.max_price) : baselineSectionInfo.max_price}
             onChange={(min, max) =>
               update({
                 min_price: min === baselineSectionInfo.min_price ? '' : String(min),
@@ -182,6 +185,15 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
           Retailers <ChevronDown size={15} />
         </summary>
         <div className="filter-options">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={query.site.length === 0}
+              onChange={() => update({ site: [] })}
+            />
+            <span>All</span>
+            <small>{sites.reduce((total, site) => total + site.count, 0)}</small>
+          </label>
           {visibleSites.map((site) => (
             <label className="checkbox-row" key={site.value}>
               <input
@@ -231,7 +243,10 @@ export function Filters({ query, info, baselineSectionInfo, update, reset, disab
                 selectedValues={query.filters[group.key] || []}
                 onToggle={(key, node) =>
                   update({
-                    filters: { ...query.filters, [key]: toggleNode(query.filters[key] || [], node) },
+                    filters: {
+                      ...query.filters,
+                      [key]: toggleNode(query.filters[key] || [], node),
+                    },
                   })
                 }
               />

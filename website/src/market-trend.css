@@ -20,3 +20,10 @@
 .market-trend-chart .chart-dot {
   fill: var(--accent);
 }
+.history-chart.market-trend-chart svg {
+  display: block;
+  height: 232px;
+}
+.market-trend-chart .chart-series-line {
+  stroke-width: 2.25;
+}

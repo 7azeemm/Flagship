@@ -1,12 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CatalogQuery, PageResponse, SectionInfo, ServerInfo } from '../types';
 import { parsePage, parseServerInfo, request } from '../lib/api';
-import { defaultQuery, apiQueryParams, sectionInfoKey, queryURL, readQuery } from '../lib/catalog';
+import {
+  configureCatalogDefaults,
+  defaultQuery,
+  apiQueryParams,
+  sectionInfoKey,
+  queryURL,
+  readQuery,
+} from '../lib/catalog';
 
 const emptyCategories: ServerInfo['categories'] = {};
 
-export function useCatalog(shouldFetchCatalogPage = true) {
-  const [query, setQuery] = useState(() => readQuery(window.location));
+export function useCatalog(
+  shouldFetchCatalogPage = true,
+  background = window.location.pathname + window.location.search,
+) {
+  const [query, setQuery] = useState(() => readQuery(new URL(background, window.location.origin)));
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [catalogPage, setCatalogPage] = useState<PageResponse | null>(null);
   const [baselineSectionInfo, setBaselineSectionInfo] = useState<SectionInfo | null>(null);
@@ -16,12 +26,13 @@ export function useCatalog(shouldFetchCatalogPage = true) {
   const sectionInfoCache = useRef(new Map<string, SectionInfo>());
   const lastSectionInfoKey = useRef<string | null>(null);
   const serverInfoCache = useRef<ServerInfo | null>(null);
+  const currentBackground = useRef(background);
+  currentBackground.current = background;
 
   useEffect(() => {
-    const pop = () => setQuery(readQuery(window.location));
-    window.addEventListener('popstate', pop);
-    return () => window.removeEventListener('popstate', pop);
-  }, []);
+    const next = readQuery(new URL(background, window.location.origin));
+    setQuery((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+  }, [background]);
 
   useEffect(() => {
     if (serverInfoCache.current) {
@@ -34,6 +45,8 @@ export function useCatalog(shouldFetchCatalogPage = true) {
         const info = parseServerInfo(await request('/info', controller.signal));
         if (controller.signal.aborted) return;
         serverInfoCache.current = info;
+        configureCatalogDefaults(info.defaults);
+        setQuery(readQuery(new URL(currentBackground.current, window.location.origin)));
         setServerInfo(info);
       } catch (cause) {
         if (!controller.signal.aborted) {

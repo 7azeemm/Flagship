@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-const base = process.env.MYTHOS_TEST_URL || 'http://127.0.0.1:3000';
+const base = process.env.FLAGSHIP_TEST_URL || 'http://127.0.0.1:3000';
 const get = async (path) => {
   const response = await fetch(base + path);
   assert.equal(response.status, 200, path);
@@ -134,15 +134,12 @@ assert(detail, 'Optional group details resolve');
 const homepage = await get('/api/homepage');
 assert(homepage.coverage.products > 0, 'Homepage reports catalog coverage');
 assert(homepage.coverage.retailers > 0, 'Homepage reports retailer coverage');
-assert(Array.isArray(homepage.deals), 'Homepage returns price drops');
+assert(Array.isArray(homepage.deals), 'Homepage returns discounted category previews');
 assert(
   homepage.deals.every(
-    (deal) =>
-      deal.status === 'InStock' &&
-      deal.previous_price > deal.price &&
-      deal.saving === deal.previous_price - deal.price,
+    (deal) => deal.status === 'InStock' && deal.price > 0 && deal.original_price > deal.price,
   ),
-  'Homepage price drops are current and available',
+  'Homepage category previews have retailer discounts and are available',
 );
 assert(homepage.new_products.length, 'Homepage includes recently discovered products');
 assert.equal(

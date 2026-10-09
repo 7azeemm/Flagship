@@ -1,0 +1,81 @@
+.specification.specification-clickable {
+  position: relative;
+  padding-right: 28px;
+  transition:
+    border-color 150ms,
+    background 150ms;
+}
+.specification.specification-clickable:hover,
+.specification.specification-clickable:focus-within {
+  border-color: var(--accent);
+  background: var(--tint);
+}
+:is(.product-card, .product-dialog) .specification.specification-clickable {
+  padding-right: 28px;
+}
+.specification .specification-action {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+  color: var(--faint);
+}
+.specification-action svg {
+  position: absolute;
+  right: 8px;
+  top: calc(50% - 6px);
+}
+.specification-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.component-details-dialog {
+  max-width: 620px;
+}
+.component-details-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+  padding-right: 24px;
+}
+.component-details-heading > svg {
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.component-details-heading h2 {
+  margin: 6px 0 0;
+  font-size: 21px;
+  overflow-wrap: anywhere;
+}
+.component-details-facts {
+  margin: 0;
+}
+.component-details-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+}
+.component-details-facts dt {
+  color: var(--muted);
+}
+.component-details-facts dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+  .component-details-dialog {
+    padding: 24px 20px;
+  }
+  .component-details-heading h2 {
+    font-size: 18px;
+  }
+}

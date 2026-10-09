@@ -1,31 +1,73 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, ArrowUpRight, Search, SlidersHorizontal, Store } from 'lucide-react';
-import type { CatalogItem, Product, VariantChart } from './types';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { ArrowRight, Search, SlidersHorizontal, Store } from 'lucide-react';
+import type { CatalogItem, Product } from './types';
 import { useCatalog } from './hooks/useCatalog';
 import { groupingEnabled, hasFilterChanges, money, sectionLabel } from './lib/catalog';
 import { Footer, Header } from './components/Layout';
 import { ActiveFilters, Filters } from './components/Filters';
 import { ProductCard } from './components/ProductCard';
-import { ProductDialog } from './components/ProductDialog';
 import { Dialog } from './components/Dialog';
-import { parseChart, parseProduct, request } from './lib/api';
 import { Pagination } from './components/Pagination';
 import { SortSelect } from './components/SortSelect';
 import { HomePage } from './components/HomePage';
 import { ProductPage } from './components/ProductPage';
 import { StatisticsPage } from './components/StatisticsPage';
+import { AuthPage, SettingsPage, VerifyEmailPage, WishlistPage } from './components/AccountPages';
+import { AlertsPage } from './components/AlertsPage';
+import { ActivityPage } from './components/ActivityPage';
+import { InformationPage } from './components/InformationPages';
+import './alerts.css';
+import { routeMetadata } from './lib/metadata';
+
+const authRoutes = {
+  '/login': 'login',
+  '/register': 'register',
+  '/forgot-password': 'forgot',
+  '/reset-password': 'reset',
+} as const;
+const accountRoutes: Record<string, React.ReactNode> = {
+  '/verify-email': <VerifyEmailPage />,
+  '/activity': <ActivityPage />,
+  '/wishlist': <WishlistPage />,
+  '/alerts': <AlertsPage />,
+  '/settings': <SettingsPage />,
+};
 
 export default function App() {
-  const [pathname, setPathname] = useState(window.location.pathname);
+  const [location, setLocation] = useState(() => window.location.pathname + window.location.search);
+  useEffect(() => {
+    if (!/^\/(product|variant)\//.test(window.location.pathname)) routeMetadata(window.location.pathname);
+  }, [location]);
+  const detailMatch = window.location.pathname.match(/^\/(product|variant)\/([^/]+)\/?$/);
+  const standaloneDetail = !!detailMatch && !window.history.state?.detailBackground;
+  const background = detailMatch ? window.history.state?.detailBackground || '/' : location;
+  const pathname = new URL(background, window.location.origin).pathname;
+  const setPathname = (_path: string) =>
+    setLocation(window.location.pathname + window.location.search);
   useEffect(() => {
     const onLocationChange = () => setPathname(window.location.pathname);
     window.addEventListener('popstate', onLocationChange);
     return () => window.removeEventListener('popstate', onLocationChange);
   }, []);
-  const isHome = pathname === '/';
+  const isLegacySearch = pathname === '/search';
+  const isHome = pathname === '/' || isLegacySearch;
+  const routeAuthMode = authRoutes[pathname as keyof typeof authRoutes] || null;
+  const showHome = isHome || !!routeAuthMode;
   const isStatistics = pathname === '/statistics';
-  const productMatch = pathname.match(/^\/product\/([^/]+)\/?$/);
-  const productId = productMatch ? decodeURIComponent(productMatch[1]) : null;
+  const accountPage = accountRoutes[pathname] || null;
+  const informationPage =
+    pathname === '/support' || pathname === '/future-plans' || pathname === '/legal'
+      ? (pathname.slice(1) as 'support' | 'future-plans' | 'legal')
+      : null;
+  const productMatch = detailMatch;
+  const productId = (() => {
+    if (!productMatch) return null;
+    try {
+      return decodeURIComponent(productMatch[2]);
+    } catch {
+      return productMatch[2];
+    }
+  })();
   const {
     query,
     categories,
@@ -37,30 +79,30 @@ export default function App() {
     retry,
     changeSection,
     reset,
-  } =
-    useCatalog(!isHome && !productId && !isStatistics);
-  const [selected, setSelected] = useState<{
-    offers: Product[];
-    chart: VariantChart | null;
-    detailsEndpoint: string;
-    initialProductId?: string;
-  } | null>(null);
-  const detailRequest = useRef<AbortController | null>(null);
-  const [detailStatus, setDetailStatus] = useState('');
-  useEffect(() => () => detailRequest.current?.abort(), []);
-  const [about, setAbout] = useState(false);
+  } = useCatalog(
+    !standaloneDetail &&
+      !showHome &&
+      !isStatistics &&
+      !accountPage &&
+      !informationPage,
+    background,
+  );
+  const [signInOpen, setSignInOpen] = useState(false);
   const [mobileFilters, setMobileFilters] = useState(false);
+  useLayoutEffect(() => {
+    const openSignIn = () => setSignInOpen(true);
+    window.addEventListener('flagship:signin', openSignIn);
+    return () => window.removeEventListener('flagship:signin', openSignIn);
+  }, []);
   useEffect(() => {
-    if (!isHome && !productId && !isStatistics) document.title = `${sectionLabel(query.section)} — Mythos`;
-    detailRequest.current?.abort();
-    setDetailStatus('');
-    setSelected(null);
-  }, [query.section, isHome, productId, isStatistics]);
+    if (!showHome && !productId && !isStatistics && !accountPage && !informationPage)
+      document.title = `${sectionLabel(query.section)} — Flagship`;
+  }, [query.section, showHome, productId, isStatistics, accountPage, informationPage]);
   useEffect(() => {
     if (!isHome && !isStatistics && !productId) {
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }
-  }, [query.section, query.page, isHome, isStatistics, productId]);
+  }, [query.section, query.page, isHome, isStatistics]);
   const fields = catalogPage?.section_info?.components || baselineSectionInfo?.components || [];
   const filterProps = {
     query,
@@ -70,118 +112,175 @@ export default function App() {
     reset,
     disabled: loading,
   };
-  const entries = useMemo(() => (catalogPage?.items || []).map((item) => {
-    if (item.type === 'product')
-      return { id: item.data.id, item, product: item.data, variant: undefined };
-    const variant = item.data;
-    const product: Product = {
-      id: variant.id,
-      title: variant.title,
-      section: variant.section,
-      image: variant.image,
-      images: variant.images,
-      price: variant.price,
-      original_price: variant.original_price,
-      components: variant.components,
-      site: `${variant.retailer_count} retailers`,
-      status: variant.in_stock_count ? 'InStock' : 'OutOfStock',
-      url: '',
-      description: null,
-      history: { entries: [] },
-      updated_at: null,
-      added_at: null,
-      views: variant.views,
-      missing_group_fields: [],
-    };
-    return { id: variant.id, item, product, variant };
-  }), [catalogPage?.items]);
+  const entries = useMemo(
+    () =>
+      (catalogPage?.items || []).map((item) => {
+        if (item.type === 'product')
+          return { id: item.data.id, item, product: item.data, variant: undefined };
+        const variant = item.data;
+        const product: Product = {
+          id: variant.id,
+          title: variant.title,
+          section: variant.section,
+          image: variant.image,
+          images: variant.images,
+          price: variant.price,
+          original_price: variant.original_price,
+          components: variant.components,
+          site: `${variant.retailer_count} retailers`,
+          status: variant.in_stock_count ? 'InStock' : 'OutOfStock',
+          url: '',
+          description: null,
+          history: { entries: [] },
+          updated_at: null,
+          added_at: null,
+          views: variant.views,
+          missing_group_fields: [],
+        };
+        return { id: variant.id, item, product, variant };
+      }),
+    [catalogPage?.items],
+  );
   const catalogEmpty =
     !!baselineSectionInfo &&
     !hasFilterChanges(query) &&
     baselineSectionInfo.statuses.every((status) => status.count === 0);
-  const openItem = useCallback(async (item: CatalogItem) => {
-    detailRequest.current?.abort();
-    const controller = new AbortController();
-    detailRequest.current = controller;
-    setDetailStatus('');
-    const endpoint =
-      item.type === 'variant'
-        ? `/variants/${encodeURIComponent(item.data.id)}`
-        : `/products/${encodeURIComponent(item.data.id)}`;
-    try {
-      const raw = await request(endpoint, controller.signal);
-      if (controller.signal.aborted) return;
-      if (!raw || typeof raw !== 'object') throw new Error('Product details are unavailable.');
-      const record = raw as Record<string, unknown>;
-      const products =
-        item.type === 'variant'
-          ? Array.isArray(record.products)
-            ? record.products.map(parseProduct)
-            : []
-          : record.product
-            ? [parseProduct(record.product)]
-            : [];
-      if (!products.length) throw new Error('No retailer listings are available.');
-      setSelected({
-        offers: products,
-        chart: parseChart(record.chart),
-        detailsEndpoint: endpoint,
-        initialProductId:
-          item.type === 'variant' ? item.data.representative_product_id : item.data.id,
-      });
-      setDetailStatus('');
-    } catch (error) {
-      if (!controller.signal.aborted)
-        setDetailStatus(
-          error instanceof Error ? error.message : 'Product details could not be loaded.',
-        );
+  const chooseSection = useCallback(
+    (section: string) => {
+      changeSection(section);
+      setPathname(window.location.pathname);
+      setMobileFilters(false);
+    },
+    [changeSection],
+  );
+  const navigatePath = useCallback((path: string) => {
+    const isDetail = /^\/(product|variant)\//.test(path);
+    const detailBackground = /^\/(product|variant)\//.test(window.location.pathname)
+      ? window.history.state?.detailBackground
+      : window.location.pathname + window.location.search;
+    window.history.pushState(isDetail && detailBackground ? { detailBackground } : null, '', path);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    if (!isDetail) window.scrollTo({ top: 0, behavior: 'auto' });
+  }, []);
+  useEffect(() => {
+    if (isLegacySearch) {
+      window.history.replaceState(null, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+  }, [isLegacySearch]);
+  useEffect(() => {
+    // Ordinary detail links anywhere in the app retain the current page. Modified
+    // clicks and new-tab links keep the browser's native standalone navigation.
+    const onDetailLink = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const link =
+        event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
+      if (!link || link.target || link.hasAttribute('download')) return;
+      const url = new URL(link.href);
+      if (
+        url.origin !== window.location.origin ||
+        !/^\/(product|variant)\/[^/]+\/?$/.test(url.pathname)
+      )
+        return;
+      event.preventDefault();
+      navigatePath(url.pathname + url.search + url.hash);
+    };
+    document.addEventListener('click', onDetailLink);
+    return () => document.removeEventListener('click', onDetailLink);
+  }, [navigatePath]);
+  const openItem = useCallback(
+    (item: CatalogItem) => {
+      const selection =
+        item.type === 'variant' && item.data.representative_product_id
+          ? '?' + new URLSearchParams({ product: item.data.representative_product_id })
+          : '';
+      navigatePath('/' + item.type + '/' + encodeURIComponent(item.data.id) + selection);
+    },
+    [navigatePath],
+  );
+  const closeDetail = useCallback(() => {
+    if (window.history.state?.detailBackground) window.history.back();
+    else {
+      window.history.replaceState(null, '', '/');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   }, []);
-  const chooseSection = useCallback((section: string) => {
-    changeSection(section);
-    setPathname(window.location.pathname);
-    setMobileFilters(false);
-  }, [changeSection]);
-  const navigatePath = useCallback((path: string) => {
-    window.history.pushState(null, '', path);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    window.scrollTo({ top: 0, behavior: 'auto' });
-  }, []);
   const chooseHome = useCallback(() => navigatePath('/'), [navigatePath]);
-  const showAbout = useCallback(() => setAbout(true), []);
   const openProduct = useCallback(
     (id: string) => navigatePath(`/product/${encodeURIComponent(id)}`),
     [navigatePath],
   );
+  const skipTarget =
+    pathname === '/activity'
+      ? '#activity-content'
+      : informationPage
+        ? '#information-content'
+        : pathname === '/alerts'
+          ? '#alerts-content'
+          : accountPage
+              ? '#account-content'
+              : showHome
+                ? '#home-content'
+                : isStatistics
+                  ? '#statistics-content'
+                  : productId
+                    ? '#product-content'
+                    : '#catalog';
+  const skipLabel =
+    pathname === '/activity'
+      ? 'catalog activity'
+      : informationPage
+        ? 'page content'
+        : pathname === '/alerts'
+          ? 'alerts'
+          : accountPage
+              ? 'account content'
+              : showHome
+                ? 'homepage'
+                : isStatistics
+                  ? 'statistics'
+                  : productId
+                    ? 'product details'
+                    : 'catalog';
 
   return (
     <>
-      <a
-        href={isHome ? '#home-content' : isStatistics ? '#statistics-content' : productId ? '#product-content' : '#catalog'}
-        className="skip-link"
-      >
-        Skip to {isHome ? 'homepage' : isStatistics ? 'statistics' : productId ? 'product details' : 'catalog'}
+      <a href={skipTarget} className="skip-link">
+        Skip to {skipLabel}
       </a>
       <Header
         categories={categories}
-        section={isHome || isStatistics || productId ? '' : query.section}
-        locationKey={pathname}
+        section={
+          showHome || isStatistics || productId || accountPage || informationPage
+            ? ''
+            : query.section
+        }
+        locationKey={location}
         filters={query.filters}
         onSection={chooseSection}
         onProduct={openProduct}
         onHome={chooseHome}
-        onAbout={showAbout}
+        onNavigate={navigatePath}
+        onSignIn={() => setSignInOpen(true)}
       />
-      {isHome ? (
-        <HomePage onNavigate={navigatePath} onAbout={showAbout} />
+      {standaloneDetail ? (
+        <main className="standalone-product-background" aria-label="Product page" />
+      ) : informationPage ? (
+        <InformationPage page={informationPage} />
+      ) : accountPage ? (
+        accountPage
+      ) : showHome ? (
+        <HomePage onNavigate={navigatePath} categories={categories} />
       ) : isStatistics ? (
         <StatisticsPage categories={categories} onNavigate={navigatePath} />
-      ) : productId ? (
-        <ProductPage
-          id={productId}
-          fields={baselineSectionInfo?.components || []}
-          onNavigate={navigatePath}
-        />
       ) : (
         <main className="main-container" id="catalog" tabIndex={-1}>
           <h1 className="sr-only">{sectionLabel(query.section)}</h1>
@@ -201,9 +300,11 @@ export default function App() {
                       <>
                         <strong>{money(catalogPage?.total_items ?? 0)}</strong>{' '}
                         {catalogPage?.total_items === 1 ? 'result' : 'results'}
-                        {groupingEnabled(query, baselineSectionInfo) && catalogPage && catalogPage.total_items < catalogPage.total_products && (
-                          <span> · {money(catalogPage.total_products)} listings</span>
-                        )}
+                        {groupingEnabled(query, baselineSectionInfo) &&
+                          catalogPage &&
+                          catalogPage.total_items < catalogPage.total_products && (
+                            <span> · {money(catalogPage.total_products)} listings</span>
+                          )}
                       </>
                     )}
                   </div>
@@ -294,29 +395,17 @@ export default function App() {
           </div>
         </main>
       )}
-      <Footer onSection={chooseSection} onAbout={showAbout} />
-      {detailStatus && (
-        <div className="detail-status" role="status">
-          {detailStatus}
-          <button
-            onClick={() => {
-              detailRequest.current?.abort();
-              setDetailStatus('');
-            }}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-      {selected && (
-        <ProductDialog
-          key={selected.detailsEndpoint}
-          detailsEndpoint={selected.detailsEndpoint}
-          offers={selected.offers}
-          chart={selected.chart}
-          fields={fields}
-          initialProductId={selected.initialProductId}
-          onClose={() => setSelected(null)}
+      {!standaloneDetail && <Footer onSection={chooseSection} />}
+      {productId && detailMatch && (
+        <ProductPage
+          computerSections={(categories.Computers || []).map((category) =>
+            new URL(category.url, window.location.origin).pathname.replace(/^\/+|\/+$/g, ''),
+          )}
+          key={detailMatch[1] + productId}
+          id={productId}
+          kind={detailMatch[1] as 'product' | 'variant'}
+          initialProductId={new URLSearchParams(window.location.search).get('product') || undefined}
+          onClose={closeDetail}
         />
       )}
       {mobileFilters && (
@@ -334,42 +423,16 @@ export default function App() {
           </button>
         </Dialog>
       )}
-      {about && (
-        <Dialog title="About Mythos" className="about-dialog" onClose={() => setAbout(false)}>
-          <span className="eyebrow">A CLEARER PERSPECTIVE</span>
-          <h2>Good choices start with good information.</h2>
-          <p>
-            Mythos brings tech listings from Tunisian retailers into one searchable catalog, so you
-            can explore specifications and compare prices.
-          </p>
-          <ol>
-            <li>
-              <strong>Find your category.</strong> Browse computers, components, peripherals, and
-              more.
-            </li>
-            <li>
-              <strong>Make it specific.</strong> Filter by your budget, preferred retailer, and the
-              specifications that matter.
-            </li>
-            <li>
-              <strong>Take a closer look.</strong> Review the details, then visit the retailer to
-              confirm the offer and purchase.
-            </li>
-          </ol>
-          <p className="muted">
-            Listings can change between updates. Similar offers may have different configurations;
-            verify the product details with the retailer.
-          </p>
-          <h3>How the Price Index works</h3>
-          <p>
-            For each interval, Mythos compares recorded prices for products observed at both ends,
-            takes the median change, and chains those changes into an index starting at 100. A
-            smaller set of comparable products makes the trend less representative.
-          </p>
-          <button className="primary-button" onClick={() => setAbout(false)}>
-            Back to exploring <ArrowUpRight size={17} />
-          </button>
-        </Dialog>
+      {(routeAuthMode || signInOpen) && (
+        <AuthPage
+          key={routeAuthMode || 'header-login'}
+          mode={routeAuthMode || 'login'}
+          modal
+          onClose={() => {
+            setSignInOpen(false);
+            if (routeAuthMode) navigatePath('/');
+          }}
+        />
       )}
     </>
   );

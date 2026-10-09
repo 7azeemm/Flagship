@@ -19,23 +19,25 @@ export function buildProductHistoryChart(
     retailer_count: 1,
   });
   const events = product.history.entries
-    .flatMap((entry) => entry.changes.map((change) => ({ ...change, timestamp: entry.timestamp })))
     .filter(
-      (event) =>
-        ['price', 'status'].includes(event.field) && Number.isFinite(Date.parse(event.timestamp)),
+      (entry) =>
+        Number.isFinite(Date.parse(entry.timestamp)) &&
+        entry.changes.some((change) => ['price', 'status'].includes(change.field)),
     )
     .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
   const history: VariantChartPoint[] = [];
   for (const event of events) {
     history.push(snapshot(Date.parse(event.timestamp)));
-    if (
-      event.field === 'price' &&
-      typeof event.old_value === 'number' &&
-      Number.isFinite(event.old_value)
-    )
-      price = event.old_value;
-    if (event.field === 'status' && typeof event.old_value === 'string')
-      stock = event.old_value === 'InStock' ? 1 : 0;
+    for (const change of event.changes) {
+      if (
+        change.field === 'price' &&
+        typeof change.old_value === 'number' &&
+        Number.isFinite(change.old_value)
+      )
+        price = change.old_value;
+      if (change.field === 'status' && typeof change.old_value === 'string')
+        stock = change.old_value === 'InStock' ? 1 : 0;
+    }
   }
   const added = Date.parse(product.added_at || '');
   history.push(snapshot(Number.isFinite(added) ? added : now));
@@ -70,9 +72,13 @@ export function buildProductHistoryChart(
     buckets.set(date.toISOString().slice(0, 10), point);
   }
   const prices = points.map((p) => p.lowest_price!);
-  const ninetyDayPrices = history
-    .filter((point) => Date.parse(point.timestamp) >= now - 90 * 86400000)
-    .map((point) => point.lowest_price!);
+  const ninetySince = now - 90 * 86400000;
+  const ninetyPoints = history.filter((point) => Date.parse(point.timestamp) >= ninetySince);
+  const ninetyBaseline = history
+    .filter((point) => Date.parse(point.timestamp) < ninetySince)
+    .at(-1);
+  if (ninetyBaseline) ninetyPoints.unshift(ninetyBaseline);
+  const ninetyDayPrices = ninetyPoints.map((point) => point.lowest_price!);
   return {
     scope: 'product',
     range,

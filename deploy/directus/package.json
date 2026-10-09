@@ -1,0 +1,11 @@
+{
+  "name": "flagship-directus",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12 <23"
+  },
+  "dependencies": {
+    "directus": "12.4.1"
+  }
+}

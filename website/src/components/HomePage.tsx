@@ -1,202 +1,75 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  ArrowDown,
   ArrowRight,
-  ArrowUp,
+  Bell,
+  Cpu,
+  Gamepad2,
+  Laptop,
+  Monitor,
   PackageSearch,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
   Store,
+  Clock3,
+  ChevronLeft,
+  ChevronRight,
+  Smartphone,
+  Sparkles,
   TrendingUp,
 } from 'lucide-react';
-import type { HomeProduct, HomepageData } from '../types';
+import type { HomeProduct, HomepageData, ServerInfo } from '../types';
 import { parseHomepage, request } from '../lib/api';
 import { money, sectionLabel } from '../lib/catalog';
+import { historyLabel, signedPercent } from '../lib/insights';
 import { MarketTrendChart } from './MarketTrendChart';
+import { ProductImage } from './DiscoveryCard';
+import { addedAgo, retailerDiscount } from '../lib/homepage';
 import '../homepage.css';
 
-const ranges = [
-  ['7d', '7D'],
-  ['30d', '30D'],
-  ['90d', '3M'],
-  ['180d', '6M'],
-  ['1y', '1Y'],
-  ['all', 'All'],
-] as const;
-const categorySections = ['GamingLaptop', 'GPU', 'CPU', 'Smartphone', 'Monitor'];
 let homeCache: { data: HomepageData; updated: number } | null = null;
-
-function relativeTime(value: string | null, now = Date.now()) {
-  if (!value) return 'at an unknown time';
-  const difference = now - Date.parse(value);
-  if (!Number.isFinite(difference)) return 'at an unknown time';
-  const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ['year', 31_536_000_000],
-    ['month', 2_592_000_000],
-    ['day', 86_400_000],
-    ['hour', 3_600_000],
-    ['minute', 60_000],
-  ];
-  for (const [unit, size] of units) {
-    if (Math.abs(difference) >= size) return formatter.format(-Math.round(difference / size), unit);
-  }
-  return 'just now';
-}
-
-function productPath(product: HomeProduct) {
-  return `/product/${encodeURIComponent(product.id)}`;
-}
-
-function ProductImage({ product }: { product: HomeProduct }) {
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  const failed = failedSource === product.image;
-  return (
-    <span className={`home-product-image ${failed || !product.image ? 'image-unavailable' : ''}`}>
-      {product.image && !failed ? (
-        <img
-          src={product.image}
-          alt={product.title}
-          loading="lazy"
-          onError={() => setFailedSource(product.image)}
-        />
-      ) : (
-        <PackageSearch aria-hidden="true" />
-      )}
-    </span>
-  );
-}
-
-function Price({ value }: { value: number }) {
-  return (
-    <>
-      {money(value)} <small>DT</small>
-    </>
-  );
-}
-
-function TrendValue({ value }: { value: number | null }) {
-  if (value === null) return <span className="home-trend neutral">Collecting data</span>;
-  const down = value < -0.05;
-  const up = value > 0.05;
-  return (
-    <span className={`home-trend ${down ? 'down' : up ? 'up' : 'neutral'}`}>
-      {down ? <ArrowDown size={14} /> : up ? <ArrowUp size={14} /> : null}
-      {Math.abs(value).toFixed(1)}%
-    </span>
-  );
-}
-
-function MarketChart({ points }: { points: HomepageData['market_views'][number]['points'] }) {
-  if (points.length < 2) {
-    return (
-      <div className="market-chart-empty">
-        <TrendingUp size={25} />
-        <strong>Building the first market trend</strong>
-        <span>More comparable price observations are needed for this period.</span>
-      </div>
-    );
-  }
-  return (
-    <MarketTrendChart
-      title="Price Index change over time, in percent"
-      points={points.map((point) => ({
-        timestamp: point.timestamp,
-        value: point.index - 100,
-        sampleSize: point.comparable_products,
-      }))}
-      valueLabel={(value) => `${value > 0 ? '+' : ''}${value.toFixed(1)}%`}
-      tickLabel={(value) => `${Math.abs(value) < 0.05 ? '0.0' : value.toFixed(1)}%`}
-      baseline={0}
-      minimumPadding={0.5}
-    />
-  );
-}
-
-function DealCard({
-  product,
-  onNavigate,
-}: {
-  product: HomeProduct;
-  onNavigate: (path: string) => void;
-}) {
-  const href = productPath(product);
-  return (
-    <a
-      className="deal-card"
-      href={href}
-      onClick={(event) => {
-        if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
-          return;
-        event.preventDefault();
-        onNavigate(href);
-      }}
-    >
-      <div className="deal-card-top">
-        <span>{product.badge || 'Price drop'}</span>
-        {product.change_percent !== null && <TrendValue value={product.change_percent} />}
-      </div>
-      <ProductImage product={product} />
-      <span className="home-product-section">{sectionLabel(product.section)}</span>
-      <h3>{product.title}</h3>
-      <div className="deal-price">
-        <strong>
-          <Price value={product.price} />
-        </strong>
-      </div>
-      <div className="deal-saving">
-        {product.previous_price !== null && (
-          <span>
-            Was <del>{money(product.previous_price)} DT</del>
-          </span>
-        )}
-        {product.saving !== null && <strong>Down {money(product.saving)} DT</strong>}
-      </div>
-      <span className="deal-retailer">
-        At {product.site}{' '}
-        <span>
-          View price history <ArrowRight size={13} />
-        </span>
-      </span>
-    </a>
-  );
-}
+const categoryIcons = {
+  Laptop,
+  GamingLaptop: Laptop,
+  GamingPC: Gamepad2,
+  Smartphone,
+  GPU: Monitor,
+  CPU: Cpu,
+  Monitor,
+};
+const shortcuts = ['Laptop', 'GamingLaptop', 'GamingPC', 'Smartphone', 'GPU', 'CPU', 'Monitor'];
 
 export function HomePage({
   onNavigate,
-  onAbout,
+  categories,
 }: {
   onNavigate: (path: string) => void;
-  onAbout: () => void;
+  categories: ServerInfo['categories'];
 }) {
-  const [range, setRange] = useState('30d');
-  const [section, setSection] = useState('All');
-  const [data, setData] = useState<HomepageData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<HomepageData | null>(homeCache?.data || null);
+  const [loading, setLoading] = useState(!homeCache);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
-  const [now, setNow] = useState(Date.now());
-
+  const [now, setNow] = useState(Date.now);
+  const [allRetailers, setAllRetailers] = useState(false);
+  const [marketSection, setMarketSection] = useState('All');
+  const [allCategories, setAllCategories] = useState(false);
   useEffect(() => {
-    const clock = window.setInterval(() => setNow(Date.now()), 30_000);
-    const refresh = window.setInterval(() => setRevision((value) => value + 1), 300_000);
-    return () => {
-      window.clearInterval(clock);
-      window.clearInterval(refresh);
-    };
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
   }, []);
-
   useEffect(() => {
-    document.title = 'Mythos — Tech prices in perspective';
+    document.title = 'Flagship — Tech prices in perspective';
+  }, []);
+  useEffect(() => {
+    const refresh = window.setInterval(() => setRevision((value) => value + 1), 300_000);
+    return () => window.clearInterval(refresh);
   }, []);
   useEffect(() => {
     const controller = new AbortController();
-    if (homeCache && Date.now() - homeCache.updated < 270_000) {
+    if (homeCache && Date.now() - homeCache.updated < 270_000 && revision === 0) {
       setData(homeCache.data);
       setLoading(false);
-      setError('');
-      return () => controller.abort();
+      return;
     }
     setLoading(true);
     setError('');
@@ -210,60 +83,53 @@ export function HomePage({
       })
       .catch((cause) => {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : 'The homepage could not be loaded.');
+          setError(cause instanceof Error ? cause.message : 'Could not load discovery.');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
   }, [revision]);
-
-  if (!data && loading)
-    return (
-      <main className="home-main" id="home-content" tabIndex={-1} aria-busy="true">
-        <div className="home-hero-skeleton" aria-label="Loading homepage" />
-      </main>
-    );
-  if (!data && error) {
-    return (
-      <main className="home-main" id="home-content" tabIndex={-1}>
-        <div className="home-load-error" role="alert">
-          <RefreshCw size={28} />
-          <h1>We couldn’t load the market view.</h1>
-          <p>{error}</p>
-          <button className="primary-button" onClick={() => setRevision((value) => value + 1)}>
-            Try again <ArrowRight size={16} />
-          </button>
-        </div>
-      </main>
-    );
-  }
-  if (!data) return null;
-
-  const featured = data.hero_deal || data.new_products[0] || null;
-  const visibleDeals = data.deals.filter((product) => product.id !== featured?.id).slice(0, 4);
-  const market =
-    data.market_views.find((view) => view.range === range && (view.section || 'All') === section) ??
-    data.market_views[0]!;
-  const change = market.change_percent;
-  const period = ranges.find(([value]) => value === market.range)?.[1] || '30D';
-  const marketSubject = !market.section
-    ? 'Tech prices'
-    : `Prices for ${sectionLabel(market.section).toLowerCase()}`;
-  const marketLead =
-    change === null
-      ? `Mythos is building a comparable trend for ${!market.section ? 'the market' : sectionLabel(market.section).toLowerCase()}.`
-      : `${marketSubject} are ${Math.abs(change) < 0.05 ? 'holding steady' : change < 0 ? `down ${Math.abs(change).toFixed(1)}%` : `up ${change.toFixed(1)}%`} over ${period.toLowerCase()}.`;
-
-  const go = (event: React.MouseEvent<HTMLAnchorElement>, path: string) => {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
-      return;
+  const go = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    onNavigate(path);
+    onNavigate(event.currentTarget.pathname + event.currentTarget.search);
   };
+  if (!data)
+    return (
+      <main className="home-main" id="home-content" tabIndex={-1} aria-busy={loading}>
+        {error ? (
+          <div className="home-load-error" role="alert">
+            <RefreshCw />
+            <h1>Discovery is temporarily unavailable.</h1>
+            <p>{error}</p>
+            <button className="primary-button" onClick={() => setRevision((value) => value + 1)}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          <div className="home-hero-skeleton" aria-label="Loading homepage" />
+        )}
+      </main>
+    );
+  const featured =
+    data.hero_deal && retailerDiscount(data.hero_deal)
+      ? data.hero_deal
+      : data.deals.find((product) => retailerDiscount(product));
+  const featuredDiscount = featured ? retailerDiscount(featured) : null;
+  const available = Object.values(categories).flat();
+  const primaryCategories = shortcuts.filter((id) =>
+    available.some((category) => category.id === id),
+  );
+  const market =
+    data.market_views.find(
+      (view) => view.range === '30d' && (view.section || 'All') === marketSection,
+    ) || data.market_views[0];
+  const marketHref = `/statistics?view=overview&section=${encodeURIComponent(market.section || 'GamingLaptop')}&range=30d`;
+  const updated = data.coverage.last_scan_at || data.coverage.updated_at;
 
   return (
-    <main className="home-main" id="home-content" tabIndex={-1} aria-busy={loading}>
+    <main className="home-main home-refresh" id="home-content" tabIndex={-1} aria-busy={loading}>
       <section className="home-hero" aria-labelledby="home-title">
         <div className="home-hero-copy">
           <span className="home-eyebrow">
@@ -273,52 +139,50 @@ export function HomePage({
             Know when the <span>price is right.</span>
           </h1>
           <p>
-            Compare offers across Tunisian retailers, check their price history, and find the right
-            moment to buy.
+            Find your next upgrade. Compare Tunisian retailers, check price history, and let the
+            right offer come to you.
           </p>
           <div className="home-hero-actions">
-            <a href="#deals" className="primary-button">
-              Explore today’s deals <ArrowRight size={17} />
+            <a href="#categories" className="primary-button">
+              Browse products <ArrowRight size={17} />
             </a>
-            <button className="secondary-button" onClick={onAbout}>
-              How Mythos works
-            </button>
+            <a href="#deals" className="secondary-button">
+              Find a deal
+            </a>
           </div>
           <div className="home-coverage" aria-label="Catalog coverage">
             <span>
-              <strong>{money(data.coverage.products)}</strong> product listings
+              <strong>{money(data.coverage.products)}</strong> listings
             </span>
             <i />
             <span>
               <strong>{data.coverage.retailers}</strong> retailers
             </span>
             <i />
-            <span title={data.coverage.last_scan_at || data.coverage.updated_at || undefined}>
-              {data.coverage.last_scan_at
-                ? `Last scan ${relativeTime(data.coverage.last_scan_at, now)}`
-                : data.coverage.updated_at
-                  ? `Latest catalog change ${relativeTime(data.coverage.updated_at, now)}`
-                  : 'Scan time unavailable'}
-            </span>
-            {data.coverage.next_scan_at && (
-              <>
-                <i />
-                <span title={data.coverage.next_scan_at}>
-                  Next scan expected {relativeTime(data.coverage.next_scan_at, now)}
-                </span>
-              </>
-            )}
+            <span>Free to use</span>
           </div>
+          {updated && (
+            <p className="home-freshness">
+              {data.coverage.last_scan_at ? 'Last completed scan' : 'Latest catalog change'} ·{' '}
+              <time dateTime={updated}>
+                {new Date(updated).toLocaleString('en-GB', {
+                  day: 'numeric',
+                  month: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </time>
+            </p>
+          )}
         </div>
-        {featured && (
+        {featured ? (
           <a
             className="hero-product"
-            href={productPath(featured)}
-            onClick={(event) => go(event, productPath(featured))}
+            href={`/product/${encodeURIComponent(featured.id)}`}
+            onClick={go}
           >
-            <div className="hero-product-glow" />
             <div className="hero-product-label">
-              <ShieldCheck size={15} /> {data.hero_deal ? featured.badge : 'New on Mythos'}
+              <ShieldCheck size={14} /> Featured offer
             </div>
             <ProductImage product={featured} />
             <div className="hero-product-copy">
@@ -328,239 +192,290 @@ export function HomePage({
               <h2>{featured.title}</h2>
               <div>
                 <strong>
-                  <Price value={featured.price} />
+                  {money(featured.price)} <small>DT</small>
                 </strong>
-                {featured.previous_price !== null && <del>{money(featured.previous_price)} DT</del>}
+                {featuredDiscount && <del>{money(featuredDiscount.original)} DT</del>}
               </div>
-              <p className="hero-price-context">
-                {featured.saving !== null
-                  ? `${money(featured.saving)} DT below its earlier tracked price${featured.change_percent !== null ? ` · ${Math.abs(featured.change_percent).toFixed(1)}% lower` : ''}.`
-                  : 'A recent addition to the Mythos catalog.'}
-              </p>
+              {featuredDiscount && (
+                <p className="hero-price-context">
+                  Save {money(featuredDiscount.saving)} DT · {featuredDiscount.percent || '<1'}% off
+                </p>
+              )}
               <b>
-                See the product <ArrowRight size={15} />
+                See the price history <ArrowRight size={15} />
               </b>
             </div>
           </a>
+        ) : (
+          <div className="hero-featured-empty">
+            <Bell size={32} />
+            <h2>A better price is worth watching.</h2>
+            <p>Save an offer and get an email when it matches your price target.</p>
+            <a href="/alerts" className="secondary-button" onClick={go}>
+              Explore price alerts <ArrowRight size={16} />
+            </a>
+          </div>
         )}
       </section>
-
       {error && (
         <div className="home-inline-error" role="alert">
-          <span>Couldn’t update the market data. {error}</span>
+          <span>Showing the last loaded catalog. {error}</span>
           <button onClick={() => setRevision((value) => value + 1)}>Try again</button>
         </div>
       )}
-
-      <section className="home-section" id="deals" aria-labelledby="deals-heading">
+      <section
+        className="home-explore home-shortcuts"
+        id="categories"
+        aria-labelledby="category-title"
+      >
         <div className="home-section-heading">
-          <div>
-            <span className="home-kicker">Recorded price drops</span>
-            <h2 id="deals-heading">Deals worth a look</h2>
-            <p>Current offers with a price drop recorded in the past 30 days.</p>
-          </div>
+          <h2 id="category-title">What’s your next upgrade?</h2>
+          <button
+            className="home-text-button"
+            aria-expanded={allCategories}
+            aria-controls="home-all-categories"
+            onClick={() => setAllCategories((value) => !value)}
+          >
+            {allCategories ? 'Fewer categories' : 'All categories'} <ArrowRight size={15} />
+          </button>
         </div>
-        {loading && (
-          <span className="home-updating" role="status">
-            Updating prices…
-          </span>
-        )}
-        {visibleDeals.length ? (
-          <div className="deal-grid">
-            {visibleDeals.map((product) => (
-              <DealCard key={product.id} product={product} onNavigate={onNavigate} />
+        <div className="home-shortcut-grid">
+          {primaryCategories.map((id) => {
+            const Icon = categoryIcons[id as keyof typeof categoryIcons] || PackageSearch;
+            return (
+              <a href={`/${id}`} key={id} onClick={go}>
+                <Icon size={24} strokeWidth={1.5} />
+                <span>{sectionLabel(id)}</span>
+              </a>
+            );
+          })}
+        </div>
+        {allCategories && (
+          <div className="home-all-categories" id="home-all-categories">
+            {Object.entries(categories).map(([group, entries]) => (
+              <div key={group}>
+                <h3>{group}</h3>
+                {entries.map((item) => (
+                  <a href={`/${item.id}`} key={item.id} onClick={go}>
+                    {item.name}
+                  </a>
+                ))}
+              </div>
             ))}
-          </div>
-        ) : (
-          <div className="home-empty">
-            <ShieldCheck />
-            <strong>
-              {data.deals.length
-                ? 'The featured offer is the only drop here'
-                : 'No recorded drops for this period'}
-            </strong>
-            <span>Explore newly discovered products below.</span>
           </div>
         )}
       </section>
-
-      <section className="home-market" aria-labelledby="market-heading">
-        <div className="home-section-heading market-heading-row">
+      <section
+        className="home-section home-deals-section"
+        id="deals"
+        aria-labelledby="deals-heading"
+      >
+        <div className="home-section-heading">
           <div>
-            <span className="home-kicker">The market at a glance</span>
-            <h2 id="market-heading">{marketLead}</h2>
-          </div>
-          <div className="home-range" aria-label="Market period">
-            {ranges.map(([value, label]) => (
-              <button
-                key={value}
-                className={range === value ? 'active' : ''}
-                aria-pressed={range === value}
-                onClick={() => setRange(value)}
-              >
-                {label}
-              </button>
-            ))}
+            <span className="home-kicker">Browse your next upgrade</span>
+            <h2 id="deals-heading">Featured categories</h2>
+            <p>Discounted offers from Tunisian retailers.</p>
           </div>
         </div>
-        {loading && (
-          <span className="home-updating" role="status">
-            Updating trend…
-          </span>
-        )}
-        <div className="market-layout">
-          <div className="market-visual">
+        {data.featured_sections.map((section) => {
+          const products = data.deals
+            .filter((product) => product.section === section && retailerDiscount(product))
+            .slice(0, 12);
+          return (
+            <section
+              className="home-featured-category"
+              key={section}
+              aria-labelledby={`featured-${section}`}
+            >
+              <div className="home-section-heading">
+                <h3 id={`featured-${section}`}>{sectionLabel(section)}</h3>
+                <a className="home-text-button" href={`/${section}`} onClick={go}>
+                  View category <ArrowRight size={15} />
+                </a>
+              </div>
+              {products.length > 0 && (
+                <CategoryPreviews section={section} products={products} onNavigate={onNavigate} />
+              )}
+              {!products.length && (
+                <p className="home-category-empty">
+                  No discounted offers right now. Browse the category for current listings.
+                </p>
+              )}
+            </section>
+          );
+        })}
+        <p className="discovery-footnote">
+          Discounts compare the retailer’s original and current prices. Confirm the offer with the
+          retailer.
+        </p>
+      </section>
+      <section className="home-alert-banner" aria-labelledby="home-alert-title">
+        <div className="home-alert-icon">
+          <Bell size={25} />
+        </div>
+        <div>
+          <span className="home-kicker">Less checking. Better timing.</span>
+          <h2 id="home-alert-title">Let your next upgrade come to you.</h2>
+          <p>
+            Choose a product, set your target, and get an email when an offer matches. Price alerts
+            are free.
+          </p>
+        </div>
+        <a href="/alerts" className="primary-button" onClick={go}>
+          Create a price alert <ArrowRight size={16} />
+        </a>
+      </section>
+      <section className="home-market home-market-compact" aria-labelledby="market-heading">
+        <div className="home-section-heading">
+          <div>
+            <span className="home-kicker">A little perspective</span>
+            <h2 id="market-heading">Where are prices heading?</h2>
+          </div>
+          <a className="home-text-button" href={marketHref} onClick={go}>
+            Explore market insights <ArrowRight size={16} />
+          </a>
+        </div>
+        <div className="home-snapshot-layout">
+          <div className="home-snapshot-chart">
             <div className="market-index-row">
               <div>
-                <span>Price Index</span>
-                <strong>
-                  {change === null ? '—' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}
+                <span>
+                  {market.section ? sectionLabel(market.section) : 'Grouped categories'} ·
+                  comparable prices
+                </span>
+                <strong
+                  className={
+                    market.change_percent != null && market.change_percent > 0
+                      ? 'home-price-up'
+                      : market.change_percent != null && market.change_percent < 0
+                        ? 'home-price-down'
+                        : undefined
+                  }
+                >
+                  {market.change_percent == null
+                    ? 'Collecting data'
+                    : signedPercent(market.change_percent)}
                 </strong>
               </div>
-              <span className="market-period-label">{period}</span>
+              <span className="market-period-label">30-day view</span>
             </div>
-            <MarketChart points={market.points} />
-            <p className="market-method">
-              The trend compares offers with valid prices at both ends of each interval. The latest
-              interval includes {money(market.comparable_products)} of{' '}
-              {money(market.tracked_offers)}
-              tracked offers in this view. <button onClick={onAbout}>
-                How it’s calculated
-              </button>{' '}
-              <a href="/statistics" onClick={(event) => go(event, '/statistics')}>
-                Explore statistics <ArrowRight size={12} />
-              </a>
+            {market.points.length > 1 ? (
+              <MarketTrendChart
+                title="Change in comparable recorded prices"
+                points={market.points.map((point) => ({
+                  timestamp: point.timestamp,
+                  value: point.index - 100,
+                  sampleSize: point.comparable_products,
+                }))}
+                valueLabel={signedPercent}
+                tickLabel={signedPercent}
+                baseline={0}
+                colorBySign
+                minimumPadding={0.5}
+              />
+            ) : (
+              <div className="market-chart-empty">
+                <TrendingUp />
+                <strong>Building a comparable trend</strong>
+                <span>At least five matching offers across two observations are needed.</span>
+              </div>
+            )}
+            <p className="discovery-footnote">
+              {historyLabel(market.points)} · {money(market.comparable_products)} offers in the
+              latest comparison
             </p>
           </div>
-          <div className="market-facts">
-            <article>
-              <Store />
-              <span>
-                <strong>{market.in_stock_percent.toFixed(0)}%</strong> offers in stock now
-                <small>Across the selected market view</small>
-              </span>
-            </article>
-            <article>
-              <TrendingUp />
-              <span>
-                <strong>{money(market.comparable_products)}</strong> offers compared
-                <small>With prices at both ends of the latest interval</small>
-              </span>
-            </article>
-            <div className="market-moves">
-              <article>
-                <ArrowDown />
-                <span>
-                  <strong>{money(market.price_decreases)}</strong> price drops
-                  <small>Recorded in this period</small>
-                </span>
-              </article>
-              <article>
-                <ArrowUp />
-                <span>
-                  <strong>{money(market.price_increases)}</strong> price rises
-                  <small>Recorded in this period</small>
-                </span>
-              </article>
-            </div>
+          <div className="home-category-trends">
+            <span className="home-kicker">Choose a market</span>
+            {data.market_views
+              .filter((view) => view.range === '30d')
+              .map((view) => (
+                <button
+                  key={view.section || 'All'}
+                  aria-pressed={marketSection === (view.section || 'All')}
+                  onClick={() => setMarketSection(view.section || 'All')}
+                >
+                  <span>{view.section ? sectionLabel(view.section) : 'Grouped categories'}</span>
+                  <strong
+                    className={
+                      view.change_percent != null && view.change_percent > 0
+                        ? 'home-price-up'
+                        : view.change_percent != null && view.change_percent < 0
+                          ? 'home-price-down'
+                          : ''
+                    }
+                  >
+                    {view.change_percent == null ? '—' : signedPercent(view.change_percent)}
+                  </strong>
+                </button>
+              ))}
+            <p>
+              Changes cover available history within the selected period. Only categories with
+              product grouping are included.
+            </p>
           </div>
         </div>
-        <div className="market-categories" aria-label="Market category">
-          <button className={section === 'All' ? 'active' : ''} onClick={() => setSection('All')}>
-            All products
-          </button>
-          {categorySections.map((item) => {
-            const movement =
-              data.market_views.find((view) => view.range === range && view.section === item)
-                ?.change_percent ?? null;
-            return (
-              <button
-                key={item}
-                className={section === item ? 'active' : ''}
-                onClick={() => setSection(item)}
-              >
-                {sectionLabel(item)} <TrendValue value={movement} />
-              </button>
-            );
-          })}
-        </div>
       </section>
-
-      <section className="home-discovery" aria-label="Product discovery">
+      <section className="home-section home-arrivals" aria-labelledby="arrival-title">
         <div className="home-section-heading">
           <div>
-            <span className="home-kicker">Recently discovered</span>
-            <h2>New on Mythos</h2>
-            <p>Fresh additions from across the catalog.</p>
+            <span className="home-kicker">Fresh discoveries</span>
+            <h2 id="arrival-title">New on Flagship</h2>
           </div>
+          <a className="home-text-button" href="/activity" onClick={go}>
+            Catalog activity <ArrowRight size={15} />
+          </a>
         </div>
-        <div className="new-product-list">
-          {data.new_products
-            .filter((product) => product.id !== featured?.id)
-            .slice(0, 8)
-            .map((product) => (
-              <a
-                key={product.id}
-                href={productPath(product)}
-                onClick={(event) => go(event, productPath(product))}
-              >
-                <ProductImage product={product} />
-                <div>
-                  <strong>{product.title}</strong>
-                  <span>
-                    {money(product.price)} DT · {product.site}
-                  </span>
-                  <small title={product.added_at}>{relativeTime(product.added_at, now)}</small>
-                </div>
-                <ArrowRight />
-              </a>
-            ))}
+        <div className="home-arrival-grid">
+          {data.new_products.slice(0, 6).map((product) => (
+            <a key={product.id} href={`/product/${encodeURIComponent(product.id)}`} onClick={go}>
+              <ProductImage product={product} />
+              <div>
+                <span className="home-product-section">{sectionLabel(product.section)}</span>
+                <h3>{product.title}</h3>
+                <strong>{money(product.price)} DT</strong>
+                <small>{product.site}</small>
+                <time
+                  className="home-added-time"
+                  dateTime={product.added_at}
+                  title={new Date(product.added_at).toLocaleString('en-GB')}
+                >
+                  <Clock3 size={12} />
+                  {addedAgo(product.added_at, now)}
+                </time>
+              </div>
+              <ArrowRight size={15} />
+            </a>
+          ))}
         </div>
       </section>
-
-      <section className="home-explore" aria-labelledby="explore-heading">
+      <section className="home-retailer-coverage" aria-labelledby="retailer-coverage-title">
         <div className="home-section-heading">
           <div>
-            <span className="home-kicker">A place to start</span>
-            <h2 id="explore-heading">Browse by category</h2>
-            <p>Open a category to compare current offers and specifications.</p>
+            <span className="home-kicker">
+              <Store size={14} /> Retailer coverage
+            </span>
+            <h2 id="retailer-coverage-title">
+              Across {data.coverage.retailers} Tunisian retailers
+            </h2>
+            <p>Compare here. Buy directly from your chosen retailer.</p>
           </div>
+          {data.retailers.length > 8 && (
+            <button
+              className="home-text-button"
+              aria-expanded={allRetailers}
+              aria-controls="home-retailer-list"
+              onClick={() => setAllRetailers((value) => !value)}
+            >
+              {allRetailers ? 'Show fewer' : `Show all ${data.retailers.length}`}{' '}
+              <ArrowRight size={15} />
+            </button>
+          )}
         </div>
-        <div className="home-explore-grid">
-          {categorySections.map((item) => {
-            const view = data.market_views.find(
-              (candidate) => candidate.range === '30d' && candidate.section === item,
-            );
-            const href = `/${item}`;
-            return (
-              <a key={item} href={href} onClick={(event) => go(event, href)}>
-                <span>{sectionLabel(item)}</span>
-                <strong>{money(view?.tracked_offers || 0)} offers</strong>
-                <small>
-                  Explore category <ArrowRight size={14} />
-                </small>
-              </a>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="home-retailers" aria-labelledby="retailers-heading">
-        <div className="retailer-copy">
-          <span className="home-kicker">Coverage across Tunisia</span>
-          <h2 id="retailers-heading">More stores. One clearer view.</h2>
-          <p>
-            Mythos follows {money(data.coverage.in_stock_offers)} currently available offers across{' '}
-            {data.coverage.retailers} retailers.
-          </p>
-          <span className="retailer-trust">
-            <ShieldCheck size={16} /> Historical context, independent of retailer discount labels
-          </span>
-        </div>
-        <div className="retailer-grid">
-          {data.retailers.map((retailer) => (
-            <div key={retailer.name} className="retailer-tile">
-              <span>{retailer.name.slice(0, 2).toUpperCase()}</span>
+        <div className="home-coverage-grid" id="home-retailer-list">
+          {(allRetailers ? data.retailers : data.retailers.slice(0, 8)).map((retailer) => (
+            <div className="home-coverage-retailer" key={retailer.name}>
+              <span aria-hidden="true">{retailer.name.slice(0, 2).toUpperCase()}</span>
               <div>
                 <strong>{retailer.name}</strong>
                 <small>
@@ -571,18 +486,150 @@ export function HomePage({
           ))}
         </div>
       </section>
-
-      <section className="home-trust" aria-label="Why use Mythos">
-        <span>
-          <ShieldCheck /> Price history, not hype
-        </span>
-        <span>
-          <TrendingUp /> Market-wide perspective
-        </span>
-        <span>
-          <Store /> {data.coverage.retailers} retailers tracked
-        </span>
-      </section>
     </main>
+  );
+}
+
+function CategoryPreviews({
+  section,
+  products,
+  onNavigate,
+}: {
+  section: string;
+  products: HomeProduct[];
+  onNavigate: (path: string) => void;
+}) {
+  const track = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ start: 0, visible: 4 });
+  const updatePosition = () => {
+    const element = track.current;
+    const first = element?.firstElementChild;
+    if (!element || !first) return;
+    const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
+    const step = first.getBoundingClientRect().width + gap;
+    const visible = Math.max(1, Math.round((element.clientWidth + gap) / step));
+    const start = Math.min(
+      Math.max(0, products.length - visible),
+      Math.max(0, Math.round(element.scrollLeft / step)),
+    );
+    setPosition((previous) =>
+      previous.start === start && previous.visible === visible ? previous : { start, visible },
+    );
+  };
+  useEffect(() => {
+    const element = track.current;
+    if (!element) return;
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(element);
+    updatePosition();
+    return () => observer.disconnect();
+  }, [products.length]);
+  const move = (direction: number) => {
+    const element = track.current;
+    if (!element) return;
+    const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
+    element.scrollBy({
+      left: direction * (element.clientWidth + gap),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'instant'
+        : 'smooth',
+    });
+  };
+  return (
+    <div className="home-category-carousel">
+      <div className="home-category-slider">
+        <button
+          type="button"
+          className="home-category-arrow previous"
+          aria-label={`Previous ${sectionLabel(section)} offers`}
+          aria-controls={`offers-${section}`}
+          disabled={position.start === 0}
+          onClick={() => move(-1)}
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <div
+          className="home-category-products"
+          id={`offers-${section}`}
+          ref={track}
+          onScroll={updatePosition}
+          tabIndex={0}
+          aria-label={`${sectionLabel(section)} discounted offers`}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+              event.preventDefault();
+              move(event.key === 'ArrowLeft' ? -1 : 1);
+            }
+          }}
+        >
+          {products.map((product) => (
+            <DiscountPreview key={product.id} product={product} onNavigate={onNavigate} />
+          ))}
+        </div>
+        <button
+          type="button"
+          className="home-category-arrow next"
+          aria-label={`Next ${sectionLabel(section)} offers`}
+          aria-controls={`offers-${section}`}
+          disabled={position.start + position.visible >= products.length}
+          onClick={() => move(1)}
+        >
+          <ChevronRight size={20} />
+        </button>
+      </div>
+      <p className="home-category-position">
+        {position.start + 1}
+        {position.visible > 1 && `–${Math.min(products.length, position.start + position.visible)}`}
+        <span> of {products.length} offers</span>
+      </p>
+    </div>
+  );
+}
+
+function DiscountPreview({
+  product,
+  onNavigate,
+}: {
+  product: HomeProduct;
+  onNavigate: (path: string) => void;
+}) {
+  const discount = retailerDiscount(product);
+  return (
+    <a
+      className="deal-card home-discount-card"
+      href={`/product/${encodeURIComponent(product.id)}`}
+      onClick={(event) => {
+        if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)
+          return;
+        event.preventDefault();
+        onNavigate(event.currentTarget.pathname);
+      }}
+    >
+      <div className="home-discount-image">
+        <ProductImage product={product} />
+        {discount && (
+          <span className="home-discount-badge">
+            {discount.percent ? `−${discount.percent}%` : '<1% off'}
+          </span>
+        )}
+      </div>
+      <h3>{product.title}</h3>
+      <div className="deal-price">
+        <strong>
+          {money(product.price)} <small>DT</small>
+        </strong>
+        {discount && (
+          <div className="home-discount-reference">
+            <del>{money(discount.original)} DT</del>
+            <span className="home-discount-saving">Save {money(discount.saving)} DT</span>
+          </div>
+        )}
+      </div>
+      <span className="deal-retailer">
+        {product.site}
+        <ArrowRight size={14} />
+      </span>
+    </a>
   );
 }

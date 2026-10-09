@@ -27,7 +27,11 @@ export function Dialog({
       ref={ref}
       className={`dialog ${className}`}
       aria-label={title}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         const box = event.currentTarget.getBoundingClientRect();
@@ -41,6 +45,7 @@ export function Dialog({
       }}
     >
       <button
+        type="button"
         autoFocus
         className="icon-button dialog-close"
         aria-label="Close dialog"

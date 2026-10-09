@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750;800&display=swap');
 @import 'tailwindcss';
 @import './product-detail.css';
+@import './component-details.css';
 
 /* PALETTE: edit these tokens and the light-mode block below to try colors.
    accent = text/icons, solid = buttons, hover = button hover, tint = subtle fills. */
@@ -139,6 +140,75 @@ p {
 }
 .muted {
   color: var(--muted);
+}
+.product-card {
+  position: relative;
+}
+.wishlist-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: #8050cc;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    color 140ms ease,
+    background 140ms ease;
+}
+.product-card > .wishlist-button {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 4;
+  opacity: 0;
+  transform: translateY(-3px) scale(0.94);
+}
+.product-card:hover > .wishlist-button,
+.product-card > .wishlist-button.saved,
+.product-card:has(:focus-visible) > .wishlist-button {
+  opacity: 1;
+  transform: none;
+}
+.wishlist-button:hover {
+  color: #9c62ed;
+  background: transparent;
+}
+.wishlist-button.saved {
+  color: #8955d9;
+  border-color: transparent;
+  background: transparent;
+}
+.wishlist-error {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 12px 18px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .wishlist-button {
+    transition: none;
+  }
+}
+@media (hover: none) {
+  .product-card > .wishlist-button {
+    opacity: 1;
+    transform: none;
+  }
 }
 .site-header {
   position: sticky;
@@ -693,7 +763,7 @@ summary::-webkit-details-marker {
     background 140ms ease;
 }
 .product-gallery:hover .gallery-arrow,
-.product-gallery:focus-within .gallery-arrow {
+.product-gallery:has(:focus-visible) .gallery-arrow {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1092,6 +1162,29 @@ summary::-webkit-details-marker {
 .footer-bottom p {
   margin: 0;
   text-align: center;
+}
+.footer-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+.footer-contact a {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.footer-contact small {
+  color: var(--faint);
+  font-size: 11px;
+}
+.footer-legal {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.footer-contact a:hover,
+.footer-legal:hover {
+  color: var(--accent);
 }
 .dialog {
   border: 1px solid var(--border);
