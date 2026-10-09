@@ -1,5 +1,5 @@
-pub mod game_parser;
 pub mod console_parser;
+pub mod game_parser;
 pub mod gpu_parser;
 pub mod headphones_parser;
 pub mod keyboard_parser;
@@ -11,16 +11,13 @@ pub mod power_supply_parser;
 pub mod storage_parser;
 
 use crate::core::dataset::{Dataset, SearchResult};
-use crate::core::product::{Product};
+use crate::core::product::{Product, is_structured_component};
 use crate::core::sections::{Section, SectionConfig};
 use crate::utils::regex_cache::RegexCache;
 use crate::utils::serde_ext::JsonExt;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::str::FromStr;
 use std::sync::Arc;
-use crate::api::filters::{is_structured_component};
 
 const PROXIMITY_THRESHOLD: usize = 40;
 
@@ -35,12 +32,11 @@ pub trait SectionParser: Send + Sync {
         self.lookup_dataset(product, &cleaned_title);
     }
 
-    fn parse_specs(&self, _product: &mut Product, _text: &str) {
-    }
+    fn parse_specs(&self, _product: &mut Product, _text: &str) {}
 
     fn clean_title(&self, title: &str) -> String {
         let config = &self.config();
-        let mut text = title.replace("®", "").replace("™", "");
+        let mut text = title.replace(['®', '™'], "");
 
         // Remove Words
         for word in &config.remove_words {
@@ -59,22 +55,17 @@ pub trait SectionParser: Send + Sync {
         // Add Missing Brands
         let lower = text.to_lowercase();
         for list in &config.add_brands_by_models {
-            if let (Some(brand), Some(word)) = (list.first(), list.get(1)) {
-                if !lower.contains(&brand.to_lowercase()) && lower.contains(&word.to_lowercase()) {
-                    text = format!("{brand} {text}");
-                }
+            if let (Some(brand), Some(word)) = (list.first(), list.get(1))
+                && !lower.contains(&brand.to_lowercase())
+                && lower.contains(&word.to_lowercase())
+            {
+                text = format!("{brand} {text}");
             }
         }
 
         // Normalize whitespace and remove duplicates
         let mut seen = HashSet::new();
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let deduplicated: Vec<&str> = words
-            .into_iter()
-            .filter(|word| seen.insert(word.to_lowercase()))
-            .collect();
-
-        deduplicated.join(" ").trim().to_string()
+        text.split_whitespace().filter(|word| seen.insert(word.to_lowercase())).collect::<Vec<&str>>().join(" ")
     }
 
     fn lookup_dataset(&self, product: &mut Product, cleaned_title: &str) {
@@ -88,9 +79,10 @@ pub trait SectionParser: Send + Sync {
         };
 
         let text = format!("{cleaned_title} | {}", product.description).to_uppercase();
-        
+        let config = self.config();
+
         if let Some(result) = self.search_in_dataset(product.section, &text, memory_size.as_ref()) {
-            if let Some(field) = &self.config().main_field {
+            if let Some(field) = &config.main_field {
                 if is_structured_component(field) {
                     product.components.insert_structured(field.to_string(), result.id, result.label);
                 } else {
@@ -99,25 +91,26 @@ pub trait SectionParser: Send + Sync {
             }
             if let Some(Value::Object(obj)) = result.data {
                 for (key, value) in obj {
-                    if let Some(value) = value.as_str() && !value.is_empty() {
-                        if (self.config().components.contains(&key) || self.config().filters.contains(&key))
-                            && !product.components.contains_key(&key) {
-                            product.components.insert(key, value.to_string());
-                        }
+                    if let Some(value) = value.as_str()
+                        && !value.is_empty()
+                        && (config.components.contains(&key) || config.filters.contains(&key))
+                        && !product.components.contains_key(&key)
+                    {
+                        product.components.insert(key, value.to_string());
                     }
                 }
             }
-            return;
         }
     }
 
     fn search_in_dataset(&self, section: Section, text: &str, memory_size: Option<&String>) -> Option<SearchResult> {
+        let is_gpu = self.config().id == Section::GPU;
         for node in &self.dataset().nodes {
-            if !words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
+            if !words_match(text, &node.label.to_uppercase(), &node.optional_words) {
                 continue;
             }
 
-            if self.config().id != Section::GPU {
+            if !is_gpu {
                 return Some(SearchResult {
                     id: node.path.clone(),
                     label: node.label.clone(),
@@ -131,7 +124,7 @@ pub trait SectionParser: Send + Sync {
 
             let Some(chipset_data) = &node.data else { continue; };
             let chipset_size = chipset_data.get_str("memory_size");
-            if chipset_size == memory_size.map(|x| x.as_str()) || memory_size.is_none() {
+            if chipset_size == memory_size.map(String::as_str) || memory_size.is_none() {
                 return Some(SearchResult {
                     id: node.path.clone(),
                     label: node.label.clone(),
@@ -178,6 +171,8 @@ pub fn words_match(text: &str, candidate: &str, optionals: &[String]) -> bool {
     }
 
     match positions.len() {
+        // A candidate without any identifying word must not match every product.
+        0 => false,
         1 => true,
         _ => min_span(&positions),
     }
@@ -188,12 +183,7 @@ fn min_span(lists: &[Vec<usize>]) -> bool {
     let mut current_max = lists.iter().map(|l| l[0]).max().unwrap();
 
     loop {
-        let (min_i, min_val) = idx
-            .iter()
-            .enumerate()
-            .map(|(i, &p)| (i, lists[i][p]))
-            .min_by_key(|&(_, v)| v)
-            .unwrap();
+        let (min_i, min_val) = idx.iter().enumerate().map(|(i, &p)| (i, lists[i][p])).min_by_key(|&(_, v)| v).unwrap();
 
         if current_max - min_val <= PROXIMITY_THRESHOLD {
             return true; // found a good enough window, no need to keep scanning

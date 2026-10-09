@@ -41,8 +41,10 @@ fn required_id(name: &str) -> Result<u64, String> {
         .filter(|value| !value.trim().is_empty())
         .map(|value| {
             value
+                .trim()
                 .parse::<u64>()
                 .map_err(|error| format!("Invalid {name}: {error}"))
+                .and_then(|id| if id == 0 { Err(format!("{name} must be a nonzero Discord ID")) } else { Ok(id) })
         })
         .transpose()?
         .ok_or_else(|| format!("{name} is required."))

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub struct MonitorParser {
     pub config: Arc<SectionConfig>,
-    pub dataset: Dataset
+    pub dataset: Dataset,
 }
 
 impl SectionParser for MonitorParser {
@@ -48,12 +48,10 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
         }
     }
 
-    if !found_size {
-        if text.replace(",", ".").contains("15.6") {
-            let size = "15.6".to_string();
-            product.components.insert("display_size".to_string(), size.clone());
-            specs_list.push(size);
-        }
+    if !found_size && text.replace(",", ".").contains("15.6") {
+        let size = "15.6".to_string();
+        product.components.insert("display_size".to_string(), size.clone());
+        specs_list.push(size);
     }
 
     let mut found_resolution = false;
@@ -67,12 +65,8 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
 
             if resolution == "HD" || resolution == "UHD" {
                 let str = format!("{resolution} GRAPHICS");
-                if text.contains(&format!(" {str}")) {
-                    if let Some(pos) = text.find(&str) {
-                        if pos == mat.start() {
-                            continue
-                        }
-                    }
+                if text.contains(&format!(" {str}")) && let Some(pos) = text.find(&str) && pos == mat.start() {
+                    continue;
                 }
             }
 
@@ -85,7 +79,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
             found_resolution = true;
             break;
         }
-    };
+    }
 
     if !found_resolution {
         let resolutions = vec![
@@ -103,7 +97,7 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     }
 
     if product.section == Section::Television {
-        return
+        return;
     }
 
     let panel_pattern = r"(?i)\b(IPS|OLED|QLED|LCD)\b";
@@ -116,10 +110,8 @@ pub fn parse_display_specs(product: &mut Product, text: &str) {
     let refresh_pattern = r"(?i)\b(\d+)\s*(hz|h z |hertz)\b";
     let mut refresh_rate: Option<i32> = None;
     for caps in RegexCache::captures_iter(refresh_pattern, text) {
-        if let Some(rate) = caps.get(1).and_then(|m| m.as_str().parse::<i32>().ok()) {
-            if rate >= 60 {
-                refresh_rate = Some(refresh_rate.map_or(rate, |b| b.max(rate)));
-            }
+        if let Some(rate) = caps.get(1).and_then(|m| m.as_str().parse::<i32>().ok()) && rate >= 60 {
+            refresh_rate = Some(refresh_rate.map_or(rate, |b| b.max(rate)));
         }
     }
     if let Some(refresh_rate) = refresh_rate && refresh_rate <= 1000 {

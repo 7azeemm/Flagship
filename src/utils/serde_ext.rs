@@ -1,4 +1,5 @@
 use serde_json::{Map, Value};
+use std::borrow::Borrow;
 
 /// Extension trait for easier JSON value extraction.
 pub trait JsonExt {
@@ -47,72 +48,36 @@ impl JsonExt for Value {
     }
 }
 
-// Implementation for Option<&Value>
-impl JsonExt for Option<&Value> {
+impl<T: Borrow<Value>> JsonExt for Option<T> {
     fn get_str(&self, key: &str) -> Option<&str> {
-        self.as_ref()?.get_str(key)
+        self.as_ref()?.borrow().get_str(key)
     }
 
     fn get_u64(&self, key: &str) -> Option<u64> {
-        self.as_ref()?.get_u64(key)
+        self.as_ref()?.borrow().get_u64(key)
     }
 
     fn get_i64(&self, key: &str) -> Option<i64> {
-        self.as_ref()?.get_i64(key)
+        self.as_ref()?.borrow().get_i64(key)
     }
 
     fn get_f64(&self, key: &str) -> Option<f64> {
-        self.as_ref()?.get_f64(key)
+        self.as_ref()?.borrow().get_f64(key)
     }
 
     fn get_bool(&self, key: &str) -> Option<bool> {
-        self.as_ref()?.get_bool(key)
+        self.as_ref()?.borrow().get_bool(key)
     }
 
     fn get_array(&self, key: &str) -> Option<&Vec<Value>> {
-        self.as_ref()?.get_array(key)
+        self.as_ref()?.borrow().get_array(key)
     }
 
     fn get_object(&self, key: &str) -> Option<&Map<String, Value>> {
-        self.as_ref()?.get_object(key)
+        self.as_ref()?.borrow().get_object(key)
     }
 
     fn get_value(&self, key: &str) -> Option<&Value> {
-        self.as_ref()?.get_value(key)
-    }
-}
-
-// Implementation for Option<Value>
-impl JsonExt for Option<Value> {
-    fn get_str(&self, key: &str) -> Option<&str> {
-        self.as_ref()?.get_str(key)
-    }
-
-    fn get_u64(&self, key: &str) -> Option<u64> {
-        self.as_ref()?.get_u64(key)
-    }
-
-    fn get_i64(&self, key: &str) -> Option<i64> {
-        self.as_ref()?.get_i64(key)
-    }
-
-    fn get_f64(&self, key: &str) -> Option<f64> {
-        self.as_ref()?.get_f64(key)
-    }
-
-    fn get_bool(&self, key: &str) -> Option<bool> {
-        self.as_ref()?.get_bool(key)
-    }
-
-    fn get_array(&self, key: &str) -> Option<&Vec<Value>> {
-        self.as_ref()?.get_array(key)
-    }
-
-    fn get_object(&self, key: &str) -> Option<&Map<String, Value>> {
-        self.as_ref()?.get_object(key)
-    }
-
-    fn get_value(&self, key: &str) -> Option<&Value> {
-        self.as_ref()?.get_value(key)
+        self.as_ref()?.borrow().get_value(key)
     }
 }

@@ -36,16 +36,11 @@ impl SectionParser for PCParser {
             .replace("+ 128", "+128").split_whitespace().collect::<Vec<_>>().join(" ");
 
         let cpu = extract_cpu(&text);
-        let gpus = extract_gpu(self.config.id, &text, &cpu.as_ref().map(|s| s.data.clone()).flatten());
+        let gpus = extract_gpu(self.config.id, &text, cpu.as_ref().and_then(|result| result.data.as_ref()));
 
         let gpu_memories = gpus
             .iter()
-            .filter_map(|g| {
-                g.data
-                    .get_str("memory_size")
-                    .map(|s| s.parse::<i32>().ok())
-                    .flatten()
-            })
+            .filter_map(|g| g.data.get_str("memory_size").and_then(|s| s.parse::<i32>().ok()))
             .collect::<Vec<i32>>();
         let gpu_has_memory = !gpu_memories.is_empty();
 
@@ -65,7 +60,7 @@ impl SectionParser for PCParser {
         // Find Storage Size in title (Additive)
         for (mut size, unit) in storage_sizes {
             if unit == "TB" {
-                size = size * 1024;
+                size *= 1024;
             }
             storage = Some(match storage {
                 Some(old_size) => old_size + size,
@@ -79,7 +74,7 @@ impl SectionParser for PCParser {
                 let mut size = *size;
                 if unit == "TB" || size > 128 || (size == 128 && product.price < 2000) {
                     if unit == "TB" {
-                        size = size * 1024;
+                        size *= 1024;
                     }
                     storage = Some(size);
                     break;
@@ -101,12 +96,11 @@ impl SectionParser for PCParser {
             let pattern = r"(?i)(\d+)\s*(?:g|go|gb)\s+(?:(?:de\s+)?m[eé]moire\s+d[eé]di[eé]e|(?:gddr[0-9]|gddr\s*[0-9]))";
 
             // Using Pattern
-            if let Some(str) = RegexCache::captures(&pattern, &text, 1) {
-                if let Ok(size) = str.parse::<i32>() {
-                    if gpu_memories.contains(&size) {
-                        gpu_memory = Some(size);
-                    }
-                }
+            if let Some(str) = RegexCache::captures(pattern, &text, 1)
+                && let Ok(size) = str.parse::<i32>()
+                && gpu_memories.contains(&size)
+            {
+                gpu_memory = Some(size);
             }
         }
 
@@ -145,18 +139,14 @@ impl SectionParser for PCParser {
 
             for (size, unit) in &desc_sizes {
                 if unit == "GB" && *size <= 64 {
-                    if !removed && let Some(memory) = &memory {
-                        if size == memory {
-                            removed = true;
-                            continue;
-                        }
+                    if !removed && let Some(memory) = &memory && size == memory {
+                        removed = true;
+                        continue;
                     }
 
-                    if !removed && let Some(gpu_memory) = &gpu_memory {
-                        if size == gpu_memory {
-                            removed = true;
-                            continue;
-                        }
+                    if !removed && let Some(gpu_memory) = &gpu_memory && size == gpu_memory {
+                        removed = true;
+                        continue;
                     }
 
                     sizes.push(*size);
@@ -223,7 +213,7 @@ impl SectionParser for PCParser {
             let mut memory_type = None;
             product.components.insert("memory_size".to_string(), memory_size.clone());
 
-            for mem_type in vec!["DDR3", "DDR4", "DDR5"] {
+            for mem_type in ["DDR3", "DDR4", "DDR5"] {
                 if text.contains(mem_type) {
                     product.components.insert("memory_type".to_string(), mem_type.to_string());
                     memory_type = Some(mem_type);
@@ -292,10 +282,10 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
 
             if label.contains("i") {
                 let generation_pattern = r"(?i)\b([2-9]|1[0-4])\s*(?:th|é|e|è|éme|ème|eme|gén|gen)\s*(?:gen|gén|generation|génération)?\b";
-                if let Some(str) = RegexCache::captures(&generation_pattern, &text, 1) {
-                    if let Ok(generation) = str.parse::<i32>() {
-                        label.push_str(&format!(" {generation}th Gen"));
-                    }
+                if let Some(str) = RegexCache::captures(generation_pattern, &text, 1)
+                    && let Ok(generation) = str.parse::<i32>()
+                {
+                    label.push_str(&format!(" {generation}th Gen"));
                 }
             }
 
@@ -308,7 +298,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
     }
 
     // Search for AMD CPUS
-    for cpu in vec!["Ryzen 3", "Ryzen 5", "Ryzen 7", "Ryzen 9", "Ryzen"] {
+    for cpu in ["Ryzen 3", "Ryzen 5", "Ryzen 7", "Ryzen 9", "Ryzen"] {
         if RegexCache::matches(&format!("(?i){cpu}"), &text) {
             let label = format!("AMD {cpu}");
             return Some(SearchResult {
@@ -320,7 +310,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
     }
 
     // Search for Other CPUS
-    for cpu in vec!["Quad Core", "Quad-Core", "Dual Core", "Dual-Core", "Arm"] {
+    for cpu in ["Quad Core", "Quad-Core", "Dual Core", "Dual-Core", "Arm"] {
         if RegexCache::matches(&format!("(?i){cpu}"), &text) {
             let cpu = cpu.replace("-", " ");
             let (parent, label) = if text.contains("INTEL") {
@@ -342,7 +332,7 @@ fn extract_cpu(text: &str) -> Option<SearchResult> {
     None
 }
 
-fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<SearchResult> {
+fn extract_gpu(section: Section, text: &str, cpu_entry: Option<&Value>) -> Vec<SearchResult> {
     let text = Section::GPU.config().replace_uppercase_words(text.to_string());
     let has_dedicated_gpu = vec!["RTX", "RX", "GTX", " GT "].into_iter().any(|w| text.contains(w));
     let mut gpus: Vec<_> = vec![];
@@ -360,10 +350,7 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
         }
 
         if words_match(&text, &node.label.to_uppercase(), &node.optional_words) {
-            let label = node.label.split_whitespace()
-                .filter(|w| !(w.len() <= 4 && w.contains("GB")))
-                .collect::<Vec<_>>()
-                .join(" ");
+            let label = node.label.split_whitespace().filter(|w| !(w.len() <= 4 && w.contains("GB"))).collect::<Vec<_>>().join(" ");
             if gpus.is_empty() || gpus.iter().any(|s: &SearchResult| s.label == label) {
                 gpus.push(SearchResult {
                     id: node.path.clone(),
@@ -380,24 +367,23 @@ fn extract_gpu(section: Section, text: &str, cpu_entry: &Option<Value>) -> Vec<S
 
     if section != Section::GamingLaptop {
         // Extract IGPU from CPU Entry
-        if let Some(entry) = &cpu_entry {
-            if let Some(iGPU) = entry.get_str("integrated_gpu") {
-                if !iGPU.is_empty() {
-                    let id = if iGPU.contains("UHD") {
-                        format!("Intel/Intel UHD Graphics/{iGPU}")
-                    } else if iGPU.contains("Radeon") {
-                        format!("AMD/{iGPU}")
-                    } else {
-                        eprintln!("Unknown Integrated GPU: {iGPU}");
-                        format!("Others/{iGPU}")
-                    };
-                    return vec![SearchResult {
-                        id,
-                        label: iGPU.to_string(),
-                        data: None,
-                    }];
-                }
-            }
+        if let Some(entry) = cpu_entry
+            && let Some(integrated_gpu) = entry.get_str("integrated_gpu")
+            && !integrated_gpu.is_empty()
+        {
+            let id = if integrated_gpu.contains("UHD") {
+                format!("Intel/Intel UHD Graphics/{integrated_gpu}")
+            } else if integrated_gpu.contains("Radeon") {
+                format!("AMD/{integrated_gpu}")
+            } else {
+                tracing::debug!(gpu = integrated_gpu, "Unknown integrated GPU");
+                format!("Others/{integrated_gpu}")
+            };
+            return vec![SearchResult {
+                id,
+                label: integrated_gpu.to_string(),
+                data: None,
+            }];
         }
     }
 

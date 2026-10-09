@@ -336,7 +336,21 @@
       ["Team Group", "TeamGroup"], ["Sk-Hynix", "SK Hynix"], ["DATOTEK", "Dato"]
     ],
     "filters": ["model", "platform", "memory_size", "memory_type", "memory_speed"],
-    "main_field": "model"
+    "main_field": "model",
+    "group": [
+      {
+        "key": "platform",
+        "required": true
+      },
+      {
+        "key": "memory_size",
+        "required": true
+      },
+      {
+        "key": "memory_type",
+        "required": true
+      }
+    ]
   },
   {
     "id": "Storage",

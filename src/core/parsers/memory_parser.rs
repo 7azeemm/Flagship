@@ -19,7 +19,7 @@ impl SectionParser for MemoryParser {
     }
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
-        let laptop = vec!["SO-DIMM", "SO DIMM", "POUR NB", "SODIM", "PORTABLE"];
+        let laptop = ["SO-DIMM", "SO DIMM", "POUR NB", "SODIM", "PORTABLE"];
         let upper = text.to_uppercase();
 
         product.components.insert("platform".to_string(), if laptop.iter().any(|v| upper.contains(v)) {
@@ -34,7 +34,7 @@ impl SectionParser for MemoryParser {
 
         for memory_type in ["DDR5", "DDR4", "DDR3"] {
             if RegexCache::matches(&format!(r"(?i)\b{}\b", memory_type), text) {
-                product.components.insert("memory_type".to_string(), memory_type.to_string(), );
+                product.components.insert("memory_type".to_string(), memory_type.to_string());
                 break;
             }
         }
@@ -49,7 +49,7 @@ impl SectionParser for MemoryParser {
         }
 
         if !product.components.contains_key("memory_speed") {
-            for speed in vec![2400, 2666, 3200, 3600, 5200, 5600] {
+            for speed in [2400, 2666, 3200, 3600, 5200, 5600] {
                 if text.contains(&speed.to_string()) {
                     memory_speed = Some(speed);
                     product.components.insert("memory_speed".to_string(), format!("{speed} Mhz"));

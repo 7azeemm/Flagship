@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 pub struct StorageParser {
     pub config: Arc<SectionConfig>,
-    pub dataset: Dataset
+    pub dataset: Dataset,
 }
 
 impl SectionParser for StorageParser {
@@ -21,16 +21,13 @@ impl SectionParser for StorageParser {
     fn parse_specs(&self, product: &mut Product, text: &str) {
         if let Some(str) = RegexCache::captures(r"(?i)\b((?:\d+)\s*(?:g|go|gb|t|to|tb)|(?:256|500|512|1024))\b", text, 1) {
             let size = str.to_uppercase();
-            let number: u64 = size.chars()
-                .take_while(|c| c.is_numeric())
-                .collect::<String>()
-                .parse().unwrap_or(0);
+            let number: u64 = size.chars().take_while(|c| c.is_numeric()).collect::<String>().parse().unwrap_or(0);
 
             let size = match size.contains("T") {
                 true => format!("{number}TB"),
                 false if number == 1024 => "1TB".to_string(),
                 false if number == 2048 => "2TB".to_string(),
-                false => format!("{number}GB")
+                false => format!("{number}GB"),
             };
 
             product.components.insert("storage_size".to_string(), size);

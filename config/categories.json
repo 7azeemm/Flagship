@@ -6,7 +6,8 @@
     },
     {
       "name": "Gaming PCs",
-      "url": "GamingPC"
+      "url": "GamingPC",
+      "featured": true
     },
     {
       "name": "All-In-One PCs",
@@ -22,7 +23,8 @@
     },
     {
       "name": "Gaming Laptops",
-      "url": "GamingLaptop"
+      "url": "GamingLaptop",
+      "featured": true
     },
     {
       "name": "MacBooks",
@@ -150,7 +152,8 @@
   "Smartphones & TVs": [
     {
       "name": "Smartphones",
-      "url": "Smartphone"
+      "url": "Smartphone",
+      "featured": true
     },
     {
       "name": "Tablets",

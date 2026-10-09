@@ -46,6 +46,7 @@ impl EventHandler for Handler {
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if interaction.guild_id() != Some(self.0) { return; }
         match interaction {
             Interaction::Command(command) => {
                 if let Err(error) = commands::handle(&ctx, &command).await {

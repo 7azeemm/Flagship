@@ -1,0 +1,32 @@
+[
+  {
+    "id": "product-insights",
+    "name": "Product insights",
+    "description": "Reviews, performance scores, and benchmark-informed comparisons to help you choose."
+  },
+  {
+    "id": "pc-builder",
+    "name": "PC builder",
+    "description": "Tools to explore components and plan your next PC build."
+  },
+  {
+    "id": "marketplace",
+    "name": "Marketplace",
+    "description": "A marketplace alongside the retailer catalog for more ways to discover tech."
+  },
+  {
+    "id": "richer-analytics",
+    "name": "Richer analytics",
+    "description": "More ways to understand price changes and product availability over time."
+  },
+  {
+    "id": "expanded-alerts",
+    "name": "Expanded alerts",
+    "description": "More notification channels and ways to follow the products you care about."
+  },
+  {
+    "id": "api-access",
+    "name": "API access",
+    "description": "Ways to use Flagship product data in other tools and projects."
+  }
+]

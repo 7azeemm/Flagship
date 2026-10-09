@@ -6,4 +6,6 @@
 /descriptions.json
 /data
 /state
+/backups
 /.env
+/deploy/directus/node_modules/

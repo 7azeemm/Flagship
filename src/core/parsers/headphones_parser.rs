@@ -4,9 +4,7 @@ use crate::core::product::Product;
 use crate::core::sections::SectionConfig;
 use std::sync::Arc;
 
-static EARPHONES_WORDS: &[&str] = &[
-    "ECOUTEUR", "ÉCOUTEUR", "KIT", "AIRPODS", "EARBUDS", "EARPODS", "EARPHONE", "OREILLETTE", "BUDS"
-];
+static EARPHONES_WORDS: &[&str] = &["ECOUTEUR", "ÉCOUTEUR", "KIT", "AIRPODS", "EARBUDS", "EARPODS", "EARPHONE", "OREILLETTE", "BUDS"];
 
 pub struct HeadphonesParser {
     pub config: Arc<SectionConfig>,
@@ -24,9 +22,12 @@ impl SectionParser for HeadphonesParser {
 
     fn parse_specs(&self, product: &mut Product, text: &str) {
         let upper = text.to_uppercase();
-        product.components.insert("type".to_string(), match EARPHONES_WORDS.iter().any(|w| upper.contains(w)) {
-            true => "Earphones".to_string(),
-            false => "Headphones".to_string(),
-        });
+        product.components.insert(
+            "type".to_string(),
+            match EARPHONES_WORDS.iter().any(|w| upper.contains(w)) {
+                true => "Earphones".to_string(),
+                false => "Headphones".to_string(),
+            },
+        );
     }
 }

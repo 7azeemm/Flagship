@@ -1,6 +1,6 @@
 use crate::core::dataset::Dataset;
-use crate::core::parsers::game_parser::GameParser;
 use crate::core::parsers::console_parser::ConsoleParser;
+use crate::core::parsers::game_parser::GameParser;
 use crate::core::parsers::gpu_parser::GPUParser;
 use crate::core::parsers::headphones_parser::HeadphonesParser;
 use crate::core::parsers::keyboard_parser::KeyboardParser;
@@ -13,18 +13,19 @@ use crate::core::parsers::storage_parser::StorageParser;
 use crate::core::parsers::{GenericSectionParser, SectionParser};
 use crate::utils::file_loader::FileLoader;
 use crate::utils::regex_cache::RegexCache;
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::LazyLock;
 use std::sync::{Arc, RwLock};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
+use crate::core::catalog::revision::Revision;
 
-pub static SECTION_PARSERS: Lazy<RwLock<HashMap<Section, Arc<dyn SectionParser>>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
+pub static SECTION_PARSERS: LazyLock<RwLock<HashMap<Section, Arc<dyn SectionParser>>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 
-#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize, EnumString, Display, EnumIter)]
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize, EnumString, Display, EnumIter, Default)]
 pub enum Section {
     PC,
     GamingPC,
@@ -64,13 +65,8 @@ pub enum Section {
     Smartwatch,
     Television,
 
+    #[default]
     Others,
-}
-
-impl Default for Section {
-    fn default() -> Self {
-        Self::Others
-    }
 }
 
 impl Section {
@@ -86,16 +82,15 @@ impl Section {
         }
     }
 
-    pub fn from_str(s: &str) -> Result<Self, String> {
-        FromStr::from_str(s).map_err(|err| format!("Section `{s}` not found"))
+    pub fn parse(s: &str) -> Result<Self, String> {
+        FromStr::from_str(s).map_err(|_| format!("Section `{s}` not found"))
     }
 
     pub fn parser(&self) -> Arc<dyn SectionParser> {
-        self.try_parser().expect(&format!("Section `{self}` not found in the config file"))
-    }
-
-    pub fn try_parser(&self) -> Option<Arc<dyn SectionParser>> {
-        SECTION_PARSERS.read().ok()?.get(self).cloned()
+        if let Ok(Some(parser)) = SECTION_PARSERS.read().map(|map| map.get(self).cloned()) {
+            return parser
+        }
+        panic!("Section `{self}` not found in the config file")
     }
 
     pub fn config(&self) -> Arc<SectionConfig> {
@@ -125,17 +120,12 @@ pub struct SectionConfig {
     pub add_brands_by_models: Vec<Vec<String>>,
     pub filters: Vec<String>,
     pub components: Vec<String>,
-    #[serde(default)]
     pub group_by_default: bool,
     pub group: Vec<GroupField>,
     pub main_field: Option<String>,
 }
 
 impl SectionConfig {
-    pub async fn load() {
-        Self::reload().await.unwrap();
-    }
-
     pub async fn reload() -> Result<usize, String> {
         let mut parsers: HashMap<Section, Arc<dyn SectionParser>> = HashMap::new();
 
@@ -157,6 +147,7 @@ impl SectionConfig {
 
         let count = parsers.len();
         *SECTION_PARSERS.write().unwrap() = parsers;
+        Revision::invalidate();
         Ok(count)
     }
 
@@ -171,11 +162,7 @@ impl SectionConfig {
     }
 }
 
-fn build_parser(
-    section: Section,
-    config: Arc<SectionConfig>,
-    dataset: Dataset,
-) -> Arc<dyn SectionParser> {
+fn build_parser(section: Section, config: Arc<SectionConfig>, dataset: Dataset) -> Arc<dyn SectionParser> {
     match section {
         Section::GPU => Arc::new(GPUParser { config, dataset }),
         Section::Memory => Arc::new(MemoryParser { config, dataset }),

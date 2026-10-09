@@ -23,12 +23,10 @@ pub struct FilterNode {
 
 impl FilterNode {
     pub fn supports_gpu_platform(&self, section: Section) -> bool {
-        match (section.is_laptop(), self.data.get_str("platform")) {
-            (true, Some("laptop" | "both")) => true,
-            (false, Some("both")) => true,
-            (false, None) => true,
-            _ => false,
-        }
+        matches!(
+            (section.is_laptop(), self.data.get_str("platform")),
+            (true, Some("laptop" | "both")) | (false, Some("desktop" | "both") | None)
+        )
     }
 }
 
@@ -44,25 +42,13 @@ impl Dataset {
         if section == Section::GPU {
             Self::attach_chipsets(&mut tree);
         }
-        tree.sort_by(|a, b| {
-            b.label
-                .len()
-                .cmp(&a.label.len())
-                .then_with(|| b.label.cmp(&a.label))
-        });
-
         let mut nodes = collect_nodes(&tree);
-        nodes.sort_by(|a, b| {
-            b.label
-                .len()
-                .cmp(&a.label.len())
-                .then_with(|| b.label.cmp(&a.label))
-        });
+        nodes.sort_by(|a, b| b.label.len().cmp(&a.label.len()).then_with(|| b.label.cmp(&a.label)));
 
         Ok(Dataset { nodes })
     }
 
-    fn attach_chipsets(tree: &mut Vec<FilterNode>) {
+    fn attach_chipsets(tree: &mut [FilterNode]) {
         fn merge_objects(left: Option<&Value>, right: Option<&Value>) -> serde_json::Map<String, Value> {
             let mut merged = serde_json::Map::new();
 
@@ -86,23 +72,17 @@ impl Dataset {
                 let snapshot: Vec<FilterNode> = model
                     .children
                     .iter()
-                    .filter(|c| {
-                        c.data
-                            .as_ref()
-                            .map(|d| d.as_object().map(|o| o.len() > 2))
-                            .flatten()
-                            .unwrap_or(false)
-                    })
+                    .filter(|c| c.data.as_ref().and_then(Value::as_object).is_some_and(|object| object.len() > 2))
                     .cloned()
                     .collect();
 
                 for variant in model.children.iter_mut() {
-                    if let Some(chipset_label) = variant.data.get_str("gpu") {
-                        if let Some(chipset) = snapshot.iter().find(|c| c.label == chipset_label) {
-                            let mut merged = merge_objects(variant.data.as_ref(), chipset.data.as_ref());
-                            merged.insert("vendor_card".to_string(), true.into());
-                            variant.data = Some(Value::Object(merged));
-                        }
+                    if let Some(chipset_label) = variant.data.get_str("gpu")
+                        && let Some(chipset) = snapshot.iter().find(|c| c.label == chipset_label)
+                    {
+                        let mut merged = merge_objects(variant.data.as_ref(), chipset.data.as_ref());
+                        merged.insert("vendor_card".to_string(), true.into());
+                        variant.data = Some(Value::Object(merged));
                     }
                 }
             }
@@ -144,11 +124,7 @@ fn build_tree(root: &Value) -> Vec<FilterNode> {
 fn read_optionals(map: &serde_json::Map<String, Value>) -> Vec<String> {
     map.get(OPTIONALS_KEY)
         .and_then(Value::as_array)
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_uppercase))
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(str::to_uppercase)).collect())
         .unwrap_or_default()
 }
 
@@ -165,11 +141,7 @@ fn build_node(key: &str, value: &Value, parent: &str, inherited: &[String]) -> F
     match value {
         Value::Object(map) => {
             let effective = merge_optionals(inherited, read_optionals(map));
-            let children = map
-                .iter()
-                .filter(|(k, _)| *k != OPTIONALS_KEY)
-                .map(|(k, v)| build_node(k, v, &path, &effective))
-                .collect();
+            let children = map.iter().filter(|(k, _)| *k != OPTIONALS_KEY).map(|(k, v)| build_node(k, v, &path, &effective)).collect();
             FilterNode {
                 path,
                 label: key.to_string(),
@@ -179,10 +151,7 @@ fn build_node(key: &str, value: &Value, parent: &str, inherited: &[String]) -> F
             }
         }
         Value::Array(items) => FilterNode {
-            children: items
-                .iter()
-                .map(|item| build_leaf(item, &path, inherited))
-                .collect(),
+            children: items.iter().map(|item| build_leaf(item, &path, inherited)).collect(),
             path,
             label: key.to_string(),
             data: None,
@@ -208,10 +177,7 @@ fn build_leaf(item: &Value, parent: &str, inherited: &[String]) -> FilterNode {
             optional_words: inherited.to_vec(),
         },
         Value::Object(_) => {
-            let name = item
-                .get(NAME_FIELD)
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let name = item.get(NAME_FIELD).and_then(Value::as_str).unwrap_or_default();
             FilterNode {
                 path: join_path(parent, name),
                 label: name.to_string(),
@@ -231,9 +197,5 @@ fn build_leaf(item: &Value, parent: &str, inherited: &[String]) -> FilterNode {
 }
 
 fn join_path(parent: &str, key: &str) -> String {
-    if parent.is_empty() {
-        key.to_string()
-    } else {
-        format!("{parent}/{key}")
-    }
+    if parent.is_empty() { key.to_string() } else { format!("{parent}/{key}") }
 }

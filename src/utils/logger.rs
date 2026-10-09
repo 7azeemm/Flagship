@@ -1,35 +1,22 @@
+use crate::discord::events::alert;
 use std::collections::BTreeMap;
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{Layer, util::SubscriberInitExt};
-use crate::discord::events::alert;
 
 pub fn setup_logging() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
-        let location = panic_info
-            .location()
-            .map(|location| location.to_string())
-            .unwrap_or_else(|| "unknown".into());
+        let location = panic_info.location().map(|location| location.to_string()).unwrap_or_else(|| "unknown".into());
         let message = panic_info
             .payload()
             .downcast_ref::<&str>()
             .copied()
-            .or_else(|| {
-                panic_info
-                    .payload()
-                    .downcast_ref::<String>()
-                    .map(String::as_str)
-            })
+            .or_else(|| panic_info.payload().downcast_ref::<String>().map(String::as_str))
             .unwrap_or("panic without a string payload");
 
-        alert(
-            "error",
-            "panic",
-            message,
-            vec![("Location".into(), location)],
-        );
+        alert("error", "panic", message, vec![("Location".into(), location)]);
 
         default_hook(panic_info);
     }));
@@ -58,17 +45,9 @@ where
 
         let mut visitor = FieldVisitor::default();
         event.record(&mut visitor);
-        let message = visitor
-            .fields
-            .remove("message")
-            .unwrap_or_else(|| metadata.name().to_string());
+        let message = visitor.fields.remove("message").unwrap_or_else(|| metadata.name().to_string());
 
-        alert(
-            metadata.level().as_str().to_lowercase(),
-            metadata.target(),
-            message,
-            visitor.fields.into_iter().collect(),
-        );
+        alert(metadata.level().as_str().to_lowercase(), metadata.target(), message, visitor.fields.into_iter().collect());
     }
 }
 
@@ -79,9 +58,6 @@ struct FieldVisitor {
 
 impl tracing::field::Visit for FieldVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.fields.insert(
-            field.name().to_string(),
-            format!("{value:?}").trim_matches('"').to_string(),
-        );
+        self.fields.insert(field.name().to_string(), format!("{value:?}").trim_matches('"').to_string());
     }
 }

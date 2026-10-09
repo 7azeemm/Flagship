@@ -1,10 +1,10 @@
-use once_cell::sync::Lazy;
 use regex::{Captures, Regex};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use std::sync::{Arc, RwLock};
 
-static REGEX_CACHE: Lazy<RwLock<RegexCache>> = Lazy::new(|| RwLock::new(RegexCache::default()));
+static REGEX_CACHE: LazyLock<RwLock<RegexCache>> = LazyLock::new(|| RwLock::new(RegexCache::default()));
 
 #[derive(Default)]
 pub struct RegexCache {
@@ -30,6 +30,7 @@ impl RegexCache {
                 if Self::get(&format!("(?i){pattern}")).is_match(text) {
                     return true;
                 }
+                continue;
             }
 
             let mut matched = false;
