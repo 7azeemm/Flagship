@@ -122,7 +122,6 @@ pub(super) async fn queue_notification(tx: &mut sqlx::Transaction<'_, sqlx::Post
         .bind(kind)
         .bind(&now)
         .bind(&now)
-        .bind(&now)
         .execute(&mut **tx)
         .await
         .map_err(db_error)?;
@@ -179,6 +178,30 @@ pub async fn deliver_pending_notifications() -> ApiResult<()> {
             .await
             .map_err(db_error)?;
         let Some(email) = email else { continue };
+
+        if kind == "password_reset" {
+            // Generate the secret only in the delivery worker; the queue stores no raw token.
+            let expires = chrono::DateTime::parse_from_rfc3339(&created_at)
+                .map_err(|_| ApiError::InternalError("Invalid recovery notification date".into()))?
+                .with_timezone(&Utc) + Duration::minutes(30);
+            if expires <= Utc::now() {
+                sqlx::query("DELETE FROM account_notifications WHERE id=$1 AND lease_token=$2")
+                    .bind(&id).bind(&lease).execute(Database::pool()).await.map_err(db_error)?;
+                continue;
+            }
+            let Some(token) = super::create_recovery_token(&user_id, &id, &lease, expires).await? else { continue };
+            let sent = matches!(
+                tokio::time::timeout(std::time::Duration::from_secs(45),
+                    deliver_account_email(&email, "Reset your Flagship password", "/reset-password", &token)).await,
+                Ok(Ok(()))
+            );
+            if !sent {
+                sqlx::query("DELETE FROM account_tokens WHERE token_hash=$1")
+                    .bind(super::hash_token(&token)).execute(Database::pool()).await.map_err(db_error)?;
+            }
+            complete_notification(Database::pool(), &id, &lease, attempts, sent).await?;
+            continue;
+        }
         
         let (subject, body) = if kind == "welcome" {
             (

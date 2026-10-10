@@ -27,9 +27,10 @@ const help = `Flagship local launcher
   all       Backend + live website + staff editor.
   serve     Build the website and serve it with the backend; no live frontend server.
   apply-overrides  Replay saved URL-based product edits into the current catalog and exit.
+  reset     Delete the local flagship database and recreate/setup it (confirmation required).
   --help    Show this help.
 Run start.bat without arguments for a menu. Ctrl+C stops processes started here.
-PostgreSQL stays running as a service. Existing data/passwords are never reset.`;
+PostgreSQL stays running as a service. Setup preserves data; reset deletes all database data.`;
 
 function required(name) {
   if (!settings[name]?.trim()) throw new Error(`Set ${name} in the root .env first.`);
@@ -253,13 +254,37 @@ async function setup() {
   console.log('Setup complete. Choose dev, directus, or all from start.bat. Existing data was preserved.');
 }
 
+async function resetDatabase() {
+  // Validate setup credentials before offering the destructive operation.
+  directusEnvironment();
+  npmCli();
+  const input = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log('\nThis deletes ALL data in the local flagship database, including accounts, catalog, alerts, saved overrides, and Directus configuration. Stop Flagship and Directus and back up anything needed first.');
+    if ((await input.question('Type RESET flagship to continue: ')).trim() !== 'RESET flagship') {
+      console.log('Reset cancelled.');
+      return;
+    }
+  } finally { input.close(); }
+  const admin = pgEnvironment(settings.POSTGRES_ADMIN_USER || 'postgres', undefined, 'postgres');
+  admin.PGPASSWORD = settings.POSTGRES_ADMIN_PASSWORD;
+  if (!admin.PGPASSWORD || !pgProbe(['-Atqc', 'SELECT 1'], admin)) {
+    admin.PGPASSWORD = undefined;
+    console.log('Enter the PostgreSQL administrator password when psql asks.');
+  }
+  // Fixed local target; no FORCE, so active connections prevent deletion.
+  await run(pgTool('psql'), ['-X', '-v', 'ON_ERROR_STOP=1', '-f', join(root, 'deploy', 'reset-database.sql')], root, admin);
+  await setup();
+  console.log('Local database reset and setup complete.');
+}
+
 async function menu() {
-  console.log('\nFlagship\n1. First-time setup\n2. Website + backend (live editing)\n3. Directus only\n4. Everything\n5. Built website + backend\n0. Exit\n');
+  console.log('\nFlagship\n1. First-time setup\n2. Website + backend (live editing)\n3. Directus only\n4. Everything\n5. Built website + backend\n6. Reset database (deletes all data)\n0. Exit\n');
   const input = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const choice = (await input.question('Choose: ')).trim();
-    const choices = { '1': 'setup', '2': 'dev', '3': 'directus', '4': 'all', '5': 'serve', '0': 'exit' };
-    if (!(choice in choices)) throw new Error('Choose a number from 0 to 5.');
+    const choices = { '1': 'setup', '2': 'dev', '3': 'directus', '4': 'all', '5': 'serve', '6': 'reset', '0': 'exit' };
+    if (!(choice in choices)) throw new Error('Choose a number from 0 to 6.');
     return choices[choice];
   } finally { input.close(); }
 }
@@ -268,10 +293,10 @@ async function main() {
   const mode = process.argv[2] || await menu();
   if (['--help', '-h', 'help'].includes(mode)) { console.log(help); return; }
   if (mode === 'exit') return;
-  if (!['setup', 'dev', 'directus', 'all', 'serve', 'apply-overrides'].includes(mode)) throw new Error(help);
+  if (!['setup', 'dev', 'directus', 'all', 'serve', 'apply-overrides', 'reset'].includes(mode)) throw new Error(help);
   const version = process.versions.node.split('.').map(Number);
   if (version[0] < 22 || (version[0] === 22 && version[1] < 12)) throw new Error('Install Node.js 22.12 or newer; Node.js 22 LTS is recommended for native Directus dependencies.');
-  if (['setup', 'directus', 'all'].includes(mode) && version[0] !== 22) {
+  if (['setup', 'directus', 'all', 'reset'].includes(mode) && version[0] !== 22) {
     throw new Error('This Directus version requires Node.js 22 for its native dependencies. Run start.bat to use state/node22, or install Node.js 22 LTS.');
   }
   if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See docs/POSTGRES_DIRECTUS.md.');
@@ -283,6 +308,7 @@ async function main() {
   }
   if (decodeURIComponent(database.password) !== required('FLAGSHIP_DB_PASSWORD')) throw new Error('DATABASE_URL password must match FLAGSHIP_DB_PASSWORD (URL-encode it in the URL).');
   await ensurePostgres();
+  if (mode === 'reset') { await resetDatabase(); return; }
   if (mode === 'setup') { await setup(); return; }
   ensureDatabase();
   if (mode === 'apply-overrides') {

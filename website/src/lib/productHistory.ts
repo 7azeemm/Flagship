@@ -50,6 +50,28 @@ export function buildProductHistoryChart(
     in_stock_count: product.status === 'InStock' ? 1 : 0,
     retailer_count: 1,
   });
+  const listingStates = [...(product.listing_history ?? [])];
+  if (product.removed_at && Number.isFinite(Date.parse(product.removed_at)))
+    listingStates.push({ timestamp: product.removed_at, listed: false });
+  listingStates.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  const priceObservations = [...history];
+  for (const state of listingStates) {
+    const at = Date.parse(state.timestamp);
+    if (at > now || at < added) continue;
+    const previous = priceObservations.filter((point) => Date.parse(point.timestamp) <= at).at(-1);
+    if (previous) history.push({ ...previous, timestamp: state.timestamp });
+  }
+  history.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+  for (const point of history) {
+    const state = listingStates
+      .filter((state) => Date.parse(state.timestamp) <= Date.parse(point.timestamp))
+      .at(-1);
+    if (state && !state.listed) {
+      point.lowest_price = null;
+      point.lowest_price_retailer = null;
+      point.offer_count = point.in_stock_count = point.retailer_count = 0;
+    }
+  }
   const days = (
     { '7d': 7, '30d': 30, '90d': 90, '180d': 180, '1y': 365 } as Record<string, number>
   )[range];
@@ -71,14 +93,19 @@ export function buildProductHistoryChart(
     if (resolved === 'week') date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
     buckets.set(date.toISOString().slice(0, 10), point);
   }
-  const prices = points.map((p) => p.lowest_price!);
+  const prices = points.flatMap((p) => (p.lowest_price === null ? [] : [p.lowest_price]));
   const ninetySince = now - 90 * 86400000;
   const ninetyPoints = history.filter((point) => Date.parse(point.timestamp) >= ninetySince);
   const ninetyBaseline = history
     .filter((point) => Date.parse(point.timestamp) < ninetySince)
     .at(-1);
   if (ninetyBaseline) ninetyPoints.unshift(ninetyBaseline);
-  const ninetyDayPrices = ninetyPoints.map((point) => point.lowest_price!);
+  const ninetyDayPrices = ninetyPoints.flatMap((point) =>
+    point.lowest_price === null ? [] : [point.lowest_price],
+  );
+  const allPrices = history.flatMap((point) =>
+    point.lowest_price === null ? [] : [point.lowest_price],
+  );
   return {
     scope: 'product',
     range,
@@ -86,14 +113,16 @@ export function buildProductHistoryChart(
     currency: 'TND',
     points: resolved === 'scan' ? points : [...buckets.values()],
     summary: {
-      current_price: product.price,
-      period_low: Math.min(...prices),
-      period_high: Math.max(...prices),
-      all_time_low: Math.min(...history.map((p) => p.lowest_price!)),
-      average_price: Math.trunc(prices.reduce((a, b) => a + b, 0) / prices.length),
-      ninety_day_average: Math.trunc(
-        ninetyDayPrices.reduce((a, b) => a + b, 0) / ninetyDayPrices.length,
-      ),
+      current_price: product.removed_at ? null : product.price,
+      period_low: prices.length ? Math.min(...prices) : null,
+      period_high: prices.length ? Math.max(...prices) : null,
+      all_time_low: allPrices.length ? Math.min(...allPrices) : null,
+      average_price: prices.length
+        ? Math.trunc(prices.reduce((a, b) => a + b, 0) / prices.length)
+        : null,
+      ninety_day_average: ninetyDayPrices.length
+        ? Math.trunc(ninetyDayPrices.reduce((a, b) => a + b, 0) / ninetyDayPrices.length)
+        : null,
     },
   };
 }

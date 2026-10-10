@@ -42,6 +42,7 @@ export interface Product {
   views: number;
   missing_group_fields: string[];
   removed_at?: string | null;
+  listing_history?: { timestamp: string; listed: boolean }[];
 }
 export interface ProductHistory {
   entries: ProductHistoryEntry[];

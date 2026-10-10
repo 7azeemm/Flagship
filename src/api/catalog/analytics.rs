@@ -11,16 +11,19 @@ static SNAPSHOT: LazyLock<Mutex<Option<Arc<Snapshot>>>> = LazyLock::new(|| Mutex
 
 pub(super) struct Snapshot {
     pub revision: u64,
+    created_at: std::time::Instant,
     pub products: Vec<Product>,
 }
 
 pub(super) async fn snapshot() -> Arc<Snapshot> {
     let mut cache = SNAPSHOT.lock().await;
     let revision = Revision::current();
-    if let Some(cached) = cache.as_ref() && cached.revision == revision {
+    if let Some(cached) = cache.as_ref() && cached.revision == revision
+        && cached.created_at.elapsed() < crate::core::catalog::revision::CACHE_TTL {
         return cached.clone();
     }
     let storage = ProductStorage::get_storage().read().await;
+    let revision = Revision::current();
     // Capture the revision under the read lock so it describes these products.
     let products = storage
         .products
@@ -29,7 +32,7 @@ pub(super) async fn snapshot() -> Arc<Snapshot> {
         .map(analytics_product)
         .collect();
     drop(storage);
-    let value = Arc::new(Snapshot { revision, products });
+    let value = Arc::new(Snapshot { revision, created_at: std::time::Instant::now(), products });
     *cache = Some(value.clone());
     value
 }

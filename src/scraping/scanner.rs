@@ -97,6 +97,7 @@ impl CatalogScanner {
 
     async fn save_caches(&self, report: &ScanReport) {
         let mut cached_product_info = CACHED_PRODUCT_INFO.write().await;
+        cached_product_info.retain(|_, info| info.is_fresh());
         for product in &report.removed_items {
             cached_product_info.remove(&product.url);
         }
@@ -194,14 +195,13 @@ impl CatalogScanner {
     }
 
     async fn execute_scan(&self, sections: &[Section], retailers: &[&'static str], report: &mut ScanReport) -> Result<(), String> {
+        let baseline = ProductStorage::get_storage().read().await.clone();
         let mut products = self.scrape(sections, retailers, report).await;
         for product in &mut products {
             report.metrics.moved_sections += usize::from(Self::normalize_product_section(product));
         }
 
-        ProductStorage::synchronize_scan_results(products, sections, retailers, report).await;
-        self.parse_changed_products(report).await;
-        ProductStorage::commit_scan_changes(report).await?;
+        ProductStorage::commit_scan_results(products, &baseline, sections, retailers, report).await?;
         self.save_caches(report).await;
 
         Ok(())
@@ -385,21 +385,6 @@ impl CatalogScanner {
         }
 
         product.section = current;
-    }
-
-    async fn parse_changed_products(&self, report: &mut ScanReport) {
-        let start_time = Instant::now();
-        for product in &mut report.added_items {
-            product.section.parser().parse(product);
-        }
-        for (product, _) in &mut report.edited_items {
-            product.section.parser().parse(product);
-        }
-        tracing::info!(
-            "Parsed {} changed products in {:.2?}",
-            report.added_items.len() + report.edited_items.len(),
-            start_time.elapsed()
-        );
     }
 }
 

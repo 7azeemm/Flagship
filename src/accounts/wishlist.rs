@@ -13,6 +13,8 @@ use crate::core::storage::ProductStorage;
 use crate::core::variant::VariantStorage;
 use crate::database::Database;
 
+const MAX_WISHLIST_ITEMS: i64 = 200;
+
 #[derive(Debug, Deserialize)]
 pub struct WishlistBody {
     target_type: String,
@@ -63,8 +65,8 @@ pub async fn wishlist_details(headers: HeaderMap, Path((target_type, target_id))
         return Ok(Json(json!({"product": product})));
     }
 
-    let variant = VariantStorage::find_by_id(&target_id).await.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
     let storage = ProductStorage::get_storage().read().await;
+    let variant = VariantStorage::find_by_id(&target_id).await.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
     let mut products = variant.product_ids.iter().filter_map(|id| storage.products.get(id).cloned()).collect::<Vec<_>>();
     products.sort_by_key(|product| product.price);
     let details = VariantDetails::from(&variant);
@@ -79,14 +81,34 @@ pub async fn add_wishlist(headers: HeaderMap, Json(body): Json<WishlistBody>) ->
     }
     
     validate_target(&body.target_type, &body.target_id)?;
+    super::rate_limit(&format!("wishlist:{}", auth.user_id), 60, 60)?;
+    let exists = if body.target_type == "product" {
+        ProductStorage::find_by_id(&body.target_id).await.is_some()
+    } else {
+        VariantStorage::find_by_id(&body.target_id).await.is_some_and(|variant| variant.active)
+    };
+    if !exists {
+        return Err(ApiError::NotFound("Wishlist target not found.".into()));
+    }
+
+    let mut tx = Database::pool().begin().await.map_err(db_error)?;
+    sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(&auth.user_id).fetch_one(&mut *tx).await.map_err(db_error)?;
+    let (count, saved): (i64, bool) = sqlx::query_as("SELECT count(*),coalesce(bool_or(target_type=$2 AND target_id=$3),false) FROM wishlist_items WHERE user_id=$1")
+        .bind(&auth.user_id).bind(&body.target_type).bind(&body.target_id)
+        .fetch_one(&mut *tx).await.map_err(db_error)?;
+    if count >= MAX_WISHLIST_ITEMS && !saved {
+        return Err(ApiError::InvalidQuery(format!("You can save up to {MAX_WISHLIST_ITEMS} wishlist items.")));
+    }
     sqlx::query("INSERT INTO wishlist_items (user_id,target_type,target_id,created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING")
         .bind(auth.user_id)
         .bind(&body.target_type)
         .bind(&body.target_id)
         .bind(Utc::now().to_rfc3339())
-        .execute(Database::pool())
+        .execute(&mut *tx)
         .await
         .map_err(db_error)?;
+    tx.commit().await.map_err(db_error)?;
     
     Ok((StatusCode::OK, Json(json!({"saved": true}))))
 }
@@ -115,7 +137,7 @@ pub async fn wishlist_status(headers: HeaderMap, Query(query): Query<WishlistSta
         .filter(|(kind, id)| validate_target(kind, id).is_ok())
         .map(|(a, b)| (a.to_string(), b.to_string()))
         .collect();
-    
+
     let mut query = sqlx::QueryBuilder::<sqlx::Postgres>::new("SELECT target_type,target_id FROM wishlist_items WHERE user_id = ");
     query.push_bind(auth.user_id);
     

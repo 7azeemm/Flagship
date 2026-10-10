@@ -34,7 +34,7 @@ const env = {
   GOOGLE_CLIENT_SECRET: '',
   GOOGLE_REDIRECT_URL: '',
   DISCORD_TOKEN: '',
-  ENABLE_SCANNING: 'true',
+  ENABLE_SCANNING: 'false',
   TRUSTED_PROXY_IPS: '127.0.0.1',
   RUST_LOG: 'warn',
   PLAYWRIGHT_BROWSERS_PATH: path.join(temporary, 'no-browsers'),

@@ -131,6 +131,16 @@ export function parseProduct(value: unknown): Product {
     views: number(value.views) ? value.views : 0,
     missing_group_fields: strings(value.missing_group_fields) ? value.missing_group_fields : [],
     removed_at: typeof value.removed_at === 'string' ? value.removed_at : null,
+    listing_history: Array.isArray(value.listing_history)
+      ? value.listing_history.flatMap((state) =>
+          record(state) &&
+          typeof state.timestamp === 'string' &&
+          Number.isFinite(Date.parse(state.timestamp)) &&
+          typeof state.listed === 'boolean'
+            ? [{ timestamp: state.timestamp, listed: state.listed }]
+            : [],
+        )
+      : [],
   };
 }
 function parseVariant(value: unknown): VariantSummary {

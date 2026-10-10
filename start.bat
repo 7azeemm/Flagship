@@ -1,4 +1,5 @@
 @echo off
+rem Run "start.bat reset" or choose Reset database in the menu to recreate the local database.
 setlocal
 cd /d "%~dp0"
 if exist "%~dp0state\node22\node.exe" (

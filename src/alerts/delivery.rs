@@ -13,13 +13,18 @@ pub fn delivery_products(payload: &str) -> Result<Vec<Product>, String> {
 
 pub(super) async fn claim_delivery(pool: &PgPool, token: &str) -> Result<Option<(String, String, i64)>, sqlx::Error> {
     let now = Utc::now();
-    sqlx::query_as("WITH candidate AS (SELECT d.alert_id FROM alert_deliveries d JOIN alerts a ON a.id=d.alert_id JOIN users u ON u.id=a.user_id WHERE a.state='pending' AND a.expires_at>$3 AND u.email_verified_at IS NOT NULL AND d.attempts<8 AND d.next_attempt_at<=$4 AND (d.lease_until IS NULL OR d.lease_until<=$5) ORDER BY d.next_attempt_at LIMIT 1 FOR UPDATE OF d,a SKIP LOCKED) UPDATE alert_deliveries d SET lease_token=$1,lease_until=$2,attempts=d.attempts+1 FROM candidate c,alerts a WHERE d.alert_id=c.alert_id AND a.id=d.alert_id RETURNING d.alert_id,a.last_match,d.attempts")
+    let mut tx = pool.begin().await?;
+    let candidate: Option<(String, String)> = sqlx::query_as("SELECT a.id,a.last_match FROM alerts a JOIN alert_deliveries d ON d.alert_id=a.id JOIN users u ON u.id=a.user_id WHERE a.state='pending' AND a.expires_at>$1 AND u.email_verified_at IS NOT NULL AND d.attempts<8 AND d.next_attempt_at<=$1 AND (d.lease_until IS NULL OR d.lease_until<=$1) ORDER BY d.next_attempt_at,a.id LIMIT 1 FOR UPDATE OF a SKIP LOCKED")
+        .bind(now.to_rfc3339()).fetch_optional(&mut *tx).await?;
+    let Some((id, payload)) = candidate else { tx.commit().await?; return Ok(None) };
+    let attempts: Option<i64> = sqlx::query_scalar("UPDATE alert_deliveries SET lease_token=$1,lease_until=$2,attempts=attempts+1 WHERE alert_id=$3 AND attempts<8 AND next_attempt_at<=$4 AND (lease_until IS NULL OR lease_until<=$4) RETURNING attempts")
         .bind(token)
         .bind((now + Duration::minutes(2)).to_rfc3339())
+        .bind(&id)
         .bind(now.to_rfc3339())
-        .bind(now.to_rfc3339())
-        .bind(now.to_rfc3339())
-        .fetch_optional(pool).await
+        .fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(attempts.map(|attempts| (id, payload, attempts)))
 }
 
 pub async fn deliver(pool: &PgPool) -> Result<(), String> {
@@ -120,6 +125,9 @@ async fn send_delivery(pool: &PgPool, id: &str, payload: &str) -> Result<bool, S
 pub async fn complete_delivery(pool: &PgPool, id: &str, token: &str, attempts: i64, sent: bool) -> Result<(), String> {
     let now = Utc::now();
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+    // Every delivery mutation locks the parent alert before its queue row.
+    sqlx::query("SELECT id FROM alerts WHERE id=$1 FOR UPDATE")
+        .bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
     let affected = sqlx::query("UPDATE alert_deliveries SET next_attempt_at=$1,lease_token=NULL,lease_until=NULL WHERE alert_id=$2 AND lease_token=$3")
         .bind((now + Duration::minutes(2_i64.pow(attempts.min(8) as u32))).to_rfc3339())
         .bind(id)

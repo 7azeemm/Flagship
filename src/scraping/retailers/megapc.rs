@@ -221,10 +221,10 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
                 Err(err) => {
                     errors.push(ScrapeErrorKind::ProductFetchFailed {
                         url: url.to_string(),
-                        title: product.title,
+                        title: product.title.clone(),
                         error: err,
                     });
-                    continue;
+                    String::new()
                 }
             };
 
@@ -252,7 +252,8 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
 }
 
 async fn fetch_product_page(product_url: &str, category: &str, sub_category: &str, lien: &str, metrics: &mut PageMetrics) -> Result<String, ProductFetchError> {
-    if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(product_url) {
+    if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(product_url)
+        .filter(|cached| cached.is_fresh() && !cached.description.is_empty()) {
         metrics.cache_hits += 1;
         return Ok(cached.description.clone());
     }
@@ -283,14 +284,16 @@ async fn fetch_product_page(product_url: &str, category: &str, sub_category: &st
 
     let description = Html::parse_document(&description).root_element().text().collect::<String>();
 
-    CACHED_PRODUCT_INFO.write().await.insert(
-        product_url.to_string(),
-        CachedProductInfo {
-            timestamp: Utc::now(),
-            description: description.clone(),
-            images: vec![],
-        },
-    );
+    if !description.is_empty() {
+        CACHED_PRODUCT_INFO.write().await.insert(
+            product_url.to_string(),
+            CachedProductInfo {
+                timestamp: Utc::now(),
+                description: description.clone(),
+                images: vec![],
+            },
+        );
+    }
 
     Ok(description)
 }

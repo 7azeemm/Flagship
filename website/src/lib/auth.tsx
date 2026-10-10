@@ -87,8 +87,8 @@ const AuthContext = createContext<AuthValue>({
 async function loadAuthState() {
   const result = await accountRequest<{ user: AccountUser | null }>('/auth/session');
   const wishlist = result.user
-    ? (await accountRequest<{ items: WishlistItem[] }>('/wishlist').catch(() => ({ items: [] })))
-        .items
+    ? ((await accountRequest<{ items: WishlistItem[] }>('/wishlist').catch(() => null))?.items ??
+      null)
     : [];
   return { user: result.user, wishlist };
 }
@@ -101,14 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const revision = useRef(0);
   const owner = useRef<string | null>(null);
   const mutations = useRef(new Set<string>());
+  const wishlistLoaded = useRef(false);
   owner.current = user?.id ?? null;
   const refreshSession = useCallback(async () => {
     const current = ++revision.current;
     try {
       const result = await loadAuthState();
       if (current !== revision.current) return;
+      const sameAccount = owner.current === (result.user?.id ?? null);
+      wishlistLoaded.current = result.wishlist !== null || (sameAccount && wishlistLoaded.current);
       setUser(result.user);
-      setWishlist(result.wishlist);
+      setWishlist((items) => result.wishlist ?? (sameAccount ? items : []));
     } catch {
       // A transient request failure does not establish that the session ended.
     } finally {
@@ -124,8 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initialAuthRequest
       .then((result) => {
         if (!active || current !== revision.current) return;
+        wishlistLoaded.current = result.wishlist !== null;
         setUser(result.user);
-        setWishlist(result.wishlist);
+        setWishlist(result.wishlist ?? []);
       })
       .catch(() => {
         if (!active || current !== revision.current) return;
@@ -155,6 +159,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const toggleSaved = useCallback(
     async (target_type: 'variant' | 'product', target_id: string) => {
       if (!user) throw new Error('Please sign in to save products.');
+      if (!wishlistLoaded.current)
+        throw new Error(
+          'Saved products are temporarily unavailable. Please refresh and try again.',
+        );
       const key = `${user.id}:${target_type}:${target_id}`;
       if (mutations.current.has(key)) return;
       mutations.current.add(key);

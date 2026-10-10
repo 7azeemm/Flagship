@@ -31,6 +31,13 @@ pub struct Product {
     pub added_at: DateTime<Utc>,
     pub updated_at: Option<DateTime<Utc>>,
     pub removed_at: Option<DateTime<Utc>>,
+    pub listing_history: Vec<ListingState>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ListingState {
+    pub timestamp: DateTime<Utc>,
+    pub listed: bool,
 }
 
 impl Product {
@@ -67,6 +74,7 @@ impl Product {
             updated_at: None,
             removed_at: None,
             added_at: Utc::now(),
+            listing_history: Vec::new(),
         }
     }
 
@@ -99,10 +107,68 @@ impl Product {
         self.views = previous.views;
         self.added_at = previous.added_at;
         self.updated_at = previous.updated_at;
+        self.listing_history.clone_from(&previous.listing_history);
+    }
+
+    pub fn set_listed(&mut self, listed: bool, at: DateTime<Utc>) {
+        if self.listing_history.is_empty() && let Some(removed) = self.removed_at {
+            self.listing_history.push(ListingState { timestamp: removed, listed: false });
+        }
+        if self.listing_history.last().is_none_or(|last| last.listed != listed) {
+            self.listing_history.push(ListingState { timestamp: at, listed });
+        }
+        self.removed_at = (!listed).then_some(at);
+    }
+
+    pub fn listed_at(&self, at: DateTime<Utc>) -> bool {
+        self.added_at <= at && self.listing_history.iter()
+            .filter(|state| state.timestamp <= at).max_by_key(|state| state.timestamp)
+            .map_or(self.removed_at.is_none_or(|removed| at < removed), |state| state.listed)
+    }
+
+    // Keep independently committed edits when applying a mutation derived from
+    // an older snapshot. Objects merge by key; conflicting leaf edits keep latest.
+    pub(crate) fn rebase(&self, base: &Product, latest: &Product) -> Product {
+        fn merge(current: &mut Value, old: &Value, next: &Value) {
+            if old == next { return; }
+            if current == old { *current = next.clone(); return; }
+            if let (Some(current), Some(old), Some(next)) = (current.as_object_mut(), old.as_object(), next.as_object()) {
+                for (key, value) in next {
+                    match (old.get(key), current.get_mut(key)) {
+                        (Some(old), Some(current)) => merge(current, old, value),
+                        (None, None) => { current.insert(key.clone(), value.clone()); }
+                        _ => {}
+                    }
+                }
+                for (key, value) in old {
+                    if !next.contains_key(key) && current.get(key) == Some(value) { current.remove(key); }
+                }
+            }
+        }
+        let mut current = serde_json::to_value(latest).expect("Product serializes");
+        let old = serde_json::to_value(base).expect("Product serializes");
+        let next = serde_json::to_value(self).expect("Product serializes");
+        for (field, value) in next.as_object().expect("Product object") {
+            if ["id", "history", "updated_at", "views", "added_at", "listing_history"].contains(&field.as_str()) { continue; }
+            merge(&mut current[field], &old[field], value);
+        }
+        let mut merged: Product = serde_json::from_value(current).expect("Merged product fields retain their types");
+        if merged.removed_at != latest.removed_at {
+            let listed = merged.removed_at.is_none();
+            merged.removed_at = latest.removed_at;
+            merged.set_listed(listed, Utc::now());
+        }
+        if (base.title != latest.title && self.title != latest.title)
+            || (base.description != latest.description && self.description != latest.description)
+            || (base.section != latest.section && self.section != latest.section) {
+            merged.components.clone_from(&latest.components);
+        }
+        merged.record_changes(latest, false);
+        merged
     }
 
     pub fn find_changes(&self, new: &Product, minimal: bool) -> Vec<ProductChange> {
-        const MANAGED_FIELDS: &[&str] = &["history", "updated_at"];
+        const MANAGED_FIELDS: &[&str] = &["history", "updated_at", "listing_history"];
 
         if minimal {
             let mut changes = Vec::new();
@@ -248,6 +314,12 @@ pub struct CachedProductInfo {
     pub timestamp: DateTime<Utc>,
     pub description: String,
     pub images: Vec<String>,
+}
+
+impl CachedProductInfo {
+    pub fn is_fresh(&self) -> bool {
+        Utc::now().signed_duration_since(self.timestamp) < chrono::Duration::days(14)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

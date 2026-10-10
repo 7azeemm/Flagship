@@ -17,6 +17,8 @@ static CACHE: LazyLock<Mutex<HashMap<String, (Instant, Arc<Mutex<Option<Entry>>>
 
 struct Entry {
     revision: u64,
+    created_at: Instant,
+    day: chrono::NaiveDate,
     headers: HeaderMap,
     bytes: Bytes,
 }
@@ -73,7 +75,9 @@ async fn cached_with_revision(request: Request, next: Next, current_revision: fn
     // Requests for the same URL share a single calculation; different URLs run concurrently.
     let mut entry = slot.lock().await;
     let revision = current_revision();
-    if let Some(hit) = entry.as_ref().filter(|hit| hit.revision == revision) {
+    if let Some(hit) = entry.as_ref().filter(|hit| hit.revision == revision
+        && hit.created_at.elapsed() < crate::core::catalog::revision::CACHE_TTL
+        && hit.day == chrono::Utc::now().date_naive()) {
         let mut response = Response::new(Body::from(hit.bytes.clone()));
         *response.headers_mut() = hit.headers.clone();
         response
@@ -82,6 +86,8 @@ async fn cached_with_revision(request: Request, next: Next, current_revision: fn
         return response;
     }
     
+    let calculated_at = Instant::now();
+    let calculated_day = chrono::Utc::now().date_naive();
     let response = next.run(request).await;
     if response.status() != StatusCode::OK
         || response.headers().contains_key(header::SET_COOKIE)
@@ -125,9 +131,11 @@ async fn cached_with_revision(request: Request, next: Next, current_revision: fn
     }
     
     let bytes = Bytes::from(buffered);
-    if revision == current_revision() {
+    if revision == current_revision() && calculated_day == chrono::Utc::now().date_naive() {
         *entry = Some(Entry {
             revision,
+            created_at: calculated_at,
+            day: calculated_day,
             headers: parts.headers.clone(),
             bytes: bytes.clone(),
         });

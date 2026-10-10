@@ -54,10 +54,7 @@ pub(super) async fn variant(Path(id): Path<String>) -> Response {
     let Some(base) = seo::origin() else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let metadata = {
-        let storage = ProductStorage::get_storage().read().await;
-        seo::variant_metadata(&variant, &storage)
-    };
+    let metadata = seo::variant_metadata(&variant, &*ProductStorage::get_storage().read().await);
     let status = if metadata.noindex {
         StatusCode::GONE
     } else {

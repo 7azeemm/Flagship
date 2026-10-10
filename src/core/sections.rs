@@ -21,6 +21,8 @@ use std::sync::{Arc, RwLock};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
 use crate::core::catalog::revision::Revision;
+use crate::core::storage::ProductStorage;
+use crate::core::variant::VariantStorage;
 
 pub static SECTION_PARSERS: LazyLock<RwLock<HashMap<Section, Arc<dyn SectionParser>>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
@@ -146,7 +148,10 @@ impl SectionConfig {
         }
 
         let count = parsers.len();
+        let _update = ProductStorage::lock_updates().await;
+        let storage = ProductStorage::get_storage().write().await;
         *SECTION_PARSERS.write().unwrap() = parsers;
+        VariantStorage::refresh(&storage.products).await;
         Revision::invalidate();
         Ok(count)
     }

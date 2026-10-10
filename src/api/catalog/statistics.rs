@@ -21,6 +21,8 @@ static SUMMARY_CACHE: LazyLock<Mutex<SummaryCache>> = LazyLock::new(|| Mutex::ne
 #[derive(Default)]
 struct SummaryCache {
     revision: u64,
+    created_at: Option<std::time::Instant>,
+    day: Option<chrono::NaiveDate>,
     retailers: Option<HashMap<String, RetailerOverview>>,
     // Only the six validated ranges are admitted; filters and pages reuse these.
     trends: HashMap<String, Vec<CategoryTrend>>,
@@ -313,9 +315,13 @@ pub async fn get_statistics(Query(query): Query<StatisticsQuery>) -> ApiResult<J
             // This synchronous lock runs on the blocking pool. Concurrent cache misses
             // share the expensive global calculation even when request URLs differ.
             let mut cache = SUMMARY_CACHE.lock().unwrap_or_else(|error| error.into_inner());
-            if cache.revision != snapshot.revision {
+            if cache.revision != snapshot.revision
+                || cache.created_at.is_none_or(|at| at.elapsed() >= crate::core::catalog::revision::CACHE_TTL)
+                || cache.day != Some(now.date_naive()) {
                 *cache = SummaryCache {
                     revision: snapshot.revision,
+                    created_at: Some(std::time::Instant::now()),
+                    day: Some(now.date_naive()),
                     ..Default::default()
                 };
             }
@@ -1139,6 +1145,7 @@ fn observation_boundaries(products: &[&Product], range: &str, now: DateTime<Utc>
     };
     for product in products {
         insert(product.added_at);
+        for state in &product.listing_history { insert(state.timestamp); }
         for entry in &product.history {
             if entry.changes.iter().any(|change| change.prices().is_some() || change.statuses().is_some()) {
                 insert(entry.timestamp);
@@ -1192,7 +1199,7 @@ fn sample_offers_with(products: &[&Product], boundaries: &[DateTime<Utc>], inclu
                     status = status_changes[status_change].1;
                     status_change += 1;
                 }
-                if product.added_at <= at {
+                if product.listed_at(at) {
                     prices[step] = (include_unpriced || price > 0).then_some(price);
                     in_stock[step] = status == ProductStatus::InStock && (include_unpriced || price > 0);
                 }

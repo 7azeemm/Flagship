@@ -1,5 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::LazyLock;
+use std::time::Duration;
+
+pub const CACHE_TTL: Duration = Duration::from_secs(30);
 
 static REVISION: LazyLock<Revision> = LazyLock::new(|| Revision(AtomicU64::new(0)));
 

@@ -251,16 +251,22 @@ pub async fn remove(headers: HeaderMap, Path(id): Path<String>) -> ApiResult<Sta
 }
 
 async fn remove_in(pool: &sqlx::PgPool, user: &str, id: &str) -> ApiResult<StatusCode> {
-    let result = sqlx::query("DELETE FROM alerts WHERE id=$1 AND user_id=$2 AND NOT EXISTS(SELECT 1 FROM alert_deliveries WHERE alert_id=alerts.id AND lease_until>$3)")
+    let mut tx = pool.begin().await.map_err(db)?;
+    let alert: Option<String> = sqlx::query_scalar("SELECT id FROM alerts WHERE id=$1 AND user_id=$2 FOR UPDATE")
+        .bind(id).bind(user).fetch_optional(&mut *tx).await.map_err(db)?;
+    if alert.is_none() { return Err(ApiError::NotFound("Alert not found.".into())); }
+    let lease: Option<Option<String>> = sqlx::query_scalar("SELECT lease_until FROM alert_deliveries WHERE alert_id=$1 FOR UPDATE")
+        .bind(id).fetch_optional(&mut *tx).await.map_err(db)?;
+    if lease.flatten().is_some_and(|until| until > Utc::now().to_rfc3339()) {
+        return Err(ApiError::Conflict("This email is currently sending. Try again shortly.".into()));
+    }
+    sqlx::query("DELETE FROM alerts WHERE id=$1 AND user_id=$2")
         .bind(id)
         .bind(user)
-        .bind(Utc::now().to_rfc3339())
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .map_err(db)?;
-    if result.rows_affected() == 0 {
-        return Err(ApiError::Conflict("Alert unavailable or email currently sending. Refresh and try again.".into()));
-    }
+    tx.commit().await.map_err(db)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

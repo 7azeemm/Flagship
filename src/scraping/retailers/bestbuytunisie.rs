@@ -1,6 +1,6 @@
 use crate::core::product::{Product, ProductStatus};
 use crate::core::sections::Section;
-use crate::scraping::retailers::{Retailer, RetailerConfig, RetailerConfigBuilder, parse_price};
+use crate::scraping::retailers::{parse_price, Retailer, RetailerConfig, RetailerConfigBuilder};
 use crate::scraping::tracking::scan_metrics::PageMetrics;
 use crate::scraping::tracking::scan_report::{PageReport, ScrapeError};
 use crate::scraping::tracking::scrape_error::{FetchError, ProductParseError, ScrapeErrorKind};

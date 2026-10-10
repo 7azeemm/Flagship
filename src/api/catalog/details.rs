@@ -8,6 +8,7 @@ use axum_extra::extract::Query;
 use chrono::{DateTime, Datelike, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use crate::core::catalog::deals;
 use crate::core::catalog::deals::DealEvidence;
 
 #[derive(Debug, Deserialize, Default)]
@@ -109,22 +110,15 @@ pub struct ChartSummary {
 pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>) -> ApiResult<([(&'static str, &'static str); 1], Json<ProductDetailsResponse>)> {
     validate_chart_query(&query)?;
 
-    let product = match ProductStorage::find_and_record_view(&id).await {
-        Some(product) => product,
-        None => ProductStorage::get_storage()
-            .read()
-            .await
-            .removed_products
-            .iter()
-            .filter(|product| product.id == id)
-            .max_by_key(|product| product.removed_at)
-            .cloned()
-            .ok_or_else(|| ApiError::NotFound("Product not found".into()))?,
-    };
+    ProductStorage::find_and_record_view(&id).await.map_err(ApiError::DatabaseError)?;
+    let evidence = deals::cached().await;
+    let storage = ProductStorage::get_storage().read().await;
+    let product = storage.products.get(&id).cloned().or_else(|| storage.removed_products.iter()
+        .filter(|product| product.id == id).max_by_key(|product| product.removed_at).cloned())
+        .ok_or_else(|| ApiError::NotFound("Product not found".into()))?;
     let chart = if product.section.config().group.is_empty() {
         None
     } else if let Some(variant) = VariantStorage::find_for_product(&product).await {
-        let storage = ProductStorage::get_storage().read().await;
         Some(build_variant_chart(&variant, &query, &storage.products))
     } else {
         None
@@ -133,8 +127,7 @@ pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>
     Ok((
         [(header::CACHE_CONTROL.as_str(), "no-store")],
         Json(ProductDetailsResponse {
-            deals: crate::core::catalog::deals::cached()
-                .await
+            deals: evidence
                 .get(&id)
                 .map(|signal| HashMap::from([(id.clone(), signal.clone())]))
                 .unwrap_or_default(),
@@ -147,17 +140,17 @@ pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>
 pub async fn get_variant(Path(id): Path<String>, Query(query): Query<ChartQuery>) -> ApiResult<([(&'static str, &'static str); 1], Json<VariantDetailsResponse>)> {
     validate_chart_query(&query)?;
 
-    let variant = VariantStorage::get_variant(&id).await.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
+    let evidence = deals::cached().await;
+    let storage = ProductStorage::get_storage().read().await;
+    let variant = VariantStorage::get_variant(&id).await.map_err(ApiError::DatabaseError)?.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
     if variant.section.config().group.is_empty() {
         return Err(ApiError::InvalidQuery("Charts require a category that supports grouping".into()));
     }
-    let evidence = crate::core::catalog::deals::cached().await;
     let deals = variant
         .product_ids
         .iter()
         .filter_map(|id| evidence.get(id).map(|signal| (id.clone(), signal.clone())))
         .collect();
-    let storage = ProductStorage::get_storage().read().await;
     let mut products = variant.product_ids.iter().filter_map(|id| storage.products.get(id).cloned()).collect::<Vec<_>>();
     products.sort_by(|a, b| a.price.cmp(&b.price).then_with(|| a.id.cmp(&b.id)));
 
@@ -229,8 +222,7 @@ where
         .into_iter()
         .filter_map(|point| point.lowest_price)
         .collect::<Vec<_>>();
-    let ninety_day_average =
-        (!ninety_day_prices.is_empty()).then(|| (ninety_day_prices.iter().map(|price| i64::from(*price)).sum::<i64>() / ninety_day_prices.len() as i64) as i32);
+    let ninety_day_average = (!ninety_day_prices.is_empty()).then(|| (ninety_day_prices.iter().map(|price| i64::from(*price)).sum::<i64>() / ninety_day_prices.len() as i64) as i32);
     let points = aggregate_points(filtered, interval)
         .into_iter()
         .map(|point| {

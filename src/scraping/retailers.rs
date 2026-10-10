@@ -139,7 +139,7 @@ pub trait Retailer: Send + Sync {
 
     async fn scrape_page(&self, base_url: &str, page: i32, section: Section) -> (PageReport, Vec<Product>, Option<i32>) {
         let started_at = std::time::Instant::now();
-        let url = if page == 1 { base_url.to_string() } else { self.format_url(base_url, page) };
+        let url = self.format_url(base_url, page);
         let mut products = Vec::new();
         let mut page_count = None;
         let mut errors = Vec::new();
@@ -164,11 +164,8 @@ pub trait Retailer: Send + Sync {
             metrics.html_bytes += body.len() as u64;
 
             let (parsed_products, parse_errors, page_empty) = self.parse(section, page, body, &mut page_count);
-            errors.extend(parse_errors);
-            if products.len() < parsed_products.len() {
-                products.clear();
-                products.extend(parsed_products);
-            }
+            products = parsed_products;
+            errors = parse_errors;
 
             if !page_empty && products.is_empty() && errors.is_empty() {
                 errors.push(ScrapeErrorKind::FetchFailed(FetchError::EmptyProductPage));
@@ -178,7 +175,6 @@ pub trait Retailer: Send + Sync {
                 break;
             }
 
-            errors.clear();
             sleep(Duration::from_millis(500)).await;
         }
 
@@ -221,6 +217,7 @@ pub trait Retailer: Send + Sync {
     }
 
     fn parse(&self, section: Section, page: i32, body: String, page_count: &mut Option<i32>) -> (Vec<Product>, Vec<ScrapeErrorKind>, bool) {
+        *page_count = None;
         let mut errors = Vec::new();
         let doc = Html::parse_document(&body);
 
@@ -325,9 +322,10 @@ pub trait Retailer: Send + Sync {
     }
 
     async fn fetch_product_page(&self, product: &mut Product, metrics: &mut PageMetrics) -> Result<(), ProductFetchError> {
-        if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(&product.url) {
-            product.description = cached.description.clone();
-            product.images = cached.images.clone();
+        if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(&product.url)
+            .filter(|cached| cached.is_fresh() && (!cached.description.is_empty() || !cached.images.is_empty())) {
+            if !cached.description.is_empty() { product.description = cached.description.clone(); }
+            if !cached.images.is_empty() { product.images = cached.images.clone(); }
             metrics.cache_hits += 1;
             return Ok(());
         }
@@ -381,14 +379,16 @@ pub trait Retailer: Send + Sync {
                 product.images = images.clone();
             }
 
-            CACHED_PRODUCT_INFO.write().await.insert(
-                product.url.clone(),
-                CachedProductInfo {
-                    timestamp: Utc::now(),
-                    description,
-                    images,
-                },
-            );
+            if !description.is_empty() || !images.is_empty() {
+                CACHED_PRODUCT_INFO.write().await.insert(
+                    product.url.clone(),
+                    CachedProductInfo {
+                        timestamp: Utc::now(),
+                        description,
+                        images,
+                    },
+                );
+            }
 
             return Ok(());
         }
@@ -409,6 +409,7 @@ pub trait Retailer: Send + Sync {
     }
 
     fn format_url(&self, url: &str, page: i32) -> String {
+        if page == 1 { return url.to_string(); }
         format!("{url}?page={page}")
     }
 }
@@ -463,16 +464,16 @@ pub fn parse_price(text: &str) -> Result<i32, ProductParseError> {
             // "1.369,000" -> 1369
             text.replace('.', "").split(',').next().unwrap_or(&text).to_string()
         }
-    } else if let Some((whole, _)) = text.split_once(',') {
-        if whole.len() == 1 {
+    } else if let Some((whole, fraction)) = text.split_once(',') {
+        if whole.len() <= 3 && fraction.len() == 3 && fraction != "000" {
             // "1,369" -> 1369
             text.replace(',', "")
         } else {
             // "1369,000" -> 1369
             whole.to_string()
         }
-    } else if let Some((whole, _)) = text.split_once('.') {
-        if whole.len() == 1 {
+    } else if let Some((whole, fraction)) = text.split_once('.') {
+        if whole.len() <= 3 && fraction.len() == 3 && fraction != "000" {
             // "1.465" -> 1465
             text.replace('.', "")
         } else {

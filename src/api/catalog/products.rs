@@ -195,7 +195,6 @@ pub struct CatalogQueryParams {
 
 pub async fn get_products(Path(section): Path<String>, Query(mut params): Query<CatalogQueryParams>) -> ApiResult<Json<CatalogPageResponse>> {
     let section = Section::parse(&section).map_err(InvalidQuery)?;
-    let config = section.config();
     validate_query(&params)?;
     params.search = params.search.map(|search| search.to_lowercase());
     if params.availability_statuses.is_empty() && params.availability.as_deref() != Some("all") {
@@ -211,11 +210,12 @@ pub async fn get_products(Path(section): Path<String>, Query(mut params): Query<
         .unwrap_or_default();
 
     let deal_evidence = if params.sort.as_deref() == Some("best_deals") {
-        Some(crate::core::catalog::deals::cached().await)
+        Some(deals::cached().await)
     } else {
         None
     };
     let storage = ProductStorage::get_storage().read().await;
+    let config = section.config();
     let mut products: Vec<&Product> = storage.products.values().filter(|product| product.section == section).collect();
 
     let stable_bounds = price_bounds(&products);
@@ -241,7 +241,6 @@ pub async fn get_products(Path(section): Path<String>, Query(mut params): Query<
     let total_products = products.len();
     // Copy only the fields returned by catalog cards, without histories or descriptions.
     let products = products.into_iter().map(ProductSummary::from_product).collect::<Vec<_>>();
-    drop(storage);
     let grouping_mode = params.grouping_mode.unwrap_or(config.group_by_default);
     let mut items = if grouping_mode && !config.group.is_empty() {
         if params.group_by.iter().any(|key| !config.group.iter().any(|field| &field.key == key)) {
@@ -262,6 +261,7 @@ pub async fn get_products(Path(section): Path<String>, Query(mut params): Query<
         products.into_iter().map(CatalogItem::Product).collect()
     };
 
+    drop(storage);
     items.sort_by(|a, b| {
         if params.sort.as_deref() == Some("newest") {
             return a.newest_first(b);

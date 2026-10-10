@@ -25,14 +25,10 @@ const base = {
   components: { CPU: 'Original CPU', Memory: '16 GB' }, notes: [], approved: false, views: 0,
   history: [], added_at: '2026-01-01T00:00:00Z', updated_at: null, removed_at: null,
 };
-let normalized = false;
 const details = product => Object.fromEntries(Object.entries(product).filter(([key]) => !["id","url","section","retailer","price","status","title","description","image","components"].includes(key)));
-const insertProduct = product => normalized ? client.query(
+const insertProduct = product => client.query(
   "INSERT INTO products(id,url,section,retailer,price,status,title,description,image,components,details) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
   [product.id,product.url,product.section,product.retailer,product.price,product.status,product.title,product.description,product.image,product.components,details(product)],
-) : client.query(
-  'INSERT INTO products(id,url,section,retailer,price,status,payload) VALUES($1,$2,$3,$4,$5,$6,$7)',
-  [product.id, product.url, product.section, product.retailer, product.price, product.status, JSON.stringify(product)],
 );
 const count = async () => (await client.query('SELECT count(*)::int AS count FROM product_overrides')).rows[0].count;
 const migrationFiles = readdirSync(join(root, 'migrations')).filter(name => /^\d+_.+\.sql$/.test(name)).sort();
@@ -58,49 +54,20 @@ try {
     const sql = readFileSync(join(root, 'migrations', filename), 'utf8')
       .replaceAll('SET search_path=public,pg_temp', `SET search_path="${schema}",pg_temp`);
     await client.query(sql);
-    if (filename.startsWith('0006_')) normalized = true;
-    if (filename.startsWith('0001_')) {
-      await insertProduct(base);
-      await client.query("INSERT INTO users(id,email,created_at,updated_at) VALUES('fixture-user','schema-fixture@example.invalid','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')");
-      await client.query("INSERT INTO alerts(id,user_id,rule,state,cursor,created_at,expires_at) VALUES('live-watch','fixture-user',$1,'pending',1,'2026-01-01T00:00:00Z','2999-01-01T00:00:00Z'),('closed-watch','fixture-user',$1,'delivered',3,'2026-01-01T00:00:00Z','2999-01-01T00:00:00Z')",[JSON.stringify({target:{mode:'product',product_id:base.id},target_price:50,restock:false,recurring_low:true,retailers:[],statuses:['InStock']})]);
-      for(let sequence=1;sequence<=3;sequence++) await client.query('INSERT INTO alert_events(event_key,section,product_id,observed_at,payload) VALUES($1,$2,$3,$4,$5)',['event-'+sequence,'GPU',base.id,'2026-01-01T00:00:00Z',JSON.stringify({product:base,previous:null})]);
-      await client.query("INSERT INTO alert_deliveries(alert_id,payload,next_attempt_at,lease_token,lease_until,sent_at) VALUES('live-watch',$1,'2026-01-01T00:00:00Z','sending','2999-01-01T00:00:00Z',NULL),('closed-watch',$1,'2026-01-01T00:00:00Z',NULL,NULL,'2026-01-01T00:00:00Z')",[JSON.stringify([base])]);
-      await client.query("INSERT INTO pending_registrations(id,email,password_hash,expires_at) VALUES('pending','pending@example.invalid','fixture-hash','2999-01-01T00:00:00Z')");
-      await client.query("INSERT INTO registration_tokens(token_hash,registration_id) VALUES('registration-token','pending'),('resend-token','pending')");
-      await client.query("INSERT INTO email_tokens(id,user_id,purpose,token_hash,expires_at,created_at) VALUES('reset-token','fixture-user','reset_password','reset-hash','2999-01-01T00:00:00Z','2026-01-01T00:00:00Z')");
-      await client.query("INSERT INTO feature_hype(feature_id,user_id) VALUES('pc-builder','fixture-user')");
-      await client.query("INSERT INTO guest_feature_hype(feature_id,browser_hash) VALUES('pc-builder','browser'),('marketplace','browser')");
-      await client.query('INSERT INTO product_info_cache(url,expires_at,payload) VALUES($1,$2,$3)', [fixtureUrl,'2999-01-01T00:00:00Z',JSON.stringify({timestamp:'2026-01-01T00:00:00Z',description:'Cached text',images:['https://fixture.invalid/image']})]);
-      await client.query('INSERT INTO variants(id,payload) VALUES($1,$2)', ['variant',JSON.stringify({id:'variant',section:'GPU',fields:{},representative_product_id:null,product_ids:[],current_snapshot:{timestamp:'2026-01-01T00:00:00Z',lowest_price:null,lowest_price_product_id:null,offer_count:0,in_stock_count:0,retailer_count:0},history:[],views:0,active:false,created_at:'2026-01-01T00:00:00Z',updated_at:'2026-01-01T00:00:00Z',last_seen_at:'2026-01-01T00:00:00Z',lowest_price_updated_at:null})]);
-      await client.query('INSERT INTO scrape_errors(key,retailer,active,reviewed,last_seen,payload) VALUES($1,$2,true,false,$3,$4)', ['error','fixture','2026-01-01T00:00:00Z',JSON.stringify({key:'error',retailer:'fixture',active:true,reviewed:false,reviewed_at:null,last_seen:'2026-01-01T00:00:00Z',message:'Fixture failure'})]);
-      await client.query("INSERT INTO scrape_error_reviews(error_key,reviewed,note) VALUES('error',true,'Reviewed fixture')");
-      await client.query('INSERT INTO product_curation(product_id,title) VALUES($1,$2)', [base.id, 'Curated title']);
-      await client.query('INSERT INTO app_state(key,payload) VALUES($1,$2)', ['product_overrides', JSON.stringify({
-        [fixtureUrl]: [{ timestamp: legacyTimestamp, changes: [{ field: 'title', old_value: 'Raw title', new_value: 'Legacy title' }] }],
-      })]);
-    }
   }
-  assert.deepEqual((await client.query('SELECT sequence::int AS sequence FROM alert_events ORDER BY sequence')).rows,[{sequence:2},{sequence:3}],'Migration must retain unprocessed observations');
-  assert.equal((await client.query('SELECT alert_event_cursor()::int AS cursor')).rows[0].cursor,3,'Cleanup watermark must persist');
-  assert.deepEqual((await client.query('SELECT alert_id,lease_token FROM alert_deliveries')).rows,[{alert_id:'live-watch',lease_token:'sending'}],'Pending mail and sending leases must survive migration');
-  for(const table of ['app_state','retailers','oauth_attempts']) assert.equal((await client.query('SELECT to_regclass($1) AS name',[table])).rows[0].name,null);
-  assert.equal(await count(), 2, 'Both legacy systems must migrate');
-  assert.equal((await client.query('SELECT count(*)::int AS count FROM account_tokens')).rows[0].count,3,'All previously delivered token links must survive');
-  assert.equal((await client.query('SELECT count(*)::int AS count FROM feature_votes')).rows[0].count,3,'Guest and account votes must survive');
+  await insertProduct({...base,title:'Curated title'});
+  await client.query("INSERT INTO users(id,email,created_at,updated_at) VALUES('fixture-user','schema-fixture@example.invalid','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')");
+  await client.query('INSERT INTO product_overrides(product_url,timestamp,changes,source) VALUES($1,$2,$3,$4),($1,$5,$6,$7)',[
+    fixtureUrl,legacyTimestamp,JSON.stringify([{field:'title',old_value:'Raw title',new_value:'Legacy title'}]),'fixture',
+    '2025-02-01T00:00:00Z',JSON.stringify([{field:'title',old_value:'Legacy title',new_value:'Curated title'}]),'fixture-curation',
+  ]);
+  await client.query("INSERT INTO scrape_errors(key,retailer,active,reviewed,last_seen,payload,review_note) VALUES('error','fixture',true,true,'2026-01-01T00:00:00Z','{}','Reviewed fixture')");
   await assert.rejects(client.query("INSERT INTO feature_votes(feature_id,user_id,browser_hash) VALUES('pc-builder','fixture-user','invalid')"), /check constraint/);
   await assert.rejects(client.query("INSERT INTO account_tokens(id,user_id,purpose,token_hash,expires_at) VALUES('bad','fixture-user','verify_registration','bad','2999-01-01')"), /check constraint/);
-  assert.equal((await client.query('SELECT review_note FROM scrape_errors')).rows[0].review_note,'Reviewed fixture');
-  assert.equal((await client.query('SELECT reviewed FROM scrape_errors')).rows[0].reviewed,true);
-  assert.equal((await client.query("SELECT payload ? 'reviewed' AS duplicated FROM scrape_errors")).rows[0].duplicated,false);
-  assert.equal((await client.query("SELECT payload ? 'id' AS duplicated FROM variants")).rows[0].duplicated,false);
-  const cached=(await client.query('SELECT description,images FROM product_info_cache')).rows[0];
-  assert.deepEqual(cached,{description:'Cached text',images:['https://fixture.invalid/image']});
-  assert.equal((await client.query('SELECT product_document(products)::text AS payload FROM products')).rows[0].payload.includes('Curated title'),true);
   await assert.rejects(client.query("UPDATE products SET details=details||'{\"title\":\"duplicate\"}'::jsonb"), /check constraint/);
-  assert.equal((await client.query("SELECT timestamp FROM product_overrides WHERE source='legacy'")).rows[0].timestamp, legacyTimestamp);
-  assert.equal((await client.query("SELECT to_regclass('app_state') AS name")).rows[0].name, null);
-  assert.equal((await client.query("SELECT to_regclass('product_curation') AS name")).rows[0].name, null);
-  assert.equal((await client.query('SELECT title FROM products')).rows[0].title, 'Curated title');
+  for (const table of ['app_state','retailers','oauth_attempts','product_curation','email_tokens','registration_tokens','feature_hype'])
+    assert.equal((await client.query('SELECT to_regclass($1) AS name',[table])).rows[0].name,null);
+  assert.equal(await count(),2);
   await client.query(`GRANT USAGE ON SCHEMA "${schema}" TO flagship_directus`);
   await client.query(`GRANT SELECT,INSERT,UPDATE,DELETE,REFERENCES ON ALL TABLES IN SCHEMA "${schema}" TO flagship_directus`);
   await client.query(`GRANT USAGE,SELECT,UPDATE ON ALL SEQUENCES IN SCHEMA "${schema}" TO flagship_directus`);
@@ -199,8 +166,8 @@ try {
     assert.deepEqual((await client.query('SELECT id,product_document(products)::text AS payload FROM products ORDER BY id')).rows, corrected, 'An invalid edit must roll back the entire replay');
   }
   console.log(process.argv.includes('--skip-cli')
-    ? 'Override database checks passed: legacy migration, Directus and Discord capture, atomic history, and catalog reset. CLI checks skipped.'
-    : 'Override smoke passed: legacy migration, Directus and Discord capture, atomic history, catalog reset, fresh IDs, nested deltas, idempotent replay, and invalid-edit rollback.');
+    ? 'Override database checks passed: fresh schema, Directus and Discord capture, atomic history, and catalog reset. CLI checks skipped.'
+    : 'Override smoke passed: fresh schema, Directus and Discord capture, atomic history, catalog reset, fresh IDs, nested deltas, idempotent replay, and invalid-edit rollback.');
 } finally {
   if (directusConnected) await directus.end();
   if (created) {

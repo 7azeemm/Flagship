@@ -16,6 +16,12 @@ or choose **Everything**. The launcher waits for the backend to finish compiling
 and pass its readiness check before starting the live website and Directus.
 Local launches override `TRUSTED_PROXY_IPS` to empty because Vite and readiness
 checks connect without an HTTPS reverse proxy; your production `.env` is unchanged.
+To recreate the local database, stop Flagship and Directus, then run `start.bat reset`
+or choose **Reset database** in the menu. It requires typing `RESET flagship` and
+deletes all database data, including accounts, catalog, alerts, overrides, and Directus
+configuration. Database roles/passwords and files on disk remain. Setup runs afterward.
+The release uses one fresh-schema migration; databases from the previous development
+migration series require a backup and reset before starting this version.
 The local launcher disables scanning and Discord unless `ENABLE_SCANNING=true`. Direct `cargo run` enables collection by default.
 Directus exposes every database table with full read/write access to the configured
 administrator and Catalog editor role. Roadmap definitions live in
@@ -119,7 +125,7 @@ cargo run --locked
 
 The Cargo package and project are named **Flagship**. Run commands from the repository root so relative configuration and data paths resolve correctly.
 
-Set `DATABASE_URL` to your PostgreSQL connection URL. The schema is defined by the ordered files in `migrations/`. It runs automatically at startup, or independently with `cargo run --locked -- --migrate-only`. See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for native setup, Directus configuration, and testing. SQLite files are no longer used.
+Set `DATABASE_URL` to your PostgreSQL connection URL. The schema is defined by `migrations/0001_schema.sql`, which creates the final tables directly without legacy conversion steps. It runs automatically at startup, or independently with `cargo run --locked -- --migrate-only`. See [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) for native setup, Directus configuration, and testing. SQLite files are no longer used.
 
 The server binds to `127.0.0.1:3000`. The website makes same-origin API requests, and permissive CORS is disabled. For deployment, use an HTTPS reverse proxy. The backend checks below cover formatting, linting, API requests, and database regressions.
 

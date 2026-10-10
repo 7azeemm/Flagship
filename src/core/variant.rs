@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
+use sha2::{Digest, Sha256};
 
 static VARIANT_STORAGE: LazyLock<RwLock<VariantStorage>> = LazyLock::new(|| RwLock::new(VariantStorage::default()));
 
@@ -40,7 +41,7 @@ pub struct Variant {
     pub lowest_price_updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VariantStorage {
     variants: HashMap<String, Variant>,
 }
@@ -54,32 +55,59 @@ pub struct VariantCatalogRecord {
 
 impl VariantStorage {
     pub async fn load() -> Result<(), String> {
-        let mut storage = Database::load_variants::<VariantStorage>().await?;
-        storage.synchronize(&ProductStorage::get_storage().read().await.products, false);
+        let _update = ProductStorage::lock_updates().await;
+        let (mut tx, products) = Database::begin_catalog_update(Database::pool()).await?;
+        let mut storage = Database::load_variants_in::<VariantStorage>(&mut tx).await?;
+        storage.synchronize(&products.products, false);
+        storage.persist_in(&mut tx).await?;
+        tx.commit().await.map_err(|e| e.to_string())?;
         tracing::info!(variants = storage.variants.len(), "Loaded variant storage");
-        *VARIANT_STORAGE.write().await = storage;
+        ProductStorage::publish_staged(products, storage).await;
         Ok(())
     }
 
-    pub async fn refresh_and_save(products: &HashMap<String, Product>, record_history: bool) {
-        VARIANT_STORAGE.write().await.synchronize(products, record_history);
-        if record_history {
-            Self::save().await;
-        }
+    pub async fn refresh(products: &HashMap<String, Product>) {
+        VARIANT_STORAGE.write().await.synchronize(products, false);
     }
 
-    pub(crate) async fn save() {
+    pub async fn save() -> Result<(), String> {
         let storage = VARIANT_STORAGE.read().await;
-        if let Err(error) = Database::save_variants(storage.variants.iter()).await {
-            tracing::error!(%error, "Failed to save variant storage");
-        }
+        let mut tx = Database::pool().begin().await.map_err(|e| e.to_string())?;
+        Database::lock_catalog(&mut tx).await.map_err(|e| e.to_string())?;
+        storage.persist_in(&mut tx).await?;
+        tx.commit().await.map_err(|e| e.to_string())
     }
 
-    pub async fn get_variant(id: &str) -> Option<Variant> {
+    pub(crate) async fn stage(products: &HashMap<String, Product>) -> Self {
+        let mut next = VARIANT_STORAGE.read().await.clone();
+        next.synchronize(products, true);
+        next
+    }
+
+    pub(crate) async fn persist_in(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), String> {
+        Database::save_variants_in(tx, self.variants.iter()).await
+    }
+
+    pub(crate) async fn publish(mut next: Self) {
+        let mut current = VARIANT_STORAGE.write().await;
+        for (id, variant) in &mut next.variants {
+            if let Some(previous) = current.variants.get(id) {
+                variant.views = variant.views.max(previous.views);
+            }
+        }
+        *current = next;
+    }
+
+    pub async fn get_variant(id: &str) -> Result<Option<Variant>, String> {
+        let Some(mut variant) = Self::find_by_id(id).await else { return Ok(None) };
+        let views = Database::record_variant_view(&variant).await?;
         let mut storage = VARIANT_STORAGE.write().await;
-        let variant = storage.variants.get_mut(id)?;
-        variant.views = variant.views.saturating_add(1);
-        Some(variant.clone())
+        if let Some(current) = storage.variants.get_mut(&variant.id) {
+            current.views = current.views.max(views);
+            variant = current.clone();
+        }
+        variant.views = variant.views.max(views);
+        Ok(Some(variant))
     }
 
     pub async fn default_deal_variants() -> Vec<Variant> {
@@ -134,7 +162,8 @@ impl VariantStorage {
                 variant.id.clone(),
                 VariantCatalogRecord {
                     id: variant.id.clone(),
-                    title: variant.id.split_once(" | ").map_or_else(|| variant.id.clone(), |(_, title)| title.to_string()),
+                    title: variant.section.config().group.iter()
+                        .filter_map(|field| variant.fields.get(&field.key).cloned()).collect::<Vec<_>>().join(" | "),
                     section: variant.section,
                 },
             );
@@ -208,12 +237,16 @@ fn grouping_combinations(section: Section) -> Vec<Vec<String>> {
 }
 
 fn variant_id(product: &Product, field_keys: &[String]) -> Option<String> {
-    let values = field_keys.iter().map(|field| component_value(product, field)).collect::<Option<Vec<_>>>()?;
-    Some(section_variant_id(product.section, &values))
+    let fields = field_keys.iter().map(|field| component_value(product, field).map(|value| (field.as_str(), value))).collect::<Option<Vec<_>>>()?;
+    Some(section_variant_id(product.section, &fields))
 }
 
-pub fn section_variant_id(section: Section, values: &[&str]) -> String {
-    format!("{} | {}", section, values.join(" | "))
+pub fn section_variant_id(section: Section, fields: &[(&str, &str)]) -> String {
+    let mut fields = fields.to_vec();
+    fields.sort_unstable();
+    let hash = Sha256::digest(serde_json::to_vec(&fields).expect("Variant fields serialize"));
+    let hash = hash.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+    format!("{section}:{hash}")
 }
 
 fn variant_fields(product: &Product, field_keys: &[String]) -> Option<HashMap<String, String>> {
@@ -279,15 +312,6 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
     let lowest_price = lowest.map(|product| product.price);
     if variant.current_snapshot.lowest_price != lowest_price {
         variant.lowest_price_updated_at = Some(now);
-    } else if variant.lowest_price_updated_at.is_none() {
-        // Recover the date for variants saved before this field was maintained.
-        let mut previous = None;
-        for snapshot in &variant.history {
-            if snapshot.lowest_price != previous {
-                variant.lowest_price_updated_at = Some(snapshot.timestamp);
-                previous = snapshot.lowest_price;
-            }
-        }
     }
     variant.current_snapshot = VariantSnapshot {
         retailer_prices: Some(retailer_prices),

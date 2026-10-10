@@ -13,6 +13,8 @@ static DEAL_CACHE: LazyLock<Mutex<Option<CachedDeals>>> = LazyLock::new(|| Mutex
 // Single-flight calculation, shared by every consumer; scans invalidate immediately.
 struct CachedDeals {
     revision: u64,
+    created_at: std::time::Instant,
+    day: chrono::NaiveDate,
     evidence: Arc<HashMap<String, DealEvidence>>,
 }
 
@@ -150,9 +152,19 @@ fn listing_history(product: &Product) -> Vec<(DateTime<Utc>, Option<i32>)> {
         .collect::<Vec<_>>();
     changes.sort_by_key(|v| v.0);
     let initial = changes.first().map_or(product.price, |v| v.1);
-    std::iter::once((product.added_at, Some(initial)))
-        .chain(changes.into_iter().map(|(at, _, price)| (at, Some(price))))
-        .collect()
+    let mut boundaries = std::collections::BTreeSet::from([product.added_at]);
+    boundaries.extend(changes.iter().map(|(at, _, _)| *at));
+    boundaries.extend(product.listing_history.iter().map(|state| state.timestamp));
+    if let Some(removed) = product.removed_at { boundaries.insert(removed); }
+    let mut price = initial;
+    let mut index = 0;
+    boundaries.into_iter().map(|at| {
+        while index < changes.len() && changes[index].0 <= at {
+            price = changes[index].2;
+            index += 1;
+        }
+        (at, product.listed_at(at).then_some(price))
+    }).collect()
 }
 
 fn history_evidence(points: &[(DateTime<Utc>, Option<i32>)], current: i32, now: DateTime<Utc>) -> DealEvidence {
@@ -224,7 +236,9 @@ fn history_evidence(points: &[(DateTime<Utc>, Option<i32>)], current: i32, now: 
 pub async fn cached() -> Arc<HashMap<String, DealEvidence>> {
     let mut cache = DEAL_CACHE.lock().await;
     let revision = Revision::current();
-    if let Some(cached) = cache.as_ref() && cached.revision == revision {
+    if let Some(cached) = cache.as_ref() && cached.revision == revision
+        && cached.created_at.elapsed() < crate::core::catalog::revision::CACHE_TTL
+        && cached.day == Utc::now().date_naive() {
         return cached.evidence.clone();
     }
     let storage = crate::core::storage::ProductStorage::get_storage().read().await;
@@ -232,6 +246,8 @@ pub async fn cached() -> Arc<HashMap<String, DealEvidence>> {
     let value = Arc::new(assess(&storage.products.values().collect::<Vec<_>>(), &variants, Utc::now()));
     *cache = Some(CachedDeals {
         revision,
+        created_at: std::time::Instant::now(),
+        day: Utc::now().date_naive(),
         evidence: value.clone(),
     });
     value

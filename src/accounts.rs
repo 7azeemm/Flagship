@@ -296,14 +296,13 @@ pub async fn verify_email(Json(body): Json<TokenBody>) -> ApiResult<Json<Value>>
         return Err(ApiError::InvalidQuery(INVALID_LINK.into()));
     }
     let mut tx = Database::pool().begin().await.map_err(db_error)?;
-    // DELETE first takes the write lock: concurrent uses cannot create two accounts.
-    let registration: Option<String> =
-        sqlx::query_scalar("DELETE FROM account_tokens WHERE token_hash=$1 AND purpose='verify_registration' AND expires_at>now() RETURNING registration_id")
+    let registration: Option<(String, String)> =
+        sqlx::query_as("SELECT t.registration_id,p.email FROM account_tokens t JOIN pending_registrations p ON p.id=t.registration_id WHERE t.token_hash=$1 AND t.purpose='verify_registration' AND t.expires_at>now()")
             .bind(hash_token(&body.token))
             .fetch_optional(&mut *tx)
             .await
             .map_err(db_error)?;
-    let Some(registration) = registration else {
+    let Some((registration, email)) = registration else {
         // Honor verification links issued before pending signups were introduced.
         let user_id = consume_token(&mut tx, &body.token, "verify_email").await?;
         sqlx::query("UPDATE users SET email_verified_at=COALESCE(email_verified_at,$1),updated_at=$2 WHERE id=$3")
@@ -327,6 +326,16 @@ pub async fn verify_email(Json(body): Json<TokenBody>) -> ApiResult<Json<Value>>
         tx.commit().await.map_err(db_error)?;
         return Ok(Json(json!({"verified": true})));
     };
+    // All creation paths serialize by email, then lock the registration before
+    // any sibling token. Its cascading delete must follow the same lock order.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("email:{email}")).execute(&mut *tx).await.map_err(db_error)?;
+    let pending: Option<String> = sqlx::query_scalar("SELECT id FROM pending_registrations WHERE id=$1 FOR UPDATE")
+        .bind(&registration).fetch_optional(&mut *tx).await.map_err(db_error)?;
+    if pending.is_none() { return Err(invalid_token()); }
+    let consumed = sqlx::query("DELETE FROM account_tokens WHERE token_hash=$1 AND registration_id=$2 AND purpose='verify_registration' AND expires_at>now()")
+        .bind(hash_token(&body.token)).bind(&registration).execute(&mut *tx).await.map_err(db_error)?;
+    if consumed.rows_affected() != 1 { return Err(invalid_token()); }
     let now = Utc::now().to_rfc3339();
     let pending: Option<(String, String)> = sqlx::query_as("DELETE FROM pending_registrations WHERE id=$1 AND expires_at>$2 RETURNING email,password_hash")
         .bind(registration)
@@ -412,28 +421,26 @@ pub async fn forgot_password(ConnectInfo(addr): ConnectInfo<SocketAddr>, Json(bo
         if rate_limit(&format!("forgot-email:{}", hash_token(&email)), 3, 60 * 60).is_err() {
             return Ok(Json(payload));
         }
-        if let Some(user_id) = sqlx::query_scalar::<_, String>("SELECT id FROM users WHERE email = $1")
-            .bind(&email)
-            .fetch_optional(Database::pool())
-            .await
-            .map_err(db_error)?
-        {
-            let token = create_email_token(&user_id, "reset_password", Duration::minutes(30)).await?;
-            // Recovery responses stay identical even when delivery fails, so account existence is not disclosed.
-            if deliver_account_email(&email, "Reset your Flagship password", "/reset-password", &token).await.is_err() {
-                sqlx::query("DELETE FROM account_tokens WHERE token_hash=$1")
-                    .bind(hash_token(&token))
-                    .execute(Database::pool())
-                    .await
-                    .map_err(db_error)?;
-            }
-        }
+        // Always execute the same statement; never wait for SMTP in this response.
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO account_notifications(id,user_id,kind,created_at,next_attempt_at) SELECT $1,id,'password_reset',$2,$2 FROM users WHERE email=$3")
+            .bind(Uuid::new_v4().to_string()).bind(now).bind(&email)
+            .execute(Database::pool()).await.map_err(db_error)?;
     }
     Ok(Json(payload))
 }
 
-pub async fn reset_password(Json(body): Json<ResetBody>) -> ApiResult<Json<Value>> {
+pub async fn reset_password(ConnectInfo(addr): ConnectInfo<SocketAddr>, Json(body): Json<ResetBody>) -> ApiResult<Json<Value>> {
+    rate_limit(&format!("reset:{}", addr.ip()), 5, 15 * 60)?;
     validate_password(&body.password)?;
+    if !(32..=256).contains(&body.token.len()) {
+        return Err(invalid_token());
+    }
+    let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM account_tokens WHERE token_hash=$1 AND purpose='reset_password' AND used_at IS NULL AND expires_at>now())")
+        .bind(hash_token(&body.token)).fetch_one(Database::pool()).await.map_err(db_error)?;
+    if !valid {
+        return Err(invalid_token());
+    }
     let hash = hash_password(body.password).await?;
     let mut transaction = Database::pool().begin().await.map_err(db_error)?;
     let user_id = consume_token(&mut transaction, &body.token, "reset_password").await?;
@@ -455,6 +462,8 @@ pub async fn reset_password(Json(body): Json<ResetBody>) -> ApiResult<Json<Value
         .execute(&mut *transaction)
         .await
         .map_err(db_error)?;
+    sqlx::query("DELETE FROM account_notifications WHERE user_id=$1 AND kind='password_reset'")
+        .bind(&user_id).execute(&mut *transaction).await.map_err(db_error)?;
     queue_notification(&mut transaction, &user_id, "password_changed").await?;
     transaction.commit().await.map_err(db_error)?;
     Ok(Json(json!({"message": "Password reset. Sign in with your new password."})))
@@ -498,6 +507,8 @@ pub async fn change_password(headers: HeaderMap, Json(body): Json<ChangePassword
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
+    sqlx::query("DELETE FROM account_notifications WHERE user_id=$1 AND kind='password_reset'")
+        .bind(&auth.user_id).execute(&mut *tx).await.map_err(db_error)?;
     queue_notification(&mut tx, &auth.user_id, "password_changed").await?;
     let (raw, csrf) = create_session_in(&mut tx, &auth.user_id, &headers).await?;
     tx.commit().await.map_err(db_error)?;
@@ -552,12 +563,12 @@ pub async fn cleanup_expired() -> ApiResult<()> {
         .execute(Database::pool())
         .await
         .map_err(db_error)?;
-    sqlx::query("DELETE FROM account_tokens WHERE expires_at <= $1::text::timestamptz OR used_at IS NOT NULL")
+    sqlx::query("DELETE FROM pending_registrations WHERE expires_at <= $1")
         .bind(&now)
         .execute(Database::pool())
         .await
         .map_err(db_error)?;
-    sqlx::query("DELETE FROM pending_registrations WHERE expires_at <= $1")
+    sqlx::query("DELETE FROM account_tokens WHERE expires_at <= $1::text::timestamptz OR used_at IS NOT NULL")
         .bind(&now)
         .execute(Database::pool())
         .await
@@ -643,22 +654,29 @@ async fn create_session_in(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, user_
     Ok((raw, csrf))
 }
 
-async fn create_email_token(user_id: &str, purpose: &str, lifetime: Duration) -> ApiResult<String> {
+async fn create_recovery_token(user_id: &str, job: &str, lease: &str, expires_at: chrono::DateTime<Utc>) -> ApiResult<Option<String>> {
     let raw = random_token();
     let now = Utc::now();
-    // Previously delivered links remain valid until expiry or successful use.
-    // Reset completion atomically invalidates all sibling tokens.
-    sqlx::query("INSERT INTO account_tokens (id,user_id,purpose,token_hash,expires_at,created_at) VALUES ($1,$2,$3,$4,$5::text::timestamptz,$6::text::timestamptz)")
+    let mut tx = Database::pool().begin().await.map_err(db_error)?;
+    let user: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE id=$1 FOR UPDATE")
+        .bind(user_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+    if user.is_none() || expires_at <= now {
+        return Ok(None);
+    }
+    // A reset/change removes queued recovery jobs under this same user lock.
+    // Recheck the lease so an already claimed job cannot issue a fresh link afterward.
+    let inserted = sqlx::query("INSERT INTO account_tokens (id,user_id,purpose,token_hash,expires_at,created_at) SELECT $1,$2,'reset_password',$3,$4,$5 WHERE EXISTS(SELECT 1 FROM account_notifications WHERE id=$6 AND user_id=$2 AND kind='password_reset' AND lease_token=$7)")
         .bind(Uuid::new_v4().to_string())
         .bind(user_id)
-        .bind(purpose)
         .bind(hash_token(&raw))
-        .bind((now + lifetime).to_rfc3339())
-        .bind(now.to_rfc3339())
-        .execute(Database::pool())
+        .bind(expires_at)
+        .bind(now)
+        .bind(job).bind(lease)
+        .execute(&mut *tx)
         .await
         .map_err(db_error)?;
-    Ok(raw)
+    tx.commit().await.map_err(db_error)?;
+    Ok((inserted.rows_affected() == 1).then_some(raw))
 }
 
 async fn consume_token(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, raw: &str, purpose: &str) -> ApiResult<String> {

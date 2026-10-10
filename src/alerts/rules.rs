@@ -52,6 +52,7 @@ pub fn offer_snapshot(product: &Product) -> Product {
         notes: Vec::new(),
         images: Vec::new(),
         image: String::new(),
+        listing_history: product.listing_history.clone(),
     }
 }
 
@@ -205,15 +206,16 @@ impl AlertRule {
         let AlertTarget::Variant { section, criteria } = &self.target else {
             return Vec::new();
         };
-        let mut combinations: Vec<Vec<&str>> = vec![Vec::new()];
-        for key in field_keys(*section) {
-            if let Some(values) = criteria.get(&key) {
+        let mut combinations: Vec<Vec<(&str, &str)>> = vec![Vec::new()];
+        let keys = field_keys(*section);
+        for key in &keys {
+            if let Some(values) = criteria.get(key) {
                 combinations = combinations
                     .iter()
                     .flat_map(|prefix| {
                         values.iter().map(move |value| {
                             let mut next = prefix.clone();
-                            next.push(value.as_str());
+                            next.push((key.as_str(), value.as_str()));
                             next
                         })
                     })
