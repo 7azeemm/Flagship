@@ -1,0 +1,26 @@
+[Unit]
+Description=Flagship Directus staff editor
+After=network.target postgresql.service
+Wants=postgresql.service
+PartOf=flagship.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hazem
+Group=hazem
+WorkingDirectory=/opt/flagship
+ExecStart=/usr/bin/node /opt/flagship/deploy/local.mjs production-directus
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

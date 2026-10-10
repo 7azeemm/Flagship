@@ -51,8 +51,9 @@ async fn main() {
     Database::initialize_catalog_sync().await.expect("Failed to load catalog administration");
     server::validate_configuration().expect("Invalid server configuration");
 
-    let scanning = !std::env::args().any(|arg| arg == "--serve-only") ||
-        std::env::var("ENABLE_SCANNING").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
+    let scanning = std::env::var("ENABLE_SCANNING")
+        .map(|value| value.eq_ignore_ascii_case("true"))
+        .unwrap_or(!std::env::args().any(|arg| arg == "--serve-only"));
     
     if scanning {
         WebClient::init().await;

@@ -1,18 +1,16 @@
 [Unit]
 Description=Flagship website and API
 After=network.target postgresql.service
-Wants=postgresql.service
+Wants=postgresql.service flagship-directus.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Service]
 Type=simple
-User=flagship
-Group=flagship
+User=hazem
+Group=hazem
 WorkingDirectory=/opt/flagship
-ExecStart=/opt/flagship/target/release/Flagship --serve-only
-# Keep scanning off for the initial website launch, even if .env enables it.
-Environment=ENABLE_SCANNING=false
+ExecStart=/opt/flagship/target/release/Flagship
 Environment=FLAGSHIP_LOCAL_DEV=false
 Environment=BIND_ADDRESS=127.0.0.1:3000
 Environment=FLAGSHIP_WEB_DIR=/opt/flagship/website/dist

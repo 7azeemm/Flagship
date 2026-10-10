@@ -26,6 +26,7 @@ const help = `Flagship launcher (Windows and Linux)
   all       Backend + live website + staff editor.
   serve     Build the website and serve it with the backend; no live frontend server.
   production Build and run the release backend with the configured public HTTPS origin.
+  production-directus Staff editor using the already-built release binary for migrations.
   apply-overrides  Replay saved URL-based product edits into the current catalog and exit.
   reset     Delete the local flagship database and recreate/setup it (confirmation required).
   --help    Show this help.
@@ -306,10 +307,10 @@ async function main() {
   const mode = process.argv[2] || await menu();
   if (['--help', '-h', 'help'].includes(mode)) { console.log(help); return; }
   if (mode === 'exit') return;
-  if (!['setup', 'dev', 'directus', 'all', 'serve', 'production', 'apply-overrides', 'reset'].includes(mode)) throw new Error(help);
+  if (!['setup', 'dev', 'directus', 'all', 'serve', 'production', 'production-directus', 'apply-overrides', 'reset'].includes(mode)) throw new Error(help);
   const version = process.versions.node.split('.').map(Number);
   if (version[0] < 22 || (version[0] === 22 && version[1] < 12)) throw new Error('Install Node.js 22.12 or newer; Node.js 22 LTS is recommended for native Directus dependencies.');
-  if (['setup', 'directus', 'all', 'reset'].includes(mode) && version[0] !== 22) {
+  if (['setup', 'directus', 'production-directus', 'all', 'reset'].includes(mode) && version[0] !== 22) {
     throw new Error('This Directus version requires Node.js 22 for its native dependencies. Run start.bat to use state/node22, or install Node.js 22 LTS.');
   }
   if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See deploy/README.md.');
@@ -329,8 +330,12 @@ async function main() {
     return;
   }
   const running = [];
-  if (mode === 'directus') {
-    await migrate();
+  if (['directus', 'production-directus'].includes(mode)) {
+    if (mode === 'production-directus') {
+      await run(join(root, 'target', 'release', windows ? 'Flagship.exe' : 'Flagship'), ['--migrate-only']);
+    } else {
+      await migrate();
+    }
     running.push(await startDirectus());
   }
   if (['dev', 'all', 'serve', 'production'].includes(mode)) {
@@ -362,8 +367,8 @@ async function main() {
     }
     if (production) await run('cargo', ['build', '--release', '--locked'], root, env);
     const backend = production
-      ? start(join(root, 'target', 'release', windows ? 'Flagship.exe' : 'Flagship'), scanning ? [] : ['--serve-only'], root, env)
-      : start('cargo', ['run', '--locked', '--', ...(scanning ? [] : ['--serve-only'])], root, env);
+      ? start(join(root, 'target', 'release', windows ? 'Flagship.exe' : 'Flagship'), [], root, env)
+      : start('cargo', ['run', '--locked'], root, env);
     running.push(backend);
     console.log(`Automatic scanning: ${scanning ? 'enabled' : 'disabled'} (ENABLE_SCANNING).`);
     console.log('Waiting for the backend to finish building, apply migrations, and become ready...');
