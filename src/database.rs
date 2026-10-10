@@ -16,9 +16,17 @@ use tokio::sync::Mutex;
 use crate::core::catalog::overrides;
 
 const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
+// Bulk loads build documents directly: a SQL function with its own search_path
+// executes once per row and dominates large catalog reads.
+pub(crate) const PRODUCT_DOCUMENT_SQL: &str = "(products.details || jsonb_build_object(\
+    'id',products.id,'section',products.section,'retailer',products.retailer,\
+    'url',products.url,'price',products.price,'status',products.status,\
+    'title',products.title,'description',products.description,'image',products.image,\
+    'components',products.components,'views',coalesce(catalog_views.views,0)))";
 static DATABASE: OnceLock<PgPool> = OnceLock::new();
 
 static ADMIN_REVISION: AtomicI64 = AtomicI64::new(-1);
+static PUBLISHED_CATALOG_REVISION: AtomicI64 = AtomicI64::new(-1);
 static CATALOG_REFRESH: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 pub struct Database;
@@ -53,10 +61,11 @@ impl Database {
             .await
             .map_err(|e| e.to_string())?;
         
-        if !initial {
+        if !initial && revision != PUBLISHED_CATALOG_REVISION.load(Ordering::Acquire) {
             let (products, removed_products) = Database::load_products_in(&mut tx).await?;
             tx.commit().await.map_err(|e| e.to_string())?;
             ProductStorage::publish(ProductStorage { products, removed_products }).await;
+            Self::mark_catalog_published(revision);
         } else {
             tx.commit().await.map_err(|e| e.to_string())?;
         }
@@ -133,20 +142,8 @@ impl Database {
         Ok(())
     }
 
-    pub async fn load_products() -> Result<(HashMap<String, Product>, Vec<Product>), String> {
-        Self::load_products_from(Database::pool()).await
-    }
-
-    pub(crate) async fn load_products_from(pool: &PgPool) -> Result<(HashMap<String, Product>, Vec<Product>), String> {
-        let rows: Vec<(bool, String)> = sqlx::query_as("SELECT removed, product_document(products)::text FROM products")
-            .fetch_all(pool)
-            .await
-            .map_err(db_error)?;
-        Self::decode_products(rows)
-    }
-
     pub(crate) async fn load_products_in(transaction: &mut sqlx::Transaction<'_, Postgres>) -> Result<(HashMap<String, Product>, Vec<Product>), String> {
-        let rows = sqlx::query_as("SELECT removed,product_document(products)::text FROM products")
+        let rows = sqlx::query_as(&format!("SELECT removed,{PRODUCT_DOCUMENT_SQL}::text FROM products LEFT JOIN catalog_views ON target_type='product' AND target_id=products.id"))
             .fetch_all(&mut **transaction)
             .await
             .map_err(db_error)?;
@@ -174,14 +171,29 @@ impl Database {
         // writers before reading the canonical rows, including unpolled edits.
         sqlx::query("LOCK TABLE products IN SHARE ROW EXCLUSIVE MODE")
             .execute(&mut *transaction).await.map_err(db_error)?;
+        let revision = Self::catalog_revision(&mut transaction).await?;
+        let published = PUBLISHED_CATALOG_REVISION.load(Ordering::Acquire);
+        if published >= 0 && revision == published {
+            let storage = ProductStorage::get_storage().read().await.clone();
+            return Ok((transaction, storage));
+        }
         let (products, removed_products) = Self::load_products_in(&mut transaction).await?;
         Ok((transaction, ProductStorage { products, removed_products }))
+    }
+
+    pub(crate) async fn catalog_revision(tx: &mut sqlx::Transaction<'_, Postgres>) -> Result<i64, String> {
+        sqlx::query_scalar("SELECT revision FROM admin_revision WHERE id=1").fetch_one(&mut **tx).await.map_err(db_error)
+    }
+
+    pub(crate) fn mark_catalog_published(revision: i64) {
+        PUBLISHED_CATALOG_REVISION.store(revision, Ordering::Release);
     }
 
     pub(crate) async fn save_products_in(
         transaction: &mut sqlx::Transaction<'_, Postgres>,
         storage: &ProductStorage,
         previous: &ProductStorage,
+        changed_ids: &std::collections::HashSet<String>,
         report: Option<&ScanReport>,
         variants: &crate::core::variant::VariantStorage,
     ) -> Result<(), String> {
@@ -206,16 +218,11 @@ impl Database {
                 .chain(report.edited_items.iter().map(|(p, _)| p))
                 .filter(|product| watchers.iter().any(|(rule, _)| rule.eligible(product)))
             {
-                let previous: Option<String> = sqlx::query_scalar("SELECT product_document(products)::text FROM products WHERE id=$1 AND removed=false")
-                    .bind(&product.id)
-                    .fetch_optional(&mut **transaction)
-                    .await
-                    .map_err(db_error)?;
                 let current = crate::alerts::offer_snapshot(product);
-                let previous = previous.map(|p| serde_json::from_str::<Product>(&p)).transpose().map_err(json_error)?;
+                let old = previous.products.get(&product.id);
                 let event = crate::alerts::AlertEvent {
                     product: current,
-                    previous: previous.as_ref().map(crate::alerts::offer_snapshot),
+                    previous: old.map(crate::alerts::offer_snapshot),
                 };
                 
                 if !watchers.iter().any(|(rule, lowest)| {
@@ -243,31 +250,46 @@ impl Database {
         
         if let Some(report) = report {
             let observed = Utc::now().to_rfc3339();
-            for (product, kind, changes) in report
+            let rows = report
                 .added_items
                 .iter()
                 .map(|p| (p, "added", Vec::new()))
                 .chain(report.edited_items.iter().map(|(p, changes)| (p, "edited", changes.clone())))
                 .chain(report.removed_items.iter().map(|p| (p, "removed", Vec::new())))
-            {
-                let payload = serde_json::json!({"price":product.price,"status":product.status,"changes":changes});
-                sqlx::query("INSERT INTO catalog_activity(event_key,observed_at,kind,section,retailer,product_id,title,payload) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(event_key) DO NOTHING")
-                    .bind(format!("{}:{}:{}", report.started_at.to_rfc3339(), kind, product.id))
-                    .bind(&observed).bind(kind).bind(product.section.to_string()).bind(&product.retailer)
-                    .bind(&product.id).bind(&product.title).bind(sqlx::types::Json(payload))
-                    .execute(&mut **transaction).await.map_err(db_error)?;
+                .map(|(product,kind,changes)| serde_json::json!({
+                    "event_key":format!("{}:{}:{}",report.started_at.to_rfc3339(),kind,product.id),
+                    "observed_at":observed,
+                    "kind":kind,
+                    "section":product.section,
+                    "retailer":product.retailer,
+                    "product_id":product.id,
+                    "title":product.title,
+                    "payload":{
+                        "price":product.price,
+                        "status":product.status,
+                        "changes":changes
+                    }
+                })).collect::<Vec<_>>();
+            for batch in rows.chunks(500) {
+                sqlx::query("INSERT INTO catalog_activity(event_key,observed_at,kind,section,retailer,product_id,title,payload) SELECT event_key,observed_at,kind,section,retailer,product_id,title,payload FROM jsonb_to_recordset($1) AS rows(event_key text,observed_at text,kind text,section text,retailer text,product_id text,title text,payload jsonb) ON CONFLICT(event_key) DO NOTHING")
+                    .bind(sqlx::types::Json(batch)).execute(&mut **transaction).await.map_err(db_error)?;
             }
         }
         
         let removed_index = previous.removed_products.iter().map(|p| (p.id.as_str(), p)).collect::<HashMap<_, _>>();
-        for (product, removed) in storage.products.values().map(|p| (p, false))
-            .chain(storage.removed_products.iter().map(|p| (p, true))) {
+        let removed_products = storage.removed_products.iter().map(|p| (p.id.as_str(), p)).collect::<HashMap<_, _>>();
+        let mut changed = Vec::new();
+        for id in changed_ids {
+            let (product, removed) = if let Some(product) = storage.products.get(id) { (product, false) }
+                else if let Some(product) = removed_products.get(id.as_str()) { (*product, true) }
+                else { continue };
             let old = if removed { removed_index.get(product.id.as_str()).copied() }
                 else { previous.products.get(&product.id) };
-            if old.is_none_or(|old| serde_json::to_value(old).ok() != serde_json::to_value(product).ok()) {
-                upsert_product(transaction, product, removed).await?;
+            if old.is_none_or(|old| !old.same_catalog_data(product)) {
+                changed.push((product, removed));
             }
         }
+        upsert_products(transaction, changed).await?;
         variants.persist_in(transaction).await
     }
 
@@ -298,7 +320,7 @@ impl Database {
     }
 
     pub(crate) async fn load_variants_in<T: DeserializeOwned + Default>(transaction: &mut sqlx::Transaction<'_, Postgres>) -> Result<T, String> {
-        let rows: Vec<(String, String)> = sqlx::query_as("SELECT id,(payload||jsonb_build_object('id',id))::text FROM variants")
+        let rows: Vec<(String, String)> = sqlx::query_as("SELECT variants.id,(payload||jsonb_build_object('id',variants.id,'views',coalesce(catalog_views.views,0)))::text FROM variants LEFT JOIN catalog_views ON target_type='variant' AND target_id=variants.id")
             .fetch_all(&mut **transaction)
             .await
             .map_err(db_error)?;
@@ -317,12 +339,19 @@ impl Database {
         I: IntoIterator<Item = (&'a String, &'a V)>,
         V: Serialize + 'a,
     {
+        let mut rows = Vec::new();
         for (id, variant) in variants {
             let mut payload = serde_json::to_value(variant).map_err(json_error)?;
-            payload.as_object_mut().ok_or("Variant must be an object")?.remove("id");
-            sqlx::query("INSERT INTO variants (id, payload) VALUES ($1, $2) ON CONFLICT(id) DO UPDATE SET payload=jsonb_set(excluded.payload,'{views}',to_jsonb(GREATEST((variants.payload->>'views')::bigint,(excluded.payload->>'views')::bigint))) WHERE variants.payload IS DISTINCT FROM excluded.payload")
-                .bind(id)
-                .bind(sqlx::types::Json(payload))
+            let object = payload.as_object_mut().ok_or("Variant must be an object")?;
+            object.remove("id");
+            object.remove("views");
+            rows.push((id, payload));
+        }
+        for batch in rows.chunks(500) {
+            let mut query = sqlx::QueryBuilder::<Postgres>::new("INSERT INTO variants(id,payload) ");
+            query.push_values(batch, |mut row, (id, payload)| { row.push_bind(*id).push_bind(sqlx::types::Json(payload)); });
+            query.push(" ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE variants.payload IS DISTINCT FROM excluded.payload");
+            query.build()
                 .execute(&mut **transaction)
                 .await
                 .map_err(db_error)?;
@@ -330,17 +359,21 @@ impl Database {
         Ok(())
     }
 
-    pub async fn record_product_view(id: &str) -> Result<Option<u64>, String> {
-        let views: Option<i64> = sqlx::query_scalar("UPDATE products SET details=jsonb_set(details,'{views}',to_jsonb(LEAST((details->>'views')::numeric+1,9223372036854775807)::bigint)) WHERE id=$1 AND removed=false RETURNING (details->>'views')::bigint")
-            .bind(id).fetch_optional(Database::pool()).await.map_err(db_error)?;
-        Ok(views.map(|value| value as u64))
+    pub async fn record_product_view(id: &str) -> Result<u64, String> {
+        Self::record_view("product", id).await
     }
 
-    pub async fn record_variant_view(variant: &crate::core::variant::Variant) -> Result<u64, String> {
-        let mut payload = serde_json::to_value(variant).map_err(json_error)?;
-        payload.as_object_mut().ok_or("Variant must be an object")?.remove("id");
-        let views: i64 = sqlx::query_scalar("INSERT INTO variants(id,payload) VALUES($1,jsonb_set($2,'{views}',to_jsonb(LEAST(($2->>'views')::numeric+1,9223372036854775807)::bigint))) ON CONFLICT(id) DO UPDATE SET payload=jsonb_set(variants.payload,'{views}',to_jsonb(LEAST((variants.payload->>'views')::numeric+1,9223372036854775807)::bigint)) RETURNING (payload->>'views')::bigint")
-            .bind(&variant.id).bind(sqlx::types::Json(payload)).fetch_one(Database::pool()).await.map_err(db_error)?;
+    pub async fn record_variant_view(id: &str) -> Result<u64, String> {
+        Self::record_view("variant", id).await
+    }
+
+    async fn record_view(kind: &str, id: &str) -> Result<u64, String> {
+        Self::record_view_in(Database::pool(), kind, id).await
+    }
+
+    async fn record_view_in(pool: &PgPool, kind: &str, id: &str) -> Result<u64, String> {
+        let views: i64 = sqlx::query_scalar("INSERT INTO catalog_views(target_type,target_id,views) VALUES($1,$2,1) ON CONFLICT(target_type,target_id) DO UPDATE SET views=LEAST(catalog_views.views::numeric+1,9223372036854775807)::bigint RETURNING views")
+            .bind(kind).bind(id).fetch_one(pool).await.map_err(db_error)?;
         Ok(views as u64)
     }
 
@@ -401,23 +434,32 @@ impl Database {
 }
 
 pub(crate) async fn upsert_product(transaction: &mut sqlx::Transaction<'_, Postgres>, product: &Product, removed: bool) -> Result<(), String> {
-    let mut details = serde_json::to_value(product).map_err(json_error)?;
-    for field in ["id", "section", "retailer", "url", "price", "status", "title", "description", "image", "components"] {
-        details.as_object_mut().ok_or("Product must be an object")?.remove(field);
+    upsert_products(transaction, [(product, removed)]).await
+}
+
+async fn upsert_products<'a>(transaction: &mut sqlx::Transaction<'_, Postgres>, products: impl IntoIterator<Item = (&'a Product, bool)>) -> Result<(), String> {
+    let mut rows = Vec::new();
+    for (product, removed) in products {
+        let mut details = serde_json::to_value(product).map_err(json_error)?;
+        for field in ["id", "section", "retailer", "url", "price", "status", "title", "description", "image", "components", "views"] {
+            details.as_object_mut().ok_or("Product must be an object")?.remove(field);
+        }
+        rows.push((product, removed, details));
     }
-    sqlx::query(
-        "INSERT INTO products(id,section,retailer,url,price,status,removed,title,description,image,components,details) \
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) \
-         ON CONFLICT(id) DO UPDATE SET section=excluded.section,retailer=excluded.retailer,url=excluded.url,price=excluded.price, \
+    for batch in rows.chunks(500) {
+        let mut query = sqlx::QueryBuilder::<Postgres>::new("INSERT INTO products(id,section,retailer,url,price,status,removed,title,description,image,components,details) ");
+        query.push_values(batch, |mut row, (product, removed, details)| {
+            row.push_bind(&product.id).push_bind(product.section.to_string()).push_bind(&product.retailer).push_bind(&product.url)
+                .push_bind(product.price).push_bind(product.status.to_string()).push_bind(*removed).push_bind(&product.title)
+                .push_bind(&product.description).push_bind(&product.image).push_bind(sqlx::types::Json(&product.components)).push_bind(sqlx::types::Json(details));
+        });
+        query.push(" ON CONFLICT(id) DO UPDATE SET section=excluded.section,retailer=excluded.retailer,url=excluded.url,price=excluded.price, \
          status=excluded.status,removed=excluded.removed,title=excluded.title,description=excluded.description,image=excluded.image, \
-         components=excluded.components,details=jsonb_set(excluded.details,'{views}',to_jsonb(GREATEST((products.details->>'views')::bigint,(excluded.details->>'views')::bigint))) \
+         components=excluded.components,details=excluded.details \
          WHERE (products.section,products.retailer,products.url,products.price,products.status,products.removed,products.title,products.description,products.image,products.components,products.details) \
-         IS DISTINCT FROM (excluded.section,excluded.retailer,excluded.url,excluded.price,excluded.status,excluded.removed,excluded.title,excluded.description,excluded.image,excluded.components,excluded.details)",
-    )
-    .bind(&product.id).bind(product.section.to_string()).bind(&product.retailer).bind(&product.url)
-    .bind(product.price).bind(product.status.to_string()).bind(removed).bind(&product.title)
-    .bind(&product.description).bind(&product.image).bind(sqlx::types::Json(&product.components))
-    .bind(sqlx::types::Json(details)).execute(&mut **transaction).await.map_err(db_error)?;
+         IS DISTINCT FROM (excluded.section,excluded.retailer,excluded.url,excluded.price,excluded.status,excluded.removed,excluded.title,excluded.description,excluded.image,excluded.components,excluded.details)");
+        query.build().execute(&mut **transaction).await.map_err(db_error)?;
+    }
     Ok(())
 }
 

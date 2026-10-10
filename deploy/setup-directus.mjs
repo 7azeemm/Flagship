@@ -33,7 +33,7 @@ const collections = {
 };
 
 const groups = {
-  catalog: { label: 'Catalog', icon: 'inventory_2', tables: ['products','variants','product_overrides'] },
+  catalog: { label: 'Catalog', icon: 'inventory_2', tables: ['products','variants','catalog_views','product_overrides'] },
   accounts: { label: 'Accounts', icon: 'people', tables: ['users','auth_identities','sessions','account_tokens','pending_registrations','account_notifications'] },
   alerts: { label: 'Alerts', icon: 'notifications', tables: ['alerts','alert_events','alert_deliveries'] },
   community: { label: 'Community', icon: 'favorite', tables: ['wishlist_items','feature_votes'] },
@@ -65,7 +65,7 @@ for (const { collection } of tables.filter(table => !table.collection.startsWith
     const boolean = field.type === 'boolean';
     await request(`/fields/${collection}/${field.field}`, 'PATCH', {
       meta: {
-        readonly: field.schema?.is_generated === true,
+        readonly: field.schema?.is_generated === true || field.schema?.has_auto_increment === true,
         hidden: false,
         interface: json || jsonText ? 'input-code' : boolean ? 'boolean' : date ? 'datetime' : multiline ? 'input-multiline' : 'input',
         ...(json ? { options: { language: 'json' }, special: ['cast-json'] } : {}),

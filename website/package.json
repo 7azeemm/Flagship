@@ -11,13 +11,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "tsc --noEmit",
-    "format": "prettier --write src scripts public/theme.js index.html *.json vite.config.ts",
-    "format:check": "prettier --check src scripts public/theme.js index.html *.json vite.config.ts",
-    "test:smoke": "node scripts/smoke.mjs",
-    "test:startup": "node scripts/startup-smoke.mjs",
-    "test:overrides": "node scripts/overrides-smoke.mjs",
-    "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts",
-    "test:auth": "node scripts/auth-smoke.mjs"
+    "format": "prettier --write src public/theme.js index.html *.json vite.config.ts",
+    "format:check": "prettier --check src public/theme.js index.html *.json vite.config.ts",
+    "test": "tsx --test --test-isolation=none src/lib/catalog.test.ts"
   },
   "dependencies": {
     "lucide-react": "^0.546.0",

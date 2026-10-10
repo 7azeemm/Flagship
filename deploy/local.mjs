@@ -7,7 +7,6 @@ import { createServer } from 'node:net';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { localWebsiteOrigin } from './local-origin.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const website = join(root, 'website');
@@ -35,6 +34,18 @@ PostgreSQL stays running as a service. Setup preserves data; reset deletes all d
 function required(name) {
   if (!settings[name]?.trim()) throw new Error(`Set ${name} in the root .env first.`);
   return settings[name];
+}
+
+function localWebsiteOrigin(settings, live, backendOrigin) {
+  if (!live) return backendOrigin;
+  const candidate = settings.LOCAL_APP_PUBLIC_URL || settings.APP_PUBLIC_URL;
+  let configured;
+  try { configured = candidate && new URL(candidate); } catch { /* Use the local default. */ }
+  const valid = configured?.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(configured.hostname)
+    && configured.port === '5173' && !configured.username && !configured.password
+    && configured.pathname === '/' && !configured.search && !configured.hash;
+  if (settings.LOCAL_APP_PUBLIC_URL && !valid) throw new Error('LOCAL_APP_PUBLIC_URL must be an HTTP loopback origin on port 5173.');
+  return valid ? configured.origin : 'http://127.0.0.1:5173';
 }
 
 function start(command, args, cwd = root, env = {}) {
@@ -214,11 +225,10 @@ async function startDirectus() {
   const env = directusEnvironment();
   await ensurePortFree(env.PORT);
   // Grant Directus full read/write access to application tables and sequences.
-  await run(pgTool('psql'), ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', join(root, 'deploy', 'directus-metadata.sql')], root, pgEnvironment());
+  await run(pgTool('psql'), ['-X', '-q', '-v', 'flagship_mode=grants', '-f', join(root, 'deploy', 'postgres.sql')], root, pgEnvironment());
   mkdirSync(env.STORAGE_LOCAL_ROOT, { recursive: true });
   mkdirSync(env.EXTENSIONS_PATH, { recursive: true });
   await run(process.execPath, ['--no-node-snapshot', directusCli(), 'bootstrap'], directus, env);
-  await run(pgTool('psql'), ['-X', '-q', '-v', 'ON_ERROR_STOP=1', '-f', join(root, 'deploy', 'directus-cleanup.sql')], root, pgEnvironment('flagship_directus', env.DB_PASSWORD));
   const job = start(process.execPath, ['--no-node-snapshot', directusCli(), 'start'], directus, env);
   const base = `http://127.0.0.1:${env.PORT}`;
   try {
@@ -238,7 +248,7 @@ async function setup() {
     admin.PGPASSWORD = undefined;
     console.log('Enter the PostgreSQL administrator password chosen during installation when psql asks.');
   }
-  await run(pgTool('psql'), ['-X', '-v', 'ON_ERROR_STOP=1', '-f', join(root, 'deploy', 'postgres-setup.sql')], root, {
+  await run(pgTool('psql'), ['-X', '-v', 'flagship_mode=setup', '-f', join(root, 'deploy', 'postgres.sql')], root, {
     ...admin, FLAGSHIP_DB_PASSWORD: required('FLAGSHIP_DB_PASSWORD'), DIRECTUS_DB_PASSWORD: required('DIRECTUS_DB_PASSWORD'),
   });
   ensureDatabase();
@@ -273,7 +283,7 @@ async function resetDatabase() {
     console.log('Enter the PostgreSQL administrator password when psql asks.');
   }
   // Fixed local target; no FORCE, so active connections prevent deletion.
-  await run(pgTool('psql'), ['-X', '-v', 'ON_ERROR_STOP=1', '-f', join(root, 'deploy', 'reset-database.sql')], root, admin);
+  await run(pgTool('psql'), ['-X', '-v', 'flagship_mode=reset', '-f', join(root, 'deploy', 'postgres.sql')], root, admin);
   await setup();
   console.log('Local database reset and setup complete.');
 }

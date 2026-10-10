@@ -18,6 +18,15 @@ CREATE TABLE admin_revision (
 );
 INSERT INTO admin_revision(id) VALUES(1);
 
+-- Independent counters: detail reads must not acquire catalog-row/table locks.
+CREATE TABLE catalog_views (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    target_type TEXT NOT NULL CHECK (target_type IN ('product','variant')),
+    target_id TEXT NOT NULL,
+    views BIGINT NOT NULL DEFAULT 0 CHECK (views>=0),
+    UNIQUE(target_type,target_id)
+);
+
 CREATE TABLE products (
     id TEXT PRIMARY KEY,
     section TEXT NOT NULL,
@@ -32,15 +41,14 @@ CREATE TABLE products (
     components JSONB NOT NULL CHECK (valid_product_components(components)),
     details JSONB NOT NULL CHECK (
         jsonb_typeof(details)='object'
-        AND NOT details ?| ARRAY['id','section','retailer','url','price','status','title','description','image','components']
+        AND NOT details ?| ARRAY['id','section','retailer','url','price','status','title','description','image','components','views']
         AND jsonb_typeof(details->'notes')='array'
         AND NOT jsonb_path_exists(details->'notes','$[*] ? (@.type() != "string")')
         AND jsonb_typeof(details->'images')='array'
         AND NOT jsonb_path_exists(details->'images','$[*] ? (@.type() != "string")')
         AND jsonb_typeof(details->'history')='array'
         AND jsonb_typeof(details->'approved')='boolean'
-        AND jsonb_typeof(details->'views')='number'
-        AND details ?& ARRAY['notes','images','history','approved','views']
+        AND details ?& ARRAY['notes','images','history','approved']
     )
 );
 CREATE INDEX products_section_idx ON products(section) WHERE removed=false;
@@ -50,7 +58,7 @@ CREATE INDEX products_price_idx ON products(price) WHERE removed=false;
 
 CREATE TABLE variants (
     id TEXT PRIMARY KEY,
-    payload JSONB NOT NULL CHECK (jsonb_typeof(payload)='object' AND NOT payload ? 'id')
+    payload JSONB NOT NULL CHECK (jsonb_typeof(payload)='object' AND NOT payload ?| ARRAY['id','views'])
 );
 CREATE TABLE product_info_cache (
     url TEXT PRIMARY KEY,
@@ -231,18 +239,23 @@ CREATE TABLE product_overrides (
 );
 CREATE INDEX product_overrides_url_history ON product_overrides(product_url,timestamp,id);
 
-CREATE FUNCTION product_document(product products) RETURNS JSONB LANGUAGE sql IMMUTABLE STRICT
+CREATE FUNCTION product_document(product products,view_count BIGINT) RETURNS JSONB LANGUAGE sql IMMUTABLE STRICT
 SET search_path=public,pg_temp AS $$
     SELECT product.details || jsonb_build_object(
         'id',product.id,'section',product.section,'retailer',product.retailer,
         'url',product.url,'price',product.price,'status',product.status,
-        'title',product.title,'description',product.description,'image',product.image,'components',product.components)
+        'title',product.title,'description',product.description,'image',product.image,'components',product.components,
+        'views',view_count)
+$$;
+CREATE FUNCTION product_document(product products) RETURNS JSONB LANGUAGE sql STABLE STRICT
+SET search_path=public,pg_temp AS $$
+    SELECT product_document(product,coalesce((SELECT views FROM catalog_views WHERE target_type='product' AND target_id=product.id),0))
 $$;
 CREATE OR REPLACE FUNCTION capture_product_override() RETURNS trigger LANGUAGE plpgsql
 SET search_path=public,pg_temp AS $$
 DECLARE
-    old_product JSONB := product_document(OLD);
-    edited_product JSONB := product_document(NEW);
+    old_product JSONB;
+    edited_product JSONB;
     edit JSONB;
     changes JSONB;
     source TEXT;
@@ -250,8 +263,12 @@ DECLARE
 BEGIN
     IF current_user='flagship_directus' THEN source := 'directus';
     ELSIF current_setting('flagship.override_source',true)='discord' THEN source := 'discord';
-    ELSE RETURN NEW;
+    ELSE
+        IF NEW IS DISTINCT FROM OLD THEN UPDATE admin_revision SET revision=revision+1 WHERE id=1; END IF;
+        RETURN NEW;
     END IF;
+    old_product := product_document(OLD);
+    edited_product := product_document(NEW);
     IF NEW.id IS DISTINCT FROM OLD.id THEN RAISE EXCEPTION 'Product ID cannot be modified'; END IF;
     IF source='directus' THEN
         SELECT jsonb_agg(jsonb_build_object('field',field.key,'old_value',old_product->field.key,'new_value',field.value) ORDER BY field.key)
@@ -294,15 +311,12 @@ BEGIN
 END $$;
 CREATE TRIGGER scrape_review_capture BEFORE UPDATE ON scrape_errors FOR EACH ROW EXECUTE FUNCTION capture_scrape_review();
 
--- Update capture already refreshes the live catalog. Directus create/delete
--- operations must also invalidate it; scanner bulk upserts maintain their own
--- live storage and skip this counter work.
+-- All writers advance the database revision, including application upserts.
+-- A published catalog can be reused only while this revision still matches.
 CREATE FUNCTION capture_product_structure() RETURNS trigger LANGUAGE plpgsql
 SET search_path=public,pg_temp AS $$
 BEGIN
-    IF current_user='flagship_directus' THEN
-        UPDATE admin_revision SET revision=revision+1 WHERE id=1;
-    END IF;
+    UPDATE admin_revision SET revision=revision+1 WHERE id=1;
     RETURN NULL;
 END $$;
 CREATE TRIGGER product_structure_capture AFTER INSERT OR DELETE ON products

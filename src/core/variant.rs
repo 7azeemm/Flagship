@@ -4,11 +4,11 @@ use crate::core::storage::ProductStorage;
 use crate::database::Database;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::LazyLock;
 use tokio::sync::RwLock;
 use tokio::time::Instant;
-use sha2::{Digest, Sha256};
 
 static VARIANT_STORAGE: LazyLock<RwLock<VariantStorage>> = LazyLock::new(|| RwLock::new(VariantStorage::default()));
 
@@ -24,7 +24,7 @@ pub struct VariantSnapshot {
     pub retailer_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Variant {
     pub id: String,
     pub section: Section,
@@ -44,6 +44,8 @@ pub struct Variant {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VariantStorage {
     variants: HashMap<String, Variant>,
+    #[serde(skip)]
+    dirty: HashSet<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,34 +60,73 @@ impl VariantStorage {
         let _update = ProductStorage::lock_updates().await;
         let (mut tx, products) = Database::begin_catalog_update(Database::pool()).await?;
         let mut storage = Database::load_variants_in::<VariantStorage>(&mut tx).await?;
-        storage.synchronize(&products.products, false);
+
+        storage.synchronize(&products.products, false, None);
         storage.persist_in(&mut tx).await?;
+        let revision = Database::catalog_revision(&mut tx).await?;
         tx.commit().await.map_err(|e| e.to_string())?;
+        storage.mark_persisted();
+
         tracing::info!(variants = storage.variants.len(), "Loaded variant storage");
         ProductStorage::publish_staged(products, storage).await;
+        Database::mark_catalog_published(revision);
         Ok(())
     }
 
     pub async fn refresh(products: &HashMap<String, Product>) {
-        VARIANT_STORAGE.write().await.synchronize(products, false);
+        VARIANT_STORAGE.write().await.synchronize(products, false, None);
     }
 
     pub async fn save() -> Result<(), String> {
-        let storage = VARIANT_STORAGE.read().await;
+        let _update = ProductStorage::lock_updates().await;
+        let storage = VARIANT_STORAGE.read().await.clone();
         let mut tx = Database::pool().begin().await.map_err(|e| e.to_string())?;
         Database::lock_catalog(&mut tx).await.map_err(|e| e.to_string())?;
         storage.persist_in(&mut tx).await?;
-        tx.commit().await.map_err(|e| e.to_string())
+        tx.commit().await.map_err(|e| e.to_string())?;
+        VARIANT_STORAGE.write().await.mark_persisted();
+        Ok(())
     }
 
     pub(crate) async fn stage(products: &HashMap<String, Product>) -> Self {
+        // Compare against the published catalog, rather than just the scan report:
+        // canonical rows may include Directus edits not yet loaded into memory.
+        let mut sections = HashSet::new();
+        {
+            let current = ProductStorage::get_storage().read().await;
+            for (id, product) in products {
+                match current.products.get(id) {
+                    Some(old) if old.same_variant_inputs(product) => {}
+                    old => {
+                        sections.insert(product.section);
+                        if let Some(old) = old {
+                            sections.insert(old.section);
+                        }
+                    }
+                }
+            }
+            for (id, old) in &current.products {
+                if !products.contains_key(id) {
+                    sections.insert(old.section);
+                }
+            }
+        }
         let mut next = VARIANT_STORAGE.read().await.clone();
-        next.synchronize(products, true);
+        for variant in next.variants.values() {
+            if next.dirty.contains(&variant.id) || (variant.active && variant.history.is_empty()) {
+                sections.insert(variant.section);
+            }
+        }
+        next.synchronize(products, true, Some(&sections));
         next
     }
 
     pub(crate) async fn persist_in(&self, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(), String> {
-        Database::save_variants_in(tx, self.variants.iter()).await
+        Database::save_variants_in(tx, self.variants.iter().filter(|(id, _)| self.dirty.contains(*id))).await
+    }
+
+    pub(crate) fn mark_persisted(&mut self) {
+        self.dirty.clear();
     }
 
     pub(crate) async fn publish(mut next: Self) {
@@ -98,16 +139,18 @@ impl VariantStorage {
         *current = next;
     }
 
-    pub async fn get_variant(id: &str) -> Result<Option<Variant>, String> {
-        let Some(mut variant) = Self::find_by_id(id).await else { return Ok(None) };
-        let views = Database::record_variant_view(&variant).await?;
-        let mut storage = VARIANT_STORAGE.write().await;
-        if let Some(current) = storage.variants.get_mut(&variant.id) {
-            current.views = current.views.max(views);
-            variant = current.clone();
+    pub async fn find_and_record_view(id: &str) -> Result<Option<u64>, String> {
+        if !VARIANT_STORAGE.read().await.variants.contains_key(id) {
+            return Ok(None);
         }
-        variant.views = variant.views.max(views);
-        Ok(Some(variant))
+        let views = Database::record_variant_view(id).await?;
+        // Do not delay a detail response behind a catalog clone or publication.
+        if let Ok(mut storage) = VARIANT_STORAGE.try_write()
+            && let Some(current) = storage.variants.get_mut(id)
+        {
+            current.views = current.views.max(views);
+        }
+        Ok(Some(views))
     }
 
     pub async fn default_deal_variants() -> Vec<Variant> {
@@ -118,10 +161,13 @@ impl VariantStorage {
             .variants
             .values()
             .filter(|variant| {
-                let fields = by_section.entry(variant.section)
+                let fields = by_section
+                    .entry(variant.section)
                     .or_insert_with(|| default_fields(&variant.section.config()));
-                variant.active && !fields.is_empty() && same_fields(&variant.fields, fields) &&
-                    variant.fields.values().all(|value| !value.trim().is_empty())
+                variant.active
+                    && !fields.is_empty()
+                    && same_fields(&variant.fields, fields)
+                    && variant.fields.values().all(|value| !value.trim().is_empty())
             })
             .cloned()
             .collect()
@@ -149,7 +195,10 @@ impl VariantStorage {
             .cloned()
     }
 
-    pub async fn catalog_variants_for_fields(section: Section, fields: &[String]) -> (HashMap<String, String>, HashMap<String, VariantCatalogRecord>) {
+    pub async fn catalog_variants_for_fields(
+        section: Section,
+        fields: &[String],
+    ) -> (HashMap<String, String>, HashMap<String, VariantCatalogRecord>) {
         let storage = VARIANT_STORAGE.read().await;
         let mut by_product = HashMap::new();
         let mut variants = HashMap::new();
@@ -162,8 +211,14 @@ impl VariantStorage {
                 variant.id.clone(),
                 VariantCatalogRecord {
                     id: variant.id.clone(),
-                    title: variant.section.config().group.iter()
-                        .filter_map(|field| variant.fields.get(&field.key).cloned()).collect::<Vec<_>>().join(" | "),
+                    title: variant
+                        .section
+                        .config()
+                        .group
+                        .iter()
+                        .filter_map(|field| variant.fields.get(&field.key).cloned())
+                        .collect::<Vec<_>>()
+                        .join(" | "),
                     section: variant.section,
                 },
             );
@@ -174,36 +229,54 @@ impl VariantStorage {
         (by_product, variants)
     }
 
-    fn synchronize(&mut self, products: &HashMap<String, Product>, record_history: bool) {
+    fn synchronize(
+        &mut self,
+        products: &HashMap<String, Product>,
+        record_history: bool,
+        sections: Option<&HashSet<Section>>,
+    ) {
         let start_time = Instant::now();
         let now = Utc::now();
-        let previously_active = self
+        let in_scope = |section: Section| sections.is_none_or(|sections| sections.contains(&section));
+        let previous = self
             .variants
             .iter()
-            .filter(|(_, variant)| variant.active)
-            .map(|(key, _)| key.clone())
-            .collect::<HashSet<_>>();
-        for variant in self.variants.values_mut() {
+            .filter(|(_, variant)| in_scope(variant.section))
+            .map(|(key, variant)| (key.clone(), variant.clone()))
+            .collect::<HashMap<_, _>>();
+        for variant in self.variants.values_mut().filter(|variant| in_scope(variant.section)) {
             variant.product_ids.clear();
             variant.active = false;
         }
         let mut by_section = HashMap::new();
-        for product in products.values() {
-            let combinations = by_section.entry(product.section).or_insert_with(|| grouping_combinations(product.section));
+        for product in products.values().filter(|product| in_scope(product.section)) {
+            let combinations = by_section
+                .entry(product.section)
+                .or_insert_with(|| grouping_combinations(product.section));
             for fields in combinations.iter() {
                 let Some(id) = variant_id(product, fields) else {
                     continue;
                 };
-                let variant = self.variants.entry(id.clone()).or_insert_with(|| new_variant(&id, product, fields, now));
+                let variant = self
+                    .variants
+                    .entry(id.clone())
+                    .or_insert_with(|| new_variant(&id, product, fields, now));
                 variant.product_ids.insert(product.id.clone());
                 variant.active = true;
-                variant.last_seen_at = now;
             }
         }
 
-        for variant in self.variants.values_mut() {
-            let record = record_history && (variant.active || previously_active.contains(&variant.id));
+        for variant in self.variants.values_mut().filter(|variant| in_scope(variant.section)) {
+            let old = previous.get(&variant.id);
+            let record = record_history && (variant.active || old.is_some_and(|old| old.active));
             refresh_variant(variant, products, now, record);
+            if old != Some(variant) {
+                variant.updated_at = now;
+                if variant.active {
+                    variant.last_seen_at = now;
+                }
+                self.dirty.insert(variant.id.clone());
+            }
         }
 
         tracing::info!("Synchronized variants in {:.2?}", start_time.elapsed());
@@ -211,7 +284,12 @@ impl VariantStorage {
 }
 
 fn default_fields(config: &crate::core::sections::SectionConfig) -> Vec<String> {
-    config.group.iter().filter(|field| field.required || field.default).map(|field| field.key.clone()).collect()
+    config
+        .group
+        .iter()
+        .filter(|field| field.required || field.default)
+        .map(|field| field.key.clone())
+        .collect()
 }
 
 fn grouping_combinations(section: Section) -> Vec<Vec<String>> {
@@ -237,7 +315,10 @@ fn grouping_combinations(section: Section) -> Vec<Vec<String>> {
 }
 
 fn variant_id(product: &Product, field_keys: &[String]) -> Option<String> {
-    let fields = field_keys.iter().map(|field| component_value(product, field).map(|value| (field.as_str(), value))).collect::<Option<Vec<_>>>()?;
+    let fields = field_keys
+        .iter()
+        .map(|field| component_value(product, field).map(|value| (field.as_str(), value)))
+        .collect::<Option<Vec<_>>>()?;
     Some(section_variant_id(product.section, &fields))
 }
 
@@ -257,7 +338,11 @@ fn variant_fields(product: &Product, field_keys: &[String]) -> Option<HashMap<St
 }
 
 pub fn component_value<'a>(product: &'a Product, field: &str) -> Option<&'a str> {
-    product.components.get(field).map(|value| value.label()).filter(|value| !value.trim().is_empty())
+    product
+        .components
+        .get(field)
+        .map(|value| value.label())
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn same_fields(stored: &HashMap<String, String>, requested: &[String]) -> bool {
@@ -282,8 +367,17 @@ fn new_variant(id: &str, product: &Product, field_keys: &[String], now: DateTime
     }
 }
 
-fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, now: DateTime<Utc>, record_history: bool) {
-    let offers = variant.product_ids.iter().filter_map(|id| products.get(id)).collect::<Vec<_>>();
+fn refresh_variant(
+    variant: &mut Variant,
+    products: &HashMap<String, Product>,
+    now: DateTime<Utc>,
+    record_history: bool,
+) {
+    let offers = variant
+        .product_ids
+        .iter()
+        .filter_map(|id| products.get(id))
+        .collect::<Vec<_>>();
     let lowest = offers
         .iter()
         .copied()
@@ -313,7 +407,7 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
     if variant.current_snapshot.lowest_price != lowest_price {
         variant.lowest_price_updated_at = Some(now);
     }
-    variant.current_snapshot = VariantSnapshot {
+    let snapshot = VariantSnapshot {
         retailer_prices: Some(retailer_prices),
         status_counts: Some(status_counts),
         timestamp: now,
@@ -324,24 +418,36 @@ fn refresh_variant(variant: &mut Variant, products: &HashMap<String, Product>, n
         lowest_price_product_id: lowest.map(|product| product.id.clone()),
     };
 
-    variant.updated_at = now;
+    if !same_observation(&variant.current_snapshot, &snapshot) {
+        variant.current_snapshot = snapshot;
+    }
     variant.representative_product_id = lowest
-        .or_else(|| offers.iter().copied().min_by(|a, b| a.price.cmp(&b.price).then_with(|| a.id.cmp(&b.id))))
+        .or_else(|| {
+            offers
+                .iter()
+                .copied()
+                .min_by(|a, b| a.price.cmp(&b.price).then_with(|| a.id.cmp(&b.id)))
+        })
         .map(|product| product.id.clone());
 
     if record_history {
         let snapshot = &variant.current_snapshot;
-        let changed = variant.history.last().is_none_or(|last| {
-            last.retailer_prices != snapshot.retailer_prices
-                || last.status_counts != snapshot.status_counts
-                || last.lowest_price != snapshot.lowest_price
-                || last.lowest_price_product_id != snapshot.lowest_price_product_id
-                || last.offer_count != snapshot.offer_count
-                || last.in_stock_count != snapshot.in_stock_count
-                || last.retailer_count != snapshot.retailer_count
-        });
+        let changed = variant
+            .history
+            .last()
+            .is_none_or(|last| !same_observation(last, snapshot));
         if changed {
             variant.history.push(snapshot.clone());
         }
     }
+}
+
+fn same_observation(a: &VariantSnapshot, b: &VariantSnapshot) -> bool {
+    a.retailer_prices == b.retailer_prices
+        && a.status_counts == b.status_counts
+        && a.lowest_price == b.lowest_price
+        && a.lowest_price_product_id == b.lowest_price_product_id
+        && a.offer_count == b.offer_count
+        && a.in_stock_count == b.in_stock_count
+        && a.retailer_count == b.retailer_count
 }

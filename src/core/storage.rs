@@ -1,7 +1,9 @@
+use crate::core::catalog::revision::Revision;
 use crate::core::product::{Product, ProductChange, ProductStatus};
 use crate::core::sections::Section;
 use crate::core::variant::VariantStorage;
 use crate::database::Database;
+use crate::scraping::retailers::RETAILERS;
 use crate::scraping::scanner::CatalogScanner;
 use crate::scraping::tracking::scan_report::ScanReport;
 use chrono::Utc;
@@ -9,8 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 use std::time::Instant;
 use tokio::sync::{Mutex, MutexGuard, RwLock};
-use crate::core::catalog::revision::Revision;
-use crate::scraping::retailers::RETAILERS;
 
 static PRODUCT_STORAGE: LazyLock<ProductStore> = LazyLock::new(ProductStore::default);
 
@@ -55,14 +55,12 @@ impl ProductStorage {
     pub async fn load() -> Result<(), String> {
         let start_time = Instant::now();
         let _update = Self::lock_updates().await;
-        let (products, removed_products) = Database::load_products().await?;
-        let len = products.len();
-        Self::publish(
-            Self {
-                products,
-                removed_products,
-            },
-        ).await;
+        let (mut tx, storage) = Database::begin_catalog_update(Database::pool()).await?;
+        let len = storage.products.len();
+        let revision = Database::catalog_revision(&mut tx).await?;
+        tx.commit().await.map_err(|e| e.to_string())?;
+        Self::publish(storage).await;
+        Database::mark_catalog_published(revision);
 
         tracing::info!(
             products = len,
@@ -73,26 +71,62 @@ impl ProductStorage {
     }
 
     async fn save(storage: &mut ProductStorage) -> Result<Vec<ProductUpdate>, String> {
-        let baseline = Self::get_storage().read().await.clone();
+        let edits = {
+            let baseline = Self::get_storage().read().await;
+            let removed = baseline
+                .removed_products
+                .iter()
+                .map(|p| (p.id.as_str(), p))
+                .collect::<HashMap<_, _>>();
+            let mut edits = Vec::new();
+            for desired in storage.products.values().chain(storage.removed_products.iter()) {
+                let base = baseline
+                    .products
+                    .get(&desired.id)
+                    .or_else(|| removed.get(desired.id.as_str()).copied());
+                if base.is_none_or(|base| !base.same_catalog_data(desired)) {
+                    edits.push((desired.clone(), base.cloned()));
+                }
+            }
+            edits
+        };
+        if edits.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Reconcile only requested edits against the current committed catalog.
         let (mut tx, mut latest) = Database::begin_catalog_update(Database::pool()).await?;
-        let previous = latest.clone();
+        let mut previous = ProductStorage::default();
+        let mut changed_ids = HashSet::new();
         let mut updates = Vec::new();
-
-        let removed_baseline = baseline.removed_products.iter().map(|p| (p.id.as_str(), p)).collect::<HashMap<_, _>>();
-
-        for desired in storage.products.values().chain(storage.removed_products.iter()) {
-            let base = baseline.products.get(&desired.id).or_else(|| removed_baseline.get(desired.id.as_str()).copied());
-            if base.is_some_and(|base| serde_json::to_value(base).ok() == serde_json::to_value(desired).ok()) { continue; }
-            let current = latest.products.get(&desired.id).or_else(|| latest.removed_products.iter().find(|p| p.id == desired.id));
-            let next = match (base, current) {
+        for (desired, base) in edits {
+            let current = latest
+                .products
+                .get(&desired.id)
+                .or_else(|| latest.removed_products.iter().find(|p| p.id == desired.id));
+            let next = match (base.as_ref(), current) {
                 (Some(base), Some(current)) => desired.rebase(base, current),
                 (None, None) => desired.clone(),
                 _ => continue,
             };
             if let Some(current) = current {
+                if current.same_catalog_data(&next) {
+                    continue;
+                }
                 let changes = current.find_changes(&next, false);
-                if !changes.is_empty() { updates.push(ProductUpdate { product: next.clone(), changes }); }
+                if !changes.is_empty() {
+                    updates.push(ProductUpdate {
+                        product: next.clone(),
+                        changes,
+                    });
+                }
+                if current.removed_at.is_some() {
+                    previous.removed_products.push(current.clone());
+                } else {
+                    previous.products.insert(current.id.clone(), current.clone());
+                }
             }
+            changed_ids.insert(next.id.clone());
             latest.products.remove(&next.id);
             latest.removed_products.retain(|p| p.id != next.id);
             if next.removed_at.is_some() {
@@ -102,11 +136,14 @@ impl ProductStorage {
             }
         }
 
-        let variants = VariantStorage::stage(&latest.products).await;
-        Database::save_products_in(&mut tx, &latest, &previous, None, &variants).await?;
+        let mut variants = VariantStorage::stage(&latest.products).await;
+        Database::save_products_in(&mut tx, &latest, &previous, &changed_ids, None, &variants).await?;
+        let revision = Database::catalog_revision(&mut tx).await?;
         tx.commit().await.map_err(|e| e.to_string())?;
+        variants.mark_persisted();
         *storage = latest.clone();
         Self::publish_staged(latest, variants).await;
+        Database::mark_catalog_published(revision);
         Ok(updates)
     }
 
@@ -114,12 +151,18 @@ impl ProductStorage {
         Self::get_storage().read().await.products.get(product_id).cloned()
     }
 
-    pub async fn find_and_record_view(product_id: &str) -> Result<Option<Product>, String> {
-        let Some(views) = Database::record_product_view(product_id).await? else { return Ok(None) };
-        let mut storage = Self::get_storage().write().await;
-        let Some(product) = storage.products.get_mut(product_id) else { return Ok(None) };
-        product.views = product.views.max(views);
-        Ok(Some(product.clone()))
+    pub async fn find_and_record_view(product_id: &str) -> Result<Option<u64>, String> {
+        if !Self::get_storage().read().await.products.contains_key(product_id) {
+            return Ok(None);
+        }
+        let views = Database::record_product_view(product_id).await?;
+        // The persisted counter is authoritative; refreshing the cache can wait.
+        if let Ok(mut storage) = Self::get_storage().try_write()
+            && let Some(product) = storage.products.get_mut(product_id)
+        {
+            product.views = product.views.max(views);
+        }
+        Ok(Some(views))
     }
 
     pub async fn query(query: &ProductQuery, offset: usize, limit: usize) -> (Vec<Product>, usize) {
@@ -169,7 +212,11 @@ impl ProductStorage {
         let mut storage = Self::get_storage().read().await.clone();
         let mut summary = ReparseSummary::default();
 
-        for product in storage.products.values_mut().filter(|product| product.section == section) {
+        for product in storage
+            .products
+            .values_mut()
+            .filter(|product| product.section == section)
+        {
             summary.total += 1;
             let old = product.clone();
             let changes = Self::reparse(product);
@@ -191,14 +238,21 @@ impl ProductStorage {
 
         summary.updates = Self::save(&mut storage).await?;
         summary.changed = summary.updates.len();
-        summary.moved = summary.updates.iter().filter(|update| update.changes.iter().any(|change| change.field == "section")).count();
+        summary.moved = summary
+            .updates
+            .iter()
+            .filter(|update| update.changes.iter().any(|change| change.field == "section"))
+            .count();
         Ok(summary)
     }
 
     pub async fn reparse_product(product_id: &str) -> Result<ProductUpdate, String> {
         let _update = Self::lock_updates().await;
         let mut storage = Self::get_storage().read().await.clone();
-        let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let product = storage
+            .products
+            .get_mut(product_id)
+            .ok_or_else(|| "Product not found".to_string())?;
 
         let changes = Self::reparse(product);
         let mut update = ProductUpdate {
@@ -208,10 +262,12 @@ impl ProductStorage {
 
         if !update.changes.is_empty() {
             let updates = Self::save(&mut storage).await?;
-            update = updates.into_iter().find(|update| update.product.id == product_id)
+            update = updates
+                .into_iter()
+                .find(|update| update.product.id == product_id)
                 .unwrap_or_else(|| ProductUpdate {
                     product: storage.products[product_id].clone(),
-                    changes: Vec::new()
+                    changes: Vec::new(),
                 });
         }
 
@@ -229,8 +285,11 @@ impl ProductStorage {
     pub async fn add_note(product_id: &str, note: String) -> Result<ProductUpdate, String> {
         let _update = Self::lock_updates().await;
         let mut storage = Self::get_storage().read().await.clone();
-        let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
-        
+        let product = storage
+            .products
+            .get_mut(product_id)
+            .ok_or_else(|| "Product not found".to_string())?;
+
         let old = product.clone();
         product.notes.push(note);
         let changes = product.record_changes(&old, false);
@@ -247,7 +306,10 @@ impl ProductStorage {
     pub async fn approve(product_id: &str) -> Result<Product, String> {
         let _update = Self::lock_updates().await;
         let mut storage = Self::get_storage().read().await.clone();
-        let product = storage.products.get_mut(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let product = storage
+            .products
+            .get_mut(product_id)
+            .ok_or_else(|| "Product not found".to_string())?;
         if product.approved {
             return Ok(product.clone());
         }
@@ -278,42 +340,82 @@ impl ProductStorage {
     pub async fn remove(product_id: &str) -> Result<Product, String> {
         let _update = Self::lock_updates().await;
         let mut storage = Self::get_storage().read().await.clone();
-        let mut product = storage.products.remove(product_id).ok_or_else(|| "Product not found".to_string())?;
+        let mut product = storage
+            .products
+            .remove(product_id)
+            .ok_or_else(|| "Product not found".to_string())?;
 
         product.set_listed(false, Utc::now());
         storage.removed_products.push(product.clone());
 
         Self::save(&mut storage).await?;
 
-        Ok(product)
+        storage
+            .removed_products
+            .into_iter()
+            .find(|product| product.id == product_id)
+            .ok_or_else(|| "Product removal was superseded by a newer catalog edit".into())
     }
 
     pub async fn commit_scan_results(
-        products: Vec<Product>, baseline: &ProductStorage, sections: &[Section],
-        retailers: &[&str], report: &mut ScanReport,
+        products: Vec<Product>,
+        baseline: &ProductStorage,
+        sections: &[Section],
+        retailers: &[&str],
+        report: &mut ScanReport,
     ) -> Result<(), String> {
         let started_at = Instant::now();
         let _update = Self::lock_updates().await;
         let (mut tx, mut storage) = Database::begin_catalog_update(Database::pool()).await?;
-        let previous = storage.clone();
-
-        storage.collect_scan_changes(products, baseline, sections, retailers, report, Utc::now());
+        let metadata = storage.collect_scan_changes(products, baseline, sections, retailers, report, Utc::now());
+        let changed_ids = report
+            .added_items
+            .iter()
+            .chain(report.edited_items.iter().map(|(p, _)| p))
+            .chain(report.removed_items.iter())
+            .chain(metadata.iter())
+            .map(|p| p.id.clone())
+            .collect::<HashSet<_>>();
+        let previous = ProductStorage {
+            products: storage
+                .products
+                .iter()
+                .filter(|(id, _)| changed_ids.contains(*id))
+                .map(|(id, p)| (id.clone(), p.clone()))
+                .collect(),
+            removed_products: storage
+                .removed_products
+                .iter()
+                .filter(|p| changed_ids.contains(&p.id))
+                .cloned()
+                .collect(),
+        };
+        storage.products.extend(metadata.into_iter().map(|p| (p.id.clone(), p)));
 
         for removed in &report.removed_items {
             storage.products.remove(&removed.id);
             storage.removed_products.push(removed.clone());
         }
 
-        for product in report.added_items.iter().chain(report.edited_items.iter().map(|(p, _)| p)) {
+        for product in report
+            .added_items
+            .iter()
+            .chain(report.edited_items.iter().map(|(p, _)| p))
+        {
             storage.products.insert(product.id.clone(), product.clone());
         }
 
-        storage.removed_products.retain(|p| !storage.products.contains_key(&p.id));
+        storage
+            .removed_products
+            .retain(|p| !storage.products.contains_key(&p.id));
 
-        let variants = VariantStorage::stage(&storage.products).await;
-        Database::save_products_in(&mut tx, &storage, &previous, Some(report), &variants).await?;
+        let mut variants = VariantStorage::stage(&storage.products).await;
+        Database::save_products_in(&mut tx, &storage, &previous, &changed_ids, Some(report), &variants).await?;
+        let revision = Database::catalog_revision(&mut tx).await?;
         tx.commit().await.map_err(|e| e.to_string())?;
+        variants.mark_persisted();
         Self::publish_staged(storage, variants).await;
+        Database::mark_catalog_published(revision);
 
         report.update.added = report.added_items.len();
         report.update.edited = report.edited_items.len();
@@ -323,46 +425,84 @@ impl ProductStorage {
     }
 
     fn collect_scan_changes(
-        &mut self, products: Vec<Product>, baseline: &ProductStorage,
-        sections: &[Section], retailers: &[&str], report: &mut ScanReport,
+        &self,
+        products: Vec<Product>,
+        baseline: &ProductStorage,
+        sections: &[Section],
+        retailers: &[&str],
+        report: &mut ScanReport,
         now: chrono::DateTime<Utc>,
-    ) {
+    ) -> Vec<Product> {
         let scopes = ScanScopes::from_report(report);
         let seen: HashSet<&str> = products.iter().map(|p| p.url.as_str()).collect();
 
         for existing in self.products.values() {
             if seen.contains(existing.url.as_str())
-                || (!retailers.is_empty() && !retailers.contains(&existing.retailer.as_str())) {
+                || (!retailers.is_empty() && !retailers.contains(&existing.retailer.as_str()))
+            {
                 continue;
             }
             // Without per-product provenance, require a complete retailer scan
             // before treating a missing listing as removed.
-            let sources = RETAILERS.iter().find(|r| r.name() == existing.retailer)
-                .map(|r| r.config().sections.iter().map(|(section, _)| *section).collect::<Vec<_>>()).unwrap_or_default();
-            if sources.is_empty() || sources.iter().any(|source| {
-                let scope = (existing.retailer.clone(), *source);
-                (!sections.is_empty() && !sections.contains(source)) || !scopes.attempted.contains(&scope) || scopes.failed.contains(&scope)
-            }) {
+            let sources = RETAILERS
+                .iter()
+                .find(|r| r.name() == existing.retailer)
+                .map(|r| {
+                    r.config()
+                        .sections
+                        .iter()
+                        .map(|(section, _)| *section)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if sources.is_empty()
+                || sources.iter().any(|source| {
+                    let scope = (existing.retailer.clone(), *source);
+                    (!sections.is_empty() && !sections.contains(source))
+                        || !scopes.attempted.contains(&scope)
+                        || scopes.failed.contains(&scope)
+                })
+            {
                 continue;
             }
 
-            if baseline.products.get(&existing.id).is_none_or(|old| old.updated_at != existing.updated_at || old.url != existing.url) { continue; }
+            if baseline
+                .products
+                .get(&existing.id)
+                .is_none_or(|old| old.updated_at != existing.updated_at || old.url != existing.url)
+            {
+                continue;
+            }
             let mut removed = existing.clone();
             removed.set_listed(false, now);
             report.removed_items.push(removed);
         }
 
-        let baseline_by_url = baseline.products.values().chain(baseline.removed_products.iter())
-            .map(|p| (p.url.as_str(), p)).collect::<HashMap<_, _>>();
-        let current_by_url = self.products.values().chain(self.removed_products.iter())
-            .map(|p| (p.url.as_str(), p)).collect::<HashMap<_, _>>();
-        let current_by_id = self.products.values().chain(self.removed_products.iter())
-            .map(|p| (p.id.as_str(), p)).collect::<HashMap<_, _>>();
+        let baseline_by_url = baseline
+            .products
+            .values()
+            .chain(baseline.removed_products.iter())
+            .map(|p| (p.url.as_str(), p))
+            .collect::<HashMap<_, _>>();
+        let current_by_url = self
+            .products
+            .values()
+            .chain(self.removed_products.iter())
+            .map(|p| (p.url.as_str(), p))
+            .collect::<HashMap<_, _>>();
+        let current_by_id = self
+            .products
+            .values()
+            .chain(self.removed_products.iter())
+            .map(|p| (p.id.as_str(), p))
+            .collect::<HashMap<_, _>>();
         let mut metadata_updates = Vec::new();
 
         for mut product in products {
             let base = baseline_by_url.get(product.url.as_str()).copied();
-            let existing = current_by_url.get(product.url.as_str()).copied()
+            let existing = current_by_url
+                .get(product.url.as_str())
+                .copied()
                 .or_else(|| base.and_then(|base| current_by_id.get(base.id.as_str()).copied()));
             let Some(existing) = existing else {
                 product.section.parser().parse(&mut product);
@@ -381,7 +521,10 @@ impl ProductStorage {
                 CatalogScanner::normalize_product_section(&mut product);
             }
 
-            let raw_changed = !existing.find_changes(&product, true).is_empty();
+            let raw_changed = existing.has_scraped_changes(&product);
+            if !raw_changed && existing.removed_at.is_none() {
+                continue;
+            }
             product.inherit_persistent_data(existing);
             product.removed_at = existing.removed_at;
 
@@ -394,7 +537,11 @@ impl ProductStorage {
                 product.components.clone_from(&existing.components);
             }
 
-            let mut product = if let Some(base) = base { product.rebase(base, existing) } else { product };
+            let mut product = if let Some(base) = base {
+                product.rebase(base, existing)
+            } else {
+                product
+            };
 
             if product.removed_at.is_some() {
                 continue;
@@ -412,7 +559,7 @@ impl ProductStorage {
                 metadata_updates.push(product);
             }
         }
-        self.products.extend(metadata_updates.into_iter().map(|p| (p.id.clone(), p)));
+        metadata_updates
     }
 
     pub(crate) async fn publish_staged(mut next: ProductStorage, variants: VariantStorage) {
@@ -432,15 +579,18 @@ impl ProductStorage {
     }
 
     fn preserve_views(&mut self, previous: &ProductStorage) {
-        let mut views = HashMap::<&str, u64>::new();
-        for product in previous.products.values().chain(previous.removed_products.iter()) {
-            views
+        let mut removed_views = HashMap::<&str, u64>::new();
+        for product in &previous.removed_products {
+            removed_views
                 .entry(&product.id)
                 .and_modify(|views| *views = (*views).max(product.views))
                 .or_insert(product.views);
         }
         for product in self.products.values_mut().chain(self.removed_products.iter_mut()) {
-            if let Some(views) = views.get(product.id.as_str()) {
+            if let Some(previous) = previous.products.get(&product.id) {
+                product.views = product.views.max(previous.views);
+            }
+            if let Some(views) = removed_views.get(product.id.as_str()) {
                 product.views = product.views.max(*views);
             }
         }
@@ -481,7 +631,10 @@ fn product_matches_query(product: &Product, query: &ProductQuery, text: &str) ->
         || product.title.to_lowercase().contains(text)
         || product.description.to_lowercase().contains(text))
         && query.section.is_none_or(|section| product.section == section)
-        && query.site.as_deref().is_none_or(|site| product.retailer.eq_ignore_ascii_case(site))
+        && query
+            .site
+            .as_deref()
+            .is_none_or(|site| product.retailer.eq_ignore_ascii_case(site))
         && query.status.as_ref().is_none_or(|status| &product.status == status)
         && query.min_price.is_none_or(|price| product.price >= price)
         && query.max_price.is_none_or(|price| product.price <= price)

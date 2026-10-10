@@ -29,7 +29,7 @@ impl ProductOverrides {
                 .await
                 .map_err(|e| e.to_string())?;
         
-        let rows: Vec<(String, String)> = sqlx::query_as("SELECT id,product_document(products)::text FROM products WHERE removed=false FOR UPDATE")
+        let rows: Vec<(String, String)> = sqlx::query_as(&format!("SELECT products.id,{}::text FROM products LEFT JOIN catalog_views ON target_type='product' AND target_id=products.id WHERE removed=false FOR UPDATE OF products",crate::database::PRODUCT_DOCUMENT_SQL))
             .fetch_all(&mut *transaction)
             .await
             .map_err(|e| e.to_string())?;

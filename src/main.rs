@@ -46,8 +46,6 @@ async fn main() {
         return;
     }
 
-    WebClient::init().await;
-    discord::bot::start().await;
     roadmap::load().await.expect("Failed to load roadmap configuration");
     ErrorTracker::load().await;
     Database::initialize_catalog_sync().await.expect("Failed to load catalog administration");
@@ -57,6 +55,8 @@ async fn main() {
         std::env::var("ENABLE_SCANNING").is_ok_and(|value| value.eq_ignore_ascii_case("true"));
     
     if scanning {
+        WebClient::init().await;
+        discord::bot::start().await;
         CatalogScanner::schedule().await;
     } else {
         tracing::info!("Scanning is disabled");

@@ -2,7 +2,9 @@ use crate::core::product::{CachedProductInfo, Product, ProductStatus};
 use crate::core::sections::Section;
 use crate::core::storage::ProductStorage;
 use crate::database::Database;
-use crate::discord::events::{DiscordEvent, ProductChangeKind, ScanCatalogMetrics, ScanSectionMetric, ScanSiteMetric, ScanSummary, emit};
+use crate::discord::events::{
+    DiscordEvent, ProductChangeKind, ScanCatalogMetrics, ScanSectionMetric, ScanSiteMetric, ScanSummary, emit,
+};
 use crate::scraping::retailers::RETAILERS;
 use crate::scraping::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::scraping::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
@@ -24,8 +26,9 @@ use strum::IntoEnumIterator;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
 
+pub static CACHED_PRODUCT_INFO: LazyLock<RwLock<HashMap<String, CachedProductInfo>>> =
+    LazyLock::new(|| RwLock::new(HashMap::new()));
 static CATALOG_SCANNER: OnceLock<Arc<CatalogScanner>> = OnceLock::new();
-pub static CACHED_PRODUCT_INFO: LazyLock<RwLock<HashMap<String, CachedProductInfo>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
 const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
 const SCAN_INTERVAL_TIME: Duration = Duration::hours(2);
 const HTTP_RETAILER_CONCURRENCY: usize = 15;
@@ -83,10 +86,11 @@ impl CatalogScanner {
     }
 
     async fn load_caches() {
-        let mut cached_product_info: HashMap<String, CachedProductInfo> = Database::load_product_info_cache().await.unwrap_or_else(|error| {
-            tracing::error!(%error, "Failed to load products info");
-            HashMap::new()
-        });
+        let mut cached_product_info: HashMap<String, CachedProductInfo> =
+            Database::load_product_info_cache().await.unwrap_or_else(|error| {
+                tracing::error!(%error, "Failed to load products info");
+                HashMap::new()
+            });
 
         // Remove expired entries
         let now = Utc::now();

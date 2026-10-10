@@ -168,7 +168,7 @@ impl Product {
     }
 
     pub fn find_changes(&self, new: &Product, minimal: bool) -> Vec<ProductChange> {
-        const MANAGED_FIELDS: &[&str] = &["history", "updated_at", "listing_history"];
+        const MANAGED_FIELDS: &[&str] = &["history", "updated_at", "listing_history", "views"];
 
         if minimal {
             let mut changes = Vec::new();
@@ -210,6 +210,27 @@ impl Product {
                 })
             })
             .collect()
+    }
+
+    pub(crate) fn same_catalog_data(&self, other: &Self) -> bool {
+        self.id == other.id && self.url == other.url && self.retailer == other.retailer
+            && !self.has_scraped_changes(other) && self.components == other.components
+            && self.notes == other.notes && self.approved == other.approved
+            && self.history == other.history && self.added_at == other.added_at
+            && self.updated_at == other.updated_at && self.removed_at == other.removed_at
+            && self.listing_history == other.listing_history
+    }
+
+    pub(crate) fn has_scraped_changes(&self, other: &Self) -> bool {
+        self.title != other.title || self.section != other.section
+            || self.description != other.description || self.image != other.image
+            || self.images != other.images || self.status != other.status
+            || self.price != other.price || self.original_price != other.original_price
+    }
+
+    pub(crate) fn same_variant_inputs(&self, other: &Self) -> bool {
+        self.section == other.section && self.price == other.price
+            && self.status == other.status && self.components == other.components
     }
 }
 

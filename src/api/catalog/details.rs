@@ -110,12 +110,13 @@ pub struct ChartSummary {
 pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>) -> ApiResult<([(&'static str, &'static str); 1], Json<ProductDetailsResponse>)> {
     validate_chart_query(&query)?;
 
-    ProductStorage::find_and_record_view(&id).await.map_err(ApiError::DatabaseError)?;
+    let views = ProductStorage::find_and_record_view(&id).await.map_err(ApiError::DatabaseError)?;
     let evidence = deals::cached().await;
     let storage = ProductStorage::get_storage().read().await;
-    let product = storage.products.get(&id).cloned().or_else(|| storage.removed_products.iter()
+    let mut product = storage.products.get(&id).cloned().or_else(|| storage.removed_products.iter()
         .filter(|product| product.id == id).max_by_key(|product| product.removed_at).cloned())
         .ok_or_else(|| ApiError::NotFound("Product not found".into()))?;
+    if let Some(views) = views { product.views = product.views.max(views); }
     let chart = if product.section.config().group.is_empty() {
         None
     } else if let Some(variant) = VariantStorage::find_for_product(&product).await {
@@ -140,9 +141,11 @@ pub async fn get_product(Path(id): Path<String>, Query(query): Query<ChartQuery>
 pub async fn get_variant(Path(id): Path<String>, Query(query): Query<ChartQuery>) -> ApiResult<([(&'static str, &'static str); 1], Json<VariantDetailsResponse>)> {
     validate_chart_query(&query)?;
 
+    let views = VariantStorage::find_and_record_view(&id).await.map_err(ApiError::DatabaseError)?;
     let evidence = deals::cached().await;
     let storage = ProductStorage::get_storage().read().await;
-    let variant = VariantStorage::get_variant(&id).await.map_err(ApiError::DatabaseError)?.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
+    let mut variant = VariantStorage::find_by_id(&id).await.ok_or_else(|| ApiError::NotFound("Variant not found".into()))?;
+    if let Some(views) = views { variant.views = variant.views.max(views); }
     if variant.section.config().group.is_empty() {
         return Err(ApiError::InvalidQuery("Charts require a category that supports grouping".into()));
     }

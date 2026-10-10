@@ -1,7 +1,6 @@
 use playwright_rs::{Browser, BrowserContextOptions, GotoOptions, LaunchOptions, Page, Playwright, Route, WaitUntil};
 use reqwest::header::{ACCEPT, ACCEPT_LANGUAGE, CACHE_CONTROL, HeaderMap, HeaderValue};
 use reqwest::{Client, ClientBuilder};
-use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 use tokio::sync::OnceCell;
