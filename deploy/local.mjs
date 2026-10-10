@@ -52,12 +52,13 @@ function localWebsiteOrigin(settings, live, backendOrigin) {
   return valid ? configured.origin : 'http://127.0.0.1:5173';
 }
 
-function start(command, args, cwd = root, env = {}) {
+function start(command, args, cwd = root, env = {}, detached = !windows) {
   const childEnv = { ...settings, ...process.env, ...env };
   // npm lifecycle scripts must use the same Node as the launcher, not a newer system Node.
   const pathKey = Object.keys(childEnv).find(key => key.toLowerCase() === 'path') || 'PATH';
   childEnv[pathKey] = dirname(process.execPath) + (windows ? ';' : ':') + (childEnv[pathKey] || '');
-  const child = spawn(command, args, { cwd, env: childEnv, stdio: 'inherit', windowsHide: true, detached: !windows });
+  const child = spawn(command, args, { cwd, env: childEnv, stdio: 'inherit', windowsHide: true, detached });
+  child.flagshipDetached = detached;
   jobs.add(child);
   const done = new Promise((resolveDone, reject) => {
     child.once('error', error => { jobs.delete(child); reject(new Error(`Could not start ${command}: ${error.message}`)); });
@@ -68,8 +69,8 @@ function start(command, args, cwd = root, env = {}) {
   return { child, done };
 }
 
-async function run(command, args, cwd = root, env = {}) {
-  const result = await start(command, args, cwd, env).done;
+async function run(command, args, cwd = root, env = {}, detached = !windows) {
+  const result = await start(command, args, cwd, env, detached).done;
   if (result.code !== 0) throw new Error(`${command} failed. Check its output above.`);
 }
 
@@ -77,7 +78,7 @@ function stop(child) {
   if (!jobs.has(child) || !child.pid) return;
   // Kill only this launcher's process tree, including Cargo's backend child.
   if (windows) spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-  else { try { process.kill(-child.pid, 'SIGTERM'); } catch { /* Already stopped. */ } }
+  else { try { process.kill(child.flagshipDetached ? -child.pid : child.pid, 'SIGTERM'); } catch { /* Already stopped. */ } }
   jobs.delete(child);
 }
 
@@ -178,8 +179,17 @@ function ensureDatabase() {
   }
 }
 
-const migrate = (installBrowser = false) => run('cargo', ['run', '--locked', '--', '--migrate-only',
-  ...(installBrowser ? ['--install-browser'] : [])]);
+async function migrate(installBrowser = false) {
+  if (installBrowser && !windows) {
+    // Compile before authenticating so a long build cannot expire the sudo timestamp.
+    await run('cargo', ['build', '--locked']);
+    console.log('Authenticate sudo to install Chromium system dependencies.');
+    // Keep the controlling terminal/session for sudo and Playwright's subsequent sudo call.
+    await run('sudo', ['-v'], root, {}, false);
+  }
+  await run('cargo', ['run', '--locked', '--', '--migrate-only',
+    ...(installBrowser ? ['--install-browser'] : [])], root, {}, installBrowser ? false : !windows);
+}
 const directusCli = () => join(directus, 'node_modules', 'directus', 'cli.js');
 
 function directusEnvironment() {
