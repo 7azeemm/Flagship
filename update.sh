@@ -6,7 +6,7 @@ main() {
     if [[ ${1:-} == --help || ${1:-} == -h ]]; then
         printf '%s\n' 'Usage: bash update.sh' \
             'Pull the current branch, install npm dependencies, and build Flagship.' \
-            'Run as the deployment user. Running services restart after a successful build (sudo required).' \
+            'Run as the deployment user. After building, install service files and start/restart both services (sudo required).' \
             'CARGO_BUILD_JOBS defaults to 2; set it to change build parallelism.'
         return
     fi
@@ -25,7 +25,7 @@ main() {
     if ! command -v cargo >/dev/null 2>&1 && [[ -f "$HOME/.cargo/env" ]]; then
         source "$HOME/.cargo/env"
     fi
-    for flagship_command in git node npm cargo flock; do
+    for flagship_command in git node npm cargo flock systemctl systemd-analyze sudo install curl; do
         if ! command -v "$flagship_command" >/dev/null 2>&1; then
             printf 'Missing prerequisite: %s\n' "$flagship_command" >&2
             return 1
@@ -63,21 +63,48 @@ main() {
     printf '%s\n' 'Building the Rust release binary...'
     cargo build --release --locked --jobs "$flagship_jobs"
     printf '%s\n' 'Update and build complete.'
-    if command -v systemctl >/dev/null 2>&1; then
-        if systemctl is-active --quiet flagship.service; then
-            # Directus is part of Flagship: PartOf propagates this restart,
-            # and Wants starts it with the website if it was stopped.
-            printf '%s\n' 'Restarting Flagship and its Directus service...'
-            sudo systemctl restart flagship.service
-        elif systemctl is-active --quiet flagship-directus.service; then
-            printf '%s\n' 'Restarting Directus; Flagship remains stopped...'
-            sudo systemctl restart flagship-directus.service
-        else
-            printf '%s\n' 'Services are stopped or not installed; nothing to restart.'
+    printf '%s\n' 'Verifying the new systemd service files...'
+    # Verify before replacing installed units or restarting any services.
+    sudo systemd-analyze verify "$flagship_root/deploy/flagship.service" "$flagship_root/deploy/flagship-directus.service"
+    printf '%s\n' 'Installing service files and reloading systemd...'
+    sudo install -m 644 "$flagship_root/deploy/flagship.service" "$flagship_root/deploy/flagship-directus.service" /etc/systemd/system/
+    sudo systemctl daemon-reload
+    sudo systemctl enable flagship.service
+    # restart also starts an inactive service. One transaction handles both
+    # units and their PartOf/Wants relationship without sequential restarts.
+    printf '%s\n' 'Starting/restarting Flagship and Directus...'
+    sudo systemctl restart flagship.service flagship-directus.service
+
+    local flagship_directus_port
+    flagship_directus_port=$(node --input-type=module -e '
+        import { readFileSync } from "node:fs";
+        import { parseEnv } from "node:util";
+        const settings = { ...parseEnv(readFileSync(".env", "utf8")), ...process.env };
+        const port = Number(settings.DIRECTUS_PORT || "8055");
+        if (!Number.isInteger(port) || port < 1 || port > 65535) process.exit(1);
+        console.log(port);
+    ')
+    wait_ready flagship.service http://127.0.0.1:3000/health/ready
+    wait_ready flagship-directus.service "http://127.0.0.1:$flagship_directus_port/server/ping"
+    printf '%s\n' 'Deployment complete. Flagship and Directus are ready.'
+}
+
+wait_ready() {
+    local flagship_unit=$1 flagship_url=$2 flagship_attempt
+    printf 'Waiting for %s...\n' "$flagship_unit"
+    for (( flagship_attempt=0; flagship_attempt<120; flagship_attempt++ )); do
+        if curl --noproxy '*' -fsS --max-time 2 -o /dev/null \
+            -H 'X-Real-IP: 127.0.0.1' "$flagship_url" 2>/dev/null; then
+            return
         fi
-    else
-        printf '%s\n' 'systemctl is unavailable; nothing to restart.'
-    fi
+        if systemctl is-failed --quiet "$flagship_unit"; then
+            break
+        fi
+        sleep 1
+    done
+    printf '%s did not become ready. Inspect: sudo journalctl -u %s -n 80 --no-pager\n' \
+        "$flagship_unit" "$flagship_unit" >&2
+    return 1
 }
 
 main "$@"
