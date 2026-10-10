@@ -18,17 +18,19 @@ let settings;
 let database;
 let postgresBin;
 
-const help = `Flagship local launcher
+const help = `Flagship launcher (Windows and Linux)
   setup     Create missing database roles/database, migrate, install dependencies,
             and configure Directus. Install PostgreSQL and Node.js 22 LTS first.
   dev       Backend + live website at the configured loopback origin (default 127.0.0.1:5173).
   directus  Staff editor only; stop it when you do not need it.
   all       Backend + live website + staff editor.
   serve     Build the website and serve it with the backend; no live frontend server.
+  production Build and run the release backend with the configured public HTTPS origin.
   apply-overrides  Replay saved URL-based product edits into the current catalog and exit.
   reset     Delete the local flagship database and recreate/setup it (confirmation required).
   --help    Show this help.
-Run start.bat without arguments for a menu. Ctrl+C stops processes started here.
+Run start.bat (Windows) or sh start.sh (Linux) without arguments for a menu.
+For production: sh start.sh production. Ctrl+C stops processes started here.
 PostgreSQL stays running as a service. Setup preserves data; reset deletes all database data.`;
 
 function required(name) {
@@ -49,7 +51,7 @@ function localWebsiteOrigin(settings, live, backendOrigin) {
 }
 
 function start(command, args, cwd = root, env = {}) {
-  const childEnv = { ...process.env, ...env };
+  const childEnv = { ...settings, ...process.env, ...env };
   // npm lifecycle scripts must use the same Node as the launcher, not a newer system Node.
   const pathKey = Object.keys(childEnv).find(key => key.toLowerCase() === 'path') || 'PATH';
   childEnv[pathKey] = dirname(process.execPath) + (windows ? ';' : ':') + (childEnv[pathKey] || '');
@@ -90,6 +92,7 @@ function npmCli() {
   const candidates = [
     join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
     join(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ...(!windows ? ['/usr/share/nodejs/npm/bin/npm-cli.js', '/usr/share/npm/bin/npm-cli.js'] : []),
     process.env.APPDATA && join(process.env.APPDATA, 'npm', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
   ];
   const cli = candidates.find(path => path && existsSync(path));
@@ -169,7 +172,7 @@ async function ensurePostgres() {
 
 function ensureDatabase() {
   if (!pgProbe(['-Atqc', 'SELECT 1'], pgEnvironment())) {
-    throw new Error('Cannot connect as flagship. Run start.bat setup first, or check DATABASE_URL and the existing database password.');
+    throw new Error('Cannot connect as flagship. Run start.bat setup (Windows) or sh start.sh setup (Linux), or check DATABASE_URL and the existing database password.');
   }
 }
 
@@ -191,12 +194,12 @@ function directusEnvironment() {
   };
 }
 
-async function waitFor(url, job, service = 'Directus', attempts = 120) {
+async function waitFor(url, job, service = 'Directus', attempts = 120, headers = {}) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (!jobs.has(job.child)) throw new Error(`${service} stopped before it was ready. Check its output above.`);
     let response;
     try {
-      response = await fetch(url, { signal: AbortSignal.timeout(1500) });
+      response = await fetch(url, { signal: AbortSignal.timeout(1500), headers });
     } catch { /* Connection refusals and timeouts are expected during startup. */ }
     if (response?.ok) return;
     if (response?.status >= 400 && response.status < 500) {
@@ -218,7 +221,7 @@ async function ensurePortFree(port, host = '127.0.0.1') {
 }
 
 async function startDirectus() {
-  if (!existsSync(directusCli())) throw new Error('Directus is not installed locally. Run start.bat setup first.');
+  if (!existsSync(directusCli())) throw new Error('Directus is not installed. Run start.bat setup (Windows) or sh start.sh setup (Linux).');
   if (!pgProbe(['-Atqc', 'SELECT 1'], pgEnvironment('flagship_directus', required('DIRECTUS_DB_PASSWORD')))) {
     throw new Error('Cannot connect as flagship_directus. Run setup or check DIRECTUS_DB_PASSWORD against the existing role.');
   }
@@ -261,7 +264,7 @@ async function setup() {
   const editor = await startDirectus();
   stop(editor.child);
   await editor.done;
-  console.log('Setup complete. Choose dev, directus, or all from start.bat. Existing data was preserved.');
+  console.log('Setup complete. Use start.bat (Windows) or sh start.sh (Linux). Existing data was preserved.');
 }
 
 async function resetDatabase() {
@@ -289,12 +292,12 @@ async function resetDatabase() {
 }
 
 async function menu() {
-  console.log('\nFlagship\n1. First-time setup\n2. Website + backend (live editing)\n3. Directus only\n4. Everything\n5. Built website + backend\n6. Reset database (deletes all data)\n0. Exit\n');
+  console.log('\nFlagship\n1. First-time setup\n2. Website + backend (live editing)\n3. Directus only\n4. Everything\n5. Built website + backend (local)\n6. Reset database (deletes all data)\n7. Production website + backend\n0. Exit\n');
   const input = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const choice = (await input.question('Choose: ')).trim();
-    const choices = { '1': 'setup', '2': 'dev', '3': 'directus', '4': 'all', '5': 'serve', '6': 'reset', '0': 'exit' };
-    if (!(choice in choices)) throw new Error('Choose a number from 0 to 6.');
+    const choices = { '1': 'setup', '2': 'dev', '3': 'directus', '4': 'all', '5': 'serve', '6': 'reset', '7': 'production', '0': 'exit' };
+    if (!(choice in choices)) throw new Error('Choose a number from 0 to 7.');
     return choices[choice];
   } finally { input.close(); }
 }
@@ -303,13 +306,13 @@ async function main() {
   const mode = process.argv[2] || await menu();
   if (['--help', '-h', 'help'].includes(mode)) { console.log(help); return; }
   if (mode === 'exit') return;
-  if (!['setup', 'dev', 'directus', 'all', 'serve', 'apply-overrides', 'reset'].includes(mode)) throw new Error(help);
+  if (!['setup', 'dev', 'directus', 'all', 'serve', 'production', 'apply-overrides', 'reset'].includes(mode)) throw new Error(help);
   const version = process.versions.node.split('.').map(Number);
   if (version[0] < 22 || (version[0] === 22 && version[1] < 12)) throw new Error('Install Node.js 22.12 or newer; Node.js 22 LTS is recommended for native Directus dependencies.');
   if (['setup', 'directus', 'all', 'reset'].includes(mode) && version[0] !== 22) {
     throw new Error('This Directus version requires Node.js 22 for its native dependencies. Run start.bat to use state/node22, or install Node.js 22 LTS.');
   }
-  if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See docs/POSTGRES_DIRECTUS.md.');
+  if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See deploy/README.md.');
   settings = { ...parseEnv(readFileSync(join(root, '.env'), 'utf8')), ...process.env };
   try { database = new URL(required('DATABASE_URL')); } catch { throw new Error('DATABASE_URL must be a valid PostgreSQL connection URL.'); }
   if (!['postgres:', 'postgresql:'].includes(database.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(database.hostname)
@@ -330,9 +333,10 @@ async function main() {
     await migrate();
     running.push(await startDirectus());
   }
-  if (['dev', 'all', 'serve'].includes(mode)) {
-    const live = mode !== 'serve';
-    if (!existsSync(join(website, 'node_modules', 'vite', 'package.json'))) throw new Error('Run start.bat setup first to install website dependencies.');
+  if (['dev', 'all', 'serve', 'production'].includes(mode)) {
+    const production = mode === 'production';
+    const live = !['serve', 'production'].includes(mode);
+    if (!existsSync(join(website, 'node_modules', 'vite', 'package.json'))) throw new Error('Run start.bat setup (Windows) or sh start.sh setup (Linux) to install website dependencies.');
     if (!live) await run(process.execPath, [npmCli(), 'run', 'build'], website);
     const bind = settings.BIND_ADDRESS || '127.0.0.1:3000';
     const origin = new URL(`http://${bind}`);
@@ -343,18 +347,28 @@ async function main() {
     const scanning = settings.ENABLE_SCANNING?.trim().toLowerCase() === 'true';
     // This local launcher connects directly or through Vite, without an HTTPS proxy.
     // Override .env proxy trust so local requests and readiness probes need no X-Real-IP.
-    const websiteOrigin = localWebsiteOrigin(settings, live, origin.origin);
+    const websiteOrigin = production ? required('APP_PUBLIC_URL') : localWebsiteOrigin(settings, live, origin.origin);
+    if (production) {
+      const publicUrl = new URL(websiteOrigin);
+      if (publicUrl.protocol !== 'https:' || publicUrl.username || publicUrl.password || publicUrl.pathname !== '/' || publicUrl.search || publicUrl.hash) {
+        throw new Error('Production APP_PUBLIC_URL must be an HTTPS origin without credentials, path, query or fragment.');
+      }
+    }
     const env = { ENABLE_SCANNING: String(scanning), FLAGSHIP_WEB_DIR: join(website, 'dist'), BIND_ADDRESS: bind,
-      TRUSTED_PROXY_IPS: '', FLAGSHIP_LOCAL_DEV: 'true', APP_PUBLIC_URL: websiteOrigin };
-    if (settings.GOOGLE_CLIENT_ID?.trim()) {
+      ...(production ? { FLAGSHIP_LOCAL_DEV: 'false' } : { TRUSTED_PROXY_IPS: '', FLAGSHIP_LOCAL_DEV: 'true', APP_PUBLIC_URL: websiteOrigin }) };
+    if (!production && settings.GOOGLE_CLIENT_ID?.trim()) {
       env.GOOGLE_REDIRECT_URL = `${websiteOrigin}/api/auth/google/callback`;
       console.log(`Google OAuth callback: ${env.GOOGLE_REDIRECT_URL} (register this exact URI in Google Cloud).`);
     }
-    const backend = start('cargo', ['run', '--locked', '--', ...(scanning ? [] : ['--serve-only'])], root, env);
+    if (production) await run('cargo', ['build', '--release', '--locked'], root, env);
+    const backend = production
+      ? start(join(root, 'target', 'release', windows ? 'Flagship.exe' : 'Flagship'), scanning ? [] : ['--serve-only'], root, env)
+      : start('cargo', ['run', '--locked', '--', ...(scanning ? [] : ['--serve-only'])], root, env);
     running.push(backend);
     console.log(`Automatic scanning: ${scanning ? 'enabled' : 'disabled'} (ENABLE_SCANNING).`);
     console.log('Waiting for the backend to finish building, apply migrations, and become ready...');
-    await waitFor(`${origin.origin}/health/ready`, backend, 'Flagship backend', 1800);
+    await waitFor(`${origin.origin}/health/ready`, backend, 'Flagship backend', 1800,
+      production ? { 'X-Real-IP': '127.0.0.1' } : {});
     console.log(`Backend ready: ${origin.origin}`);
     if (live) running.push(start(process.execPath, [npmCli(), 'run', 'dev'], website, { API_PROXY_TARGET: origin.origin, FLAGSHIP_APP_ORIGIN: websiteOrigin }));
     console.log(`Website: ${websiteOrigin}\nCtrl+C stops this launcher's processes. PostgreSQL stays running.`);
