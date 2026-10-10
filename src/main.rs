@@ -29,6 +29,11 @@ async fn main() {
     setup_logging();
     tracing::info!("Starting Flagship");
 
+    if std::env::args().any(|arg| arg == "--install-browser") {
+        playwright_rs::install_browsers_with_deps(Some(&["chromium"]))
+            .await.expect("Failed to install Chromium and its dependencies");
+    }
+
     Database::init().await.expect("Failed to initialize PostgreSQL database");
     if std::env::args().any(|arg| arg == "--migrate-only") {
         tracing::info!("PostgreSQL schema is ready");

@@ -29,11 +29,6 @@ impl WebClient {
     }
 
     async fn initialize() -> Self {
-        if std::env::args().any(|arg| arg == "--install-browser") {
-            playwright_rs::install_browsers_with_deps(Some(&["chromium"]))
-                .await.expect("Failed to install Chromium and its dependencies");
-        }
-
         let http_client = ClientBuilder::new()
             .user_agent(USER_AGENT)
             .default_headers({

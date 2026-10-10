@@ -20,7 +20,8 @@ let postgresBin;
 
 const help = `Flagship launcher (Windows and Linux)
   setup     Create missing database roles/database, migrate, install dependencies,
-            and configure Directus. Install PostgreSQL and Node.js 22 LTS first.
+            install Chromium with system dependencies, and configure Directus.
+            Install PostgreSQL and Node.js 22 LTS first.
   dev       Backend + live website at the configured loopback origin (default 127.0.0.1:5173).
   directus  Staff editor only; stop it when you do not need it.
   all       Backend + live website + staff editor.
@@ -177,7 +178,8 @@ function ensureDatabase() {
   }
 }
 
-const migrate = () => run('cargo', ['run', '--locked', '--', '--migrate-only']);
+const migrate = (installBrowser = false) => run('cargo', ['run', '--locked', '--', '--migrate-only',
+  ...(installBrowser ? ['--install-browser'] : [])]);
 const directusCli = () => join(directus, 'node_modules', 'directus', 'cli.js');
 
 function directusEnvironment() {
@@ -256,7 +258,7 @@ async function setup() {
     ...admin, FLAGSHIP_DB_PASSWORD: required('FLAGSHIP_DB_PASSWORD'), DIRECTUS_DB_PASSWORD: required('DIRECTUS_DB_PASSWORD'),
   });
   ensureDatabase();
-  await migrate();
+  await migrate(true);
   await installDependencies(website);
   if (!existsSync(join(website, 'dist', 'index.html'))) {
     await run(process.execPath, [npmCli(), 'run', 'build'], website);
