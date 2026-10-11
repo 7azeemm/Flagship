@@ -125,6 +125,12 @@ pub fn initialize(http: Arc<Http>, config: DiscordConfig) {
                 config.removed_product_channel = super::moderation::route(&routes, config.removed_product_channel);
                 config.alert_channel = super::moderation::route(&routes, config.alert_channel);
                 config.scan_channel = super::moderation::route(&routes, config.scan_channel);
+                let (event_kind, destination) = match &event {
+                    DiscordEvent::Product { kind, .. } => ("product", config.product_channel(*kind)),
+                    DiscordEvent::Scan(_) => ("scan completed", config.scan_channel),
+                    DiscordEvent::ScanStarted { .. } => ("scan started", config.scan_channel),
+                    DiscordEvent::Alert(_) => ("alert", config.alert_channel),
+                };
                 let result = match event {
                     DiscordEvent::Product { kind, product, changes } => {
                         let components = if matches!(kind, ProductChangeKind::Removed) {
@@ -191,7 +197,11 @@ pub fn initialize(http: Arc<Http>, config: DiscordConfig) {
                 };
 
                 if let Err(error) = result {
-                    eprintln!("Failed to send Discord event: {error}");
+                    // Do not emit a tracing error here: the Discord log layer
+                    // would enqueue another alert when Discord delivery fails.
+                    eprintln!("Failed to send Discord event ({event_kind}) to channel {destination}: {error}");
+                } else if matches!(event_kind, "scan started" | "scan completed") {
+                    tracing::info!(channel_id = %destination, event = event_kind, "Discord scan notification delivered");
                 }
             }
         });

@@ -6,7 +6,7 @@ main() {
     if [[ ${1:-} == --help || ${1:-} == -h ]]; then
         printf '%s\n' 'Usage: bash update.sh' \
             'Pull the current branch, install npm dependencies, and build Flagship.' \
-            'Run as the deployment user. After building, install service files and start/restart both services (sudo required).' \
+            'Run as the deployment user. After building, update project services and validate/install/reload Caddy (sudo required).' \
             'CARGO_BUILD_JOBS defaults to 2; set it to change build parallelism.'
         return
     fi
@@ -25,7 +25,7 @@ main() {
     if ! command -v cargo >/dev/null 2>&1 && [[ -f "$HOME/.cargo/env" ]]; then
         source "$HOME/.cargo/env"
     fi
-    for flagship_command in git node npm cargo flock systemctl systemd-analyze sudo install curl; do
+    for flagship_command in git node npm cargo flock systemctl systemd-analyze sudo install curl caddy; do
         if ! command -v "$flagship_command" >/dev/null 2>&1; then
             printf 'Missing prerequisite: %s\n' "$flagship_command" >&2
             return 1
@@ -62,6 +62,9 @@ main() {
 
     printf '%s\n' 'Building the Rust release binary...'
     cargo build --release --bin Flagship --locked --jobs "$flagship_jobs"
+    # Reject invalid proxy configuration before restarting any project services.
+    printf '%s\n' 'Validating the Caddy configuration...'
+    sudo caddy validate --config "$flagship_root/deploy/Caddyfile" --adapter caddyfile
     printf '%s\n' 'Updating the retailer browser and proxy services...'
     bash deploy/install-retailer-services.sh
     printf '%s\n' 'Update and build complete.'
@@ -88,7 +91,11 @@ main() {
     ')
     wait_ready flagship.service http://127.0.0.1:3000/health/ready
     wait_ready flagship-directus.service "http://127.0.0.1:$flagship_directus_port/server/ping"
-    printf '%s\n' 'Deployment complete. Flagship and Directus are ready.'
+    printf '%s\n' 'Installing the Caddy configuration and reloading the proxy...'
+    sudo install -m 644 "$flagship_root/deploy/Caddyfile" /etc/caddy/Caddyfile
+    # Reload gracefully when running; also start Caddy if it is inactive.
+    sudo systemctl reload-or-restart caddy.service
+    printf '%s\n' 'Deployment complete. Flagship and Directus are ready; Caddy configuration applied.'
 }
 
 wait_ready() {
