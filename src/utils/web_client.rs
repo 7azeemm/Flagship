@@ -54,10 +54,10 @@ pub struct FetchLimits {
 impl Default for FetchLimits {
     fn default() -> Self {
         Self {
-            browser: 4,
+            browser: 8,
             http: 20,
-            browser_per_host: 4,
-            http_per_host: 4,
+            browser_per_host: 8,
+            http_per_host: 8,
             proxied_start_gap: Duration::from_millis(250),
         }
     }
