@@ -11,6 +11,7 @@ use crate::scraping::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::scraping::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::scraping::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
 use crate::utils::regex_cache::RegexCache;
+use crate::utils::logger::{SCAN_PROGRESS, ScanLogProgress};
 use chrono::{Duration, Utc};
 use futures::{StreamExt, stream::FuturesUnordered};
 use std::collections::hash_map::Entry;
@@ -31,7 +32,6 @@ const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
 const SCAN_INTERVAL_TIME: Duration = Duration::hours(2);
 const HTTP_RETAILER_CONCURRENCY: usize = 15;
 const BROWSER_RETAILER_CONCURRENCY: usize = 10;
-const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
 
 type RetailerRef = &'static dyn Retailer;
 type PageResult = (PageReport, Vec<Product>);
@@ -268,7 +268,7 @@ impl CatalogScanner {
                         section: *section,
                         page: 1,
                     };
-                    if site.config().fetch_type.is_browser() {
+                    if site.fetch_type().is_browser() {
                         browser_jobs.push(job);
                     } else {
                         http_jobs.push(job);
@@ -424,9 +424,8 @@ async fn fetch_category_job(job: CategoryJob) -> CategoryResult {
 /// run alongside discovery, while WebClient enforces the actual network limits.
 async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -> Vec<PageResult> {
     let mut discovered = jobs.len();
-    let mut completed_categories = 0;
     let mut products = 0;
-    let mut metrics = crate::scraping::tracking::scan_metrics::PageMetrics::default();
+    let progress = Arc::new(ScanLogProgress::new(client, discovered));
     let mut pending = CategoryQueue::default();
     for job in jobs {
         pending.push(job);
@@ -435,9 +434,6 @@ async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -
     let mut detail_queue: VecDeque<DetailJob> = VecDeque::new();
     let mut details = FuturesUnordered::new();
     let mut results = Vec::new();
-    let mut progress = tokio::time::interval(PROGRESS_INTERVAL);
-    progress.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    progress.tick().await;
     loop {
         // Bound parsed listings waiting for details as well as active workers.
         // Prioritize the detail backlog once it reaches this limit.
@@ -445,46 +441,41 @@ async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -
             let Some(job) = pending.pop() else {
                 break;
             };
-            categories.push(fetch_category_job(job));
+            categories.push(SCAN_PROGRESS.scope(progress.clone(), fetch_category_job(job)));
         }
         while details.len() < concurrency {
             let Some((site, report, products)) = detail_queue.pop_front() else {
                 break;
             };
-            details.push(site.enrich_products(report, products));
+            details.push(SCAN_PROGRESS.scope(progress.clone(), site.enrich_products(report, products)));
         }
         if categories.is_empty() && details.is_empty() && pending.is_empty() && detail_queue.is_empty() {
             break;
         }
         let completed = tokio::select! {
             Some(CategoryResult { job, report, products, page_count, enriched }) = categories.next(), if !categories.is_empty() => {
-                completed_categories += 1;
+                progress.pages.fetch_add(1, Ordering::Relaxed);
+                progress.products.fetch_add(products.len(), Ordering::Relaxed);
                 if job.page == 1 && !enriched {
                     for page in 2..=page_count.unwrap_or(1) {
                         pending.push(CategoryJob { page, ..job });
                         discovered += 1;
                     }
                 }
-                tracing::debug!(site = job.site.name(), url = report.url, "Category parsed");
+                progress.total_pages.store(discovered, Ordering::Relaxed);
+                tracing::info!(target: "retailer_fetch", "{} {} {}/{} parsed ({} products)", progress.prefix(), job.site.name(), job.section, job.page, products.len());
                 if enriched { Some((report, products)) }
                 else { detail_queue.push_back((job.site, report, products)); None }
             }
             Some(result) = details.next(), if !details.is_empty() => Some(result),
-            _ = progress.tick() => {
-                tracing::info!(mode = %client, pages = %format_args!("{completed_categories}/{discovered}"),
-                    products, cached = metrics.cache_hits, requests = metrics.product_page_requests, "Scan progress");
-                None
-            }
         };
         if let Some((report, page_products)) = completed {
             products += page_products.len();
-            metrics.add(&report.metrics);
             results.push((report, page_products));
         }
     }
     if discovered > 0 {
-        tracing::info!(mode = %client, pages = discovered, products,
-            cached = metrics.cache_hits, requests = metrics.product_page_requests, "Scan pages completed");
+        tracing::info!("[{client} pages:{discovered}/{discovered} products:{products}] Scan pages completed");
     }
     results
 }

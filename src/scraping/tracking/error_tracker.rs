@@ -229,6 +229,21 @@ impl ErrorTracker {
         records
     }
 
+    pub async fn clear_all() -> Result<u64, String> {
+        Self::clear_all_in(Database::pool()).await
+    }
+
+    async fn clear_all_in(pool: &sqlx::PgPool) -> Result<u64, String> {
+        // Serialize with reconciliation so its next save cannot restore deleted records.
+        let mut tracker = ERROR_TRACKER.write().await;
+        let mut reviews = ADMIN_REVIEWS.write().await;
+        let count = sqlx::query("DELETE FROM scrape_errors")
+            .execute(pool).await.map_err(|error| error.to_string())?.rows_affected();
+        tracker.records.clear();
+        reviews.clear();
+        Ok(count)
+    }
+
     pub async fn set_reviewed(keys: &[String], reviewed: bool) -> Result<usize, String> {
         let mut tracker = ERROR_TRACKER.write().await;
         let matched = keys.iter().collect::<HashSet<_>>().into_iter().filter(|key| tracker.records.contains_key(*key)).count();

@@ -36,7 +36,7 @@ impl WebClientType {
     }
 }
 
-struct PersistentBrowserState {
+struct BrowserState {
     browser: Browser,
     context: BrowserContext,
 }
@@ -121,10 +121,9 @@ impl Drop for RequestGuard<'_> {
 pub struct WebClient {
     pub http_client: Client,
     proxy_client: Client,
-    playwright: Playwright,
-    browser: Browser,
-    persistent_browser: Mutex<Option<PersistentBrowserState>>,
-    browser_context: BrowserContext,
+    playwright: OnceCell<Playwright>,
+    browser: OnceCell<BrowserState>,
+    persistent_browser: Mutex<Option<BrowserState>>,
     browser_pages: Mutex<HashMap<WebClientType, Vec<PooledPage>>>,
     retailer_sessions: Mutex<HashMap<(String, WebClientType), Arc<RetailerSession>>>,
     browser_slots: Semaphore,
@@ -150,39 +149,12 @@ impl WebClient {
             .proxy(reqwest::Proxy::all(RETAILER_PROXY).expect("Invalid retailer proxy constant"))
             .build()
             .expect("Failed to build retailer proxy client");
-        let playwright = Playwright::launch().await.expect("Failed to launch Playwright");
-        let browser = playwright
-            .chromium()
-            .launch_with_options(LaunchOptions::default().headless(true).args(vec![
-                "--disable-gpu".into(),
-                "--disable-dev-shm-usage".into(),
-                "--disable-plugins".into(),
-                "--disable-image-loading".into(),
-                "--disable-extensions".into(),
-                "--disable-default-apps".into(),
-                "--no-service-autorun".into(),
-                "--disable-sync".into(),
-                "--metrics-recording-only".into(),
-                "--disable-background-networking".into(),
-                "--disable-back-forward-cache".into(),
-            ]))
-            .await
-            .expect("Failed to launch chromium");
-        let browser_context = browser
-            .new_context_with_options(
-                BrowserContextOptions::builder()
-                    .user_agent(USER_AGENT.to_string())
-                    .build(),
-            )
-            .await
-            .expect("Failed to create browser context");
         tracing::info!(browser = limits.browser, http = limits.http, "Fetch limits");
         Self {
             http_client,
             proxy_client,
-            playwright,
-            browser,
-            browser_context,
+            playwright: OnceCell::new(),
+            browser: OnceCell::new(),
             browser_pages: Mutex::new(HashMap::new()),
             persistent_browser: Mutex::new(None),
             retailer_sessions: Mutex::new(HashMap::new()),
@@ -206,6 +178,53 @@ impl WebClient {
             .user_agent(USER_AGENT)
             .default_headers(headers)
             .timeout(TIMEOUT)
+    }
+
+    async fn playwright(&self) -> playwright_rs::Result<&Playwright> {
+        self.playwright.get_or_try_init(Playwright::launch).await
+    }
+
+    async fn browser_context(&self) -> playwright_rs::Result<BrowserContext> {
+        let state = self
+            .browser
+            .get_or_try_init(|| async {
+                let browser = self
+                    .playwright()
+                    .await?
+                    .chromium()
+                    // Let Flagship finish scanner/cache shutdown before closing its browser.
+                    .launch_with_options(
+                        LaunchOptions::default()
+                            .headless(true)
+                            .handle_sigint(false)
+                            .handle_sigterm(false)
+                            .handle_sighup(false)
+                            .args(vec![
+                                "--disable-gpu".into(),
+                                "--disable-dev-shm-usage".into(),
+                                "--disable-plugins".into(),
+                                "--disable-image-loading".into(),
+                                "--disable-extensions".into(),
+                                "--disable-default-apps".into(),
+                                "--no-service-autorun".into(),
+                                "--disable-sync".into(),
+                                "--metrics-recording-only".into(),
+                                "--disable-background-networking".into(),
+                                "--disable-back-forward-cache".into(),
+                            ]),
+                    )
+                    .await?;
+                let context = browser
+                    .new_context_with_options(
+                        BrowserContextOptions::builder()
+                            .user_agent(USER_AGENT.to_string())
+                            .build(),
+                    )
+                    .await?;
+                Ok::<_, playwright_rs::Error>(BrowserState { browser, context })
+            })
+            .await?;
+        Ok(state.context.clone())
     }
 
     pub fn get() -> &'static Self {
@@ -273,7 +292,7 @@ impl WebClient {
         } else {
             client.http_slots.acquire().await?
         };
-        
+
         if matches!(
             client_type,
             WebClientType::ProxyHttpClient | WebClientType::PersistentBrowser
@@ -283,13 +302,13 @@ impl WebClient {
             *next = Instant::now() + client.limits.proxied_start_gap;
         }
         tracing::debug!(url, queued_ms = waiting.elapsed().as_millis(), "Request slot acquired");
-        
+
         let _request = if client_type.is_browser() {
             client.browser_requests.enter()
         } else {
             client.http_requests.enter()
         };
-        
+
         match client_type {
             WebClientType::HttpClient => Self::fetch_http(&client.http_client, url).await,
             WebClientType::ProxyHttpClient => Self::fetch_http(&client.proxy_client, url).await,
@@ -308,7 +327,7 @@ impl WebClient {
         let context = if client_type == WebClientType::PersistentBrowser {
             self.persistent_context().await?
         } else {
-            self.browser_context.clone()
+            self.browser_context().await?
         };
         // Share tabs across hosts; cookies remain in the browser context.
         // A per-host pool retains many idle renderers during a full scan.
@@ -327,16 +346,19 @@ impl WebClient {
                 requests: 0,
             },
         };
-        
+
         let mut lease = PageLease(Some(page));
         let page = &lease.0.as_ref().unwrap().page;
         let result = Self::fetch_browser_page(page, url, ready, client_type == WebClientType::PersistentBrowser).await;
-        
+
         // Free document scripts/images between requests; cookies and HTTP cache stay in the shared context.
         // Periodic retirement also releases accumulated Playwright request/response objects.
         if result.is_ok()
             && lease.0.as_ref().unwrap().requests + 1 < TAB_REQUEST_LIMIT
-            && page.goto("about:blank", Some(GotoOptions::default().timeout(TIMEOUT))).await.is_ok()
+            && page
+                .goto("about:blank", Some(GotoOptions::default().timeout(TIMEOUT)))
+                .await
+                .is_ok()
         {
             let mut pooled = lease.0.take().unwrap();
             pooled.requests += 1;
@@ -347,7 +369,7 @@ impl WebClient {
                 .or_default()
                 .push(pooled);
         }
-        
+
         if let Some(retired) = lease.0.take() {
             let _ = retired.page.close().await;
         }
@@ -370,19 +392,25 @@ impl WebClient {
     async fn persistent_context(&self) -> Result<BrowserContext, Box<dyn Error + Send + Sync>> {
         let mut connection = self.persistent_browser.lock().await;
         if connection.as_ref().is_none_or(|state| !state.browser.is_connected()) {
-            // An unavailable external browser must not stop the API from starting.
+            // Systemd owns the hosted browser and its WARP proxy.
             let browser = self
-                .playwright
+                .playwright()
+                .await?
                 .chromium()
                 .connect_over_cdp(BROWSER_CDP_ENDPOINT, ConnectOverCdpOptions::new().timeout(10_000.0))
-                .await?;
+                .await
+                .map_err(|error| {
+                    std::io::Error::other(format!(
+                        "Retailer browser unavailable on port 9224; check flagship-browser.service: {error}"
+                    ))
+                })?;
             let context = browser
                 .contexts()
                 .into_iter()
                 .next()
                 .ok_or("CDP browser has no persistent context")?;
-            *connection = Some(PersistentBrowserState { browser, context });
-            tracing::info!("Connected to persistent retailer browser");
+            tracing::info!("Connected to hosted retailer browser");
+            *connection = Some(BrowserState { browser, context });
         }
         Ok(connection.as_ref().unwrap().context.clone())
     }
@@ -464,19 +492,56 @@ impl WebClient {
 
     pub async fn cleanup() {
         if let Some(client) = WEB_CLIENT.get() {
-            for pages in client.browser_pages.lock().await.values_mut() {
-                for page in pages.drain(..) {
-                    let _ = page.page.close().await;
+            client.shutdown().await;
+        }
+    }
+
+    async fn shutdown(&self) {
+        for pages in self.browser_pages.lock().await.values_mut() {
+            for page in pages.drain(..) {
+                if !page.page.is_closed() {
+                    log_close_result(page.page.close().await, "page");
                 }
             }
-            // Systemd owns the external browser; driver shutdown disconnects from it.
-            if let Err(error) = client.browser.close().await {
-                tracing::error!(%error, "Failed to close browser");
-            }
-            if let Err(error) = client.playwright.shutdown().await {
-                tracing::error!(%error, "Failed to shut down Playwright");
-            }
         }
+        // Systemd owns the hosted browser; driver shutdown only disconnects from it.
+        self.persistent_browser.lock().await.take();
+        if let Some(state) = self.browser.get()
+            && state.browser.is_connected()
+        {
+            log_close_result(state.browser.close().await, "browser");
+        }
+        if let Some(playwright) = self.playwright.get()
+            && let Err(error) = playwright.shutdown().await
+        {
+            tracing::error!(%error, "Failed to shut down Playwright");
+        }
+    }
+}
+
+fn target_closed(error: &playwright_rs::Error) -> bool {
+    match error {
+        playwright_rs::Error::TargetClosed { .. } => true,
+        playwright_rs::Error::ProtocolError(message) => {
+            message.contains("Target page, context or browser has been closed")
+        }
+        playwright_rs::Error::Context(_, source) => target_closed(source),
+        _ => false,
+    }
+}
+
+fn log_close_result(result: playwright_rs::Result<()>, target: &str) {
+    // A target can close between checking its state and sending the close request.
+    if let Err(error) = result
+        && !target_closed(&error)
+    {
+        tracing::debug!(target, %error, "Browser cleanup failure details");
+        let message = error.to_string();
+        tracing::error!(
+            target,
+            error = message.lines().next().unwrap_or_default(),
+            "Failed to close browser resource"
+        );
     }
 }
 

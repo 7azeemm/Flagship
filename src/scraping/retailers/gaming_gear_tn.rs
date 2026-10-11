@@ -20,7 +20,7 @@ static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
         original_price_sel: "span.line-through bdi",
         page_desc_sel: "p.leading-snug",
         page_images_sel: "div.grid div.gap-3 div.gap-2 button img",
-        status_sel: Some("div.aspect-square span.left-2.top-2"),
+        status_sel: Some("div.aspect-square span.font-medium"),
         desc_sel: None,
         empty_page_sel: None,
         secondary_price_sel: Some("span.text-promo bdi"),

@@ -31,6 +31,7 @@ export function pageMetadata({
   const canonical = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
   const base = canonical ? new URL(canonical.href).origin : window.location.origin;
   const url = new URL(path.split('?')[0], base).href;
+  const previewImage = image || new URL('/icon.png', base).href;
   document.title = title;
   setMeta('name', 'description', description);
   setMeta('name', 'robots', noindex ? 'noindex, follow' : null);
@@ -40,14 +41,14 @@ export function pageMetadata({
     url,
     type: 'website',
     site_name: 'Flagship',
-    image,
-    'image:alt': image ? title : null,
+    image: previewImage,
+    'image:alt': image ? title : 'Flagship logo',
   }))
     setMeta('property', `og:${name}`, value);
   for (const [name, value] of Object.entries({
     title,
     description,
-    image,
+    image: previewImage,
     card: image ? 'summary_large_image' : 'summary',
   }))
     setMeta('name', `twitter:${name}`, value);
@@ -125,7 +126,10 @@ export function routeMetadata(path: string) {
       'Support — Flagship',
       'Meet the creator and support Flagship, a free platform for comparing tech prices in Tunisia.',
     ],
-    '/future-plans': ['Future plans — Flagship', 'Explore and vote for upcoming Flagship features.'],
+    '/future-plans': [
+      'Future plans — Flagship',
+      'Explore and vote for upcoming Flagship features.',
+    ],
     '/legal': [
       'Terms & privacy — Flagship',
       'Simple terms of service, retailer data disclaimer, and privacy policy for Flagship.',

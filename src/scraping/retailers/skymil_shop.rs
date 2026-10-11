@@ -72,6 +72,10 @@ impl Retailer for SkyMilShop {
         &CONFIG
     }
 
+    fn local_fetch_type(&self) -> WebClientType {
+        WebClientType::Browser
+    }
+
     fn is_page_empty(&self, doc: &Html) -> bool {
         if let Some(elem) = doc.select(CONFIG.empty_page_sel.as_ref().unwrap()).next() {
             let text = elem.get_text();

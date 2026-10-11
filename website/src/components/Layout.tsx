@@ -807,8 +807,7 @@ export function Footer({ onSection }: { onSection: (section: string) => void }) 
             choose.
           </p>
           <div className="footer-contact">
-            <a href="mailto:contact@flagship.example">contact@flagship.example</a>
-            <small>Placeholder email</small>
+            <a href="mailto:flagship.tn@gmail.com">flagship.tn@gmail.com</a>
           </div>
         </div>
       </div>

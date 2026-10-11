@@ -74,4 +74,8 @@ impl Retailer for MediaVision {
     fn config(&self) -> &RetailerConfig {
         &CONFIG
     }
+
+    fn local_fetch_type(&self) -> WebClientType {
+        WebClientType::HttpClient
+    }
 }

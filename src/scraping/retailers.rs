@@ -99,7 +99,6 @@ pub static RETAILERS: LazyLock<Vec<Box<dyn Retailer>>> = LazyLock::new(|| {
         Box::new(Agora),
         Box::new(SigShop),
         Box::new(BestBuyTunisie),
-        Box::new(MediaVision),
         Box::new(SWSInformatique),
         Box::new(TechGate),
         Box::new(Lazari),
@@ -107,6 +106,7 @@ pub static RETAILERS: LazyLock<Vec<Box<dyn Retailer>>> = LazyLock::new(|| {
         Box::new(Zoom),
         Box::new(Graiet),
         Box::new(TechLand),
+        // Box::new(MediaVision), // Cloudflare
         // Box::new(InfoTec), // Unstable
         // Box::new(Affariyet), // Cloudflare
         // Box::new(WikiTN), // Bad Pagination
@@ -140,6 +140,19 @@ pub struct RetailerConfig {
 #[async_trait::async_trait]
 pub trait Retailer: Send + Sync {
     fn config(&self) -> &RetailerConfig;
+
+    /// Retailers can override their transport for local development.
+    fn local_fetch_type(&self) -> WebClientType {
+        self.config().fetch_type
+    }
+
+    fn fetch_type(&self) -> WebClientType {
+        if cfg!(debug_assertions) || std::env::var("FLAGSHIP_LOCAL_DEV").is_ok_and(|value| value.eq_ignore_ascii_case("true")) {
+            self.local_fetch_type()
+        } else {
+            self.config().fetch_type
+        }
+    }
 
     async fn scrape_page(
         &self,
@@ -211,7 +224,7 @@ pub trait Retailer: Send + Sync {
     /// Enrich after category discovery, so descriptions cannot delay pagination.
     async fn enrich_products(&self, mut report: PageReport, products: Vec<Product>) -> (PageReport, Vec<Product>) {
         let started = std::time::Instant::now();
-        let concurrency = WebClient::get().limits.per_host(self.config().fetch_type);
+        let concurrency = WebClient::get().limits.per_host(self.fetch_type());
         let results = stream::iter(products.into_iter().map(|mut product| async move {
             let mut metrics = PageMetrics::default();
             let result = self.fetch_product_page(&mut product, &mut metrics).await;
@@ -251,8 +264,6 @@ pub trait Retailer: Send + Sync {
             retailer = self.name(),
             url = report.url,
             products = report.products,
-            cache_hits = report.metrics.cache_hits,
-            requests = report.metrics.product_page_requests,
             elapsed_ms = report.duration.as_millis(),
             "Category products enriched"
         );
@@ -482,7 +493,7 @@ pub trait Retailer: Send + Sync {
 
     async fn fetch(&self, url: &str) -> Result<String, String> {
         let cfg = self.config();
-        WebClient::fetch(url, &cfg.fetch_type, &[&cfg.page_desc_sel, &cfg.page_images_sel])
+        WebClient::fetch(url, &self.fetch_type(), &[&cfg.page_desc_sel, &cfg.page_images_sel])
             .await
             .map_err(|e| e.to_string())
     }
@@ -492,7 +503,7 @@ pub trait Retailer: Send + Sync {
         if let Some(empty) = &self.config().empty_page_sel {
             ready.push(empty);
         }
-        WebClient::fetch(url, &self.config().fetch_type, &ready)
+        WebClient::fetch(url, &self.fetch_type(), &ready)
             .await
             .map_err(|e| e.to_string())
     }

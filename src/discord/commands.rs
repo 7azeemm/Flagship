@@ -20,6 +20,10 @@ use strum::IntoEnumIterator;
 pub fn definitions() -> Vec<CreateCommand> {
     let permissions = Permissions::MANAGE_GUILD;
     vec![
+        CreateCommand::new("clear-chat")
+            .description("Clear recent messages, or omit count to permanently reset the entire channel")
+            .default_member_permissions(permissions)
+            .add_option(CreateCommandOption::new(CommandOptionType::Integer, "count", "Recent messages to inspect (1–100); omit to delete ALL channel history").required(false).min_int_value(1).max_int_value(100)),
         CreateCommand::new("hype")
             .description("Show future features ranked by community hype")
             .default_member_permissions(permissions),
@@ -92,6 +96,9 @@ pub fn definitions() -> Vec<CreateCommand> {
                     .set_autocomplete(true)
                     .required(false),
             ),
+        CreateCommand::new("clear-errors")
+            .description("Clear all saved scraper errors")
+            .default_member_permissions(permissions),
         CreateCommand::new("reparse")
             .description("Reparse every stored product in a section")
             .default_member_permissions(permissions)
@@ -127,6 +134,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) -> Result<(), S
         return Err("You need Manage Server permission to use this command.".into());
     }
     match command.data.name.as_str() {
+        "clear-chat" => super::moderation::clear(ctx, command).await,
         "hype" => {
             command.defer_ephemeral(&ctx.http).await.map_err(|e| e.to_string())?;
             let mut features = roadmap::features_list(Database::pool(), None, None).await.map_err(|e| e.to_string())?;
@@ -167,6 +175,7 @@ pub async fn handle(ctx: &Context, command: &CommandInteraction) -> Result<(), S
         }
         "scan" => handle_scan(ctx, command).await,
         "errors" => handle_errors(ctx, command).await,
+        "clear-errors" => handle_clear_errors(ctx, command).await,
         "reparse" => handle_reparse(ctx, command).await,
         "reload" => handle_reload(ctx, command).await,
         _ => Ok(()),
@@ -247,6 +256,19 @@ async fn handle_errors(ctx: &Context, command: &CommandInteraction) -> Result<()
         )
         .await
         .map_err(|error| error.to_string())
+}
+
+async fn handle_clear_errors(ctx: &Context, command: &CommandInteraction) -> Result<(), String> {
+    command.defer_ephemeral(&ctx.http).await.map_err(|error| error.to_string())?;
+    let content = match ErrorTracker::clear_all().await {
+        Ok(count) => {
+            tracing::info!(count, user = %command.user.id, "Cleared scrape error registry");
+            format!("Cleared **{count}** saved scrape errors. Future scans can record new errors.")
+        }
+        Err(error) => format!("Failed to clear scrape errors: {error}"),
+    };
+    command.edit_response(&ctx.http, EditInteractionResponse::new().content(content))
+        .await.map(|_| ()).map_err(|error| error.to_string())
 }
 
 pub async fn autocomplete(ctx: &Context, command: &CommandInteraction) -> Result<(), String> {

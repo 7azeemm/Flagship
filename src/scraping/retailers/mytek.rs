@@ -81,6 +81,10 @@ impl Retailer for Mytek {
         &CONFIG
     }
 
+    fn local_fetch_type(&self) -> WebClientType {
+        WebClientType::HttpClient
+    }
+
     fn parse_product(&self, section: Section, element: ElementRef) -> Result<Product, ProductParseError> {
         let url = element.select_attr("data-url", "url")?;
         let title = element.select_attr("data-name", "title")?;

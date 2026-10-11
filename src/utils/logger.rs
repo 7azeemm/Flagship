@@ -1,11 +1,38 @@
 use crate::discord::events::alert;
 use std::collections::BTreeMap;
 use std::time::Instant;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::{Layer, util::SubscriberInitExt};
+
+tokio::task_local! {
+    pub(crate) static SCAN_PROGRESS: Arc<ScanLogProgress>;
+}
+
+pub(crate) struct ScanLogProgress {
+    mode: String,
+    pub pages: AtomicUsize,
+    pub total_pages: AtomicUsize,
+    pub products: AtomicUsize,
+}
+
+impl ScanLogProgress {
+    pub fn new(mode: &str, total_pages: usize) -> Self {
+        Self { mode: mode.into(), pages: AtomicUsize::new(0), total_pages: AtomicUsize::new(total_pages), products: AtomicUsize::new(0) }
+    }
+
+    pub fn prefix(&self) -> String {
+        format!("[{} pages:{}/{} products:{}]", self.mode, self.pages.load(Ordering::Relaxed), self.total_pages.load(Ordering::Relaxed), self.products.load(Ordering::Relaxed))
+    }
+}
+
+fn scan_prefix() -> String {
+    SCAN_PROGRESS.try_with(|progress| format!("{} ", progress.prefix())).unwrap_or_default()
+}
 
 pub fn setup_logging() {
     let default_hook = std::panic::take_hook();
@@ -73,16 +100,16 @@ impl<'a> FetchLog<'a> {
             url = self.url,
             attempt,
             bytes,
-            cached,
             elapsed_ms = self.started.elapsed().as_millis(),
             "Product fetch completed"
         );
         let page = page_label(self.url);
         let seconds = self.started.elapsed().as_secs_f64();
+        let progress = scan_prefix();
         if cached {
-            tracing::info!(target: "retailer_fetch", "{} fetched {} ({seconds:.1}s)", self.site, page);
+            tracing::info!(target: "retailer_fetch", "{progress}{} fetched {} ({seconds:.1}s)", self.site, page);
         } else {
-            tracing::warn!(target: "retailer_fetch", "{} empty {} ({seconds:.1}s)", self.site, page);
+            tracing::warn!(target: "retailer_fetch", "{progress}{} empty {} ({seconds:.1}s)", self.site, page);
         }
     }
 
@@ -99,10 +126,11 @@ impl<'a> FetchLog<'a> {
         let page = page_label(self.url);
         let error = short_error(error, self.url);
         let seconds = self.started.elapsed().as_secs_f64();
+        let progress = scan_prefix();
         if retry {
-            tracing::warn!(target: "retailer_fetch", "{} retry {attempt} {page} ({seconds:.1}s): {error}", self.site);
+            tracing::warn!(target: "retailer_fetch", "{progress}{} retry {attempt} {page} ({seconds:.1}s): {error}", self.site);
         } else {
-            tracing::error!(target: "retailer_fetch", "{} failed {page} ({seconds:.1}s): {error}", self.site);
+            tracing::error!(target: "retailer_fetch", "{progress}{} failed {page} ({seconds:.1}s): {error}", self.site);
         }
     }
 }

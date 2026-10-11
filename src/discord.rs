@@ -4,3 +4,4 @@ pub mod config;
 pub mod embeds;
 pub mod events;
 mod interactions;
+mod moderation;

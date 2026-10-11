@@ -53,6 +53,10 @@ impl Retailer for Lazari {
         &CONFIG
     }
 
+    fn local_fetch_type(&self) -> WebClientType {
+        WebClientType::Browser
+    }
+
     fn parse_title_and_url(&self, element: ElementRef) -> Result<(String, String), ProductParseError> {
         let title = element.select_elem(&self.config().title_sel, "title")?.get_text();
         let url = element.select_elem(&URL_SELECTOR, "url")?.select_attr("href", "url")?.replace(' ', "%20");

@@ -142,7 +142,8 @@ pub(super) fn render(template: &str, metadata: &Metadata, base: &str) -> String 
     if let Some(image) = &metadata.image {
         head.push_str(&format!("<meta property=\"og:image\" content=\"{}\">\n<meta property=\"og:image:alt\" content=\"{title}\">\n<meta name=\"twitter:card\" content=\"summary_large_image\">\n<meta name=\"twitter:image\" content=\"{}\">\n", escape(image), escape(image)));
     } else {
-        head.push_str("<meta name=\"twitter:card\" content=\"summary\">\n");
+        let image = escape(&format!("{base}/icon.png"));
+        head.push_str(&format!("<meta property=\"og:image\" content=\"{image}\">\n<meta property=\"og:image:alt\" content=\"Flagship logo\">\n<meta name=\"twitter:card\" content=\"summary\">\n<meta name=\"twitter:image\" content=\"{image}\">\n"));
     }
     if metadata.noindex {
         head.push_str("<meta name=\"robots\" content=\"noindex, follow\">\n");
@@ -168,7 +169,7 @@ pub(super) fn render(template: &str, metadata: &Metadata, base: &str) -> String 
 }
 
 pub(super) fn page_metadata(path: &str) -> Metadata {
-    let (title, description) = match path {
+    let (title, description): (String, String) = match path {
         "/" => (
             "Flagship — Tech prices in perspective".into(),
             "Compare tech prices across Tunisian retailers. Find recorded deals, explore price history, and create free price alerts.".into(),
@@ -193,13 +194,19 @@ pub(super) fn page_metadata(path: &str) -> Metadata {
     };
     let category = Section::iter().any(|section| path == format!("/{section}"));
     Metadata {
-        title,
-        description,
+        title: title.clone(),
+        description: description.clone(),
         path: path.into(),
         image: None,
         noindex: !PUBLIC_PAGES.contains(&path) && !category,
         structured: None,
-        preview: None,
+        preview: Some(format!(
+            "<main><h1>{}</h1><p>{}</p><nav aria-label=\"Catalog\">{}</nav></main>",
+            escape(&title), escape(&description),
+            Section::iter().filter(|section| *section != Section::Others)
+                .map(|section| format!("<a href=\"/{section}\">{section}</a>"))
+                .collect::<Vec<_>>().join(" · ")
+        )),
     }
 }
 

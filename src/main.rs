@@ -52,9 +52,16 @@ async fn main() {
         .map(|value| value.eq_ignore_ascii_case("true"))
         .unwrap_or(!std::env::args().any(|arg| arg == "--serve-only"));
     
-    if scanning {
+    let discord_enabled = discord::config::DiscordConfig::enabled(scanning);
+    if scanning || discord_enabled {
         WebClient::init().await;
+    }
+    if discord_enabled {
         discord::bot::start().await;
+    } else {
+        tracing::info!("Discord is disabled for this run; configure DISCORD_DEV_TOKEN to test a separate bot locally");
+    }
+    if scanning {
         CatalogScanner::schedule().await;
     } else {
         tracing::info!("Scanning is disabled");

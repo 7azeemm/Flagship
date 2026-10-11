@@ -10,7 +10,7 @@ static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
         nav_sel: "ul.page-numbers li",
         product_sel: "div.product",
         title_sel: "h3 a[href]",
-        image_sel: "img.attachment-woocommerce_thumbnail",
+        image_sel: "div.wd-product-thumb img",
         price_sel: "span.price span bdi",
         original_price_sel: "span.price del span bdi",
         page_desc_sel: "div.woocommerce-product-details__short-description",

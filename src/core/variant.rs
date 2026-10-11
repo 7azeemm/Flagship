@@ -177,6 +177,13 @@ impl VariantStorage {
         VARIANT_STORAGE.read().await.variants.get(id).cloned()
     }
 
+    pub(crate) async fn sitemap_entries() -> Vec<(String, DateTime<Utc>)> {
+        VARIANT_STORAGE.read().await.variants.values()
+            .filter(|variant| variant.active && !variant.product_ids.is_empty())
+            .map(|variant| (variant.id.clone(), variant.updated_at))
+            .collect()
+    }
+
     pub async fn find_for_product(product: &Product) -> Option<Variant> {
         let config = product.section.config();
         let fields = default_fields(&config);

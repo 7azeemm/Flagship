@@ -13,6 +13,7 @@ pub async fn start() {
         }
     };
 
+    super::moderation::load_routes(config.guild_id).await.expect("Failed to load Discord channel routes");
     let http = Arc::new(serenity::http::Http::new(&config.token));
     events::initialize(http, config.clone());
 

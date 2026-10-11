@@ -116,6 +116,15 @@ pub fn initialize(http: Arc<Http>, config: DiscordConfig) {
         tokio::spawn(async move {
             let mut scan_message = None;
             while let Some(event) = receiver.recv().await {
+                // A reset holds the write lock until its replacement is durable and the old
+                // channel is deleted, so queued notifications cannot use a stale channel ID.
+                let routes = super::moderation::ROUTES.read().await;
+                let mut config = config.clone();
+                config.added_product_channel = super::moderation::route(&routes, config.added_product_channel);
+                config.edited_product_channel = super::moderation::route(&routes, config.edited_product_channel);
+                config.removed_product_channel = super::moderation::route(&routes, config.removed_product_channel);
+                config.alert_channel = super::moderation::route(&routes, config.alert_channel);
+                config.scan_channel = super::moderation::route(&routes, config.scan_channel);
                 let result = match event {
                     DiscordEvent::Product { kind, product, changes } => {
                         let components = if matches!(kind, ProductChangeKind::Removed) {
@@ -133,7 +142,7 @@ pub fn initialize(http: Arc<Http>, config: DiscordConfig) {
                         config.product_channel(kind).send_message(&http, message).await.map(|_| ())
                     }
                     DiscordEvent::Scan(record) => {
-                        if let Some(message_id) = scan_message.take() {
+                        if let Some((_, message_id)) = scan_message.take().filter(|(channel_id, _)| *channel_id == config.scan_channel) {
                             config
                                 .scan_channel
                                 .edit_message(
@@ -171,7 +180,7 @@ pub fn initialize(http: Arc<Http>, config: DiscordConfig) {
                                 .embed(embeds::scan_started(started_at, &trigger, &sections, &retailers)))
                             .await
                             .map(|message| {
-                                scan_message = Some(message.id);
+                                scan_message = Some((config.scan_channel, message.id));
                             })
                     }
                     DiscordEvent::Alert(alert) => config
