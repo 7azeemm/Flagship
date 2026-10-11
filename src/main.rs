@@ -1,12 +1,4 @@
-mod accounts;
-mod alerts;
-mod api;
-mod core;
-mod database;
-mod discord;
-mod scraping;
-mod utils;
-mod web;
+use flagship::{api, core, database, discord, scraping, utils};
 
 use crate::api::catalog::info;
 use crate::api::server;
@@ -69,7 +61,27 @@ async fn main() {
     }
 
     let address = std::env::var("BIND_ADDRESS").unwrap_or_else(|_| "127.0.0.1:3000".into());
-    let result = server::run(TcpListener::bind(&address).await.expect("Failed to bind address")).await;
+    let listener = TcpListener::bind(&address).await.expect("Failed to bind address");
+    let result = tokio::select! {
+        result = server::run(listener) => result,
+        _ = shutdown_signal() => {
+            tracing::info!("Stopping scanner and saving its cache");
+            Ok(())
+        }
+    };
+    
+    CatalogScanner::shutdown().await;
+    scraping::product_cache::flush().await;
     WebClient::cleanup().await;
     result.expect("Failed to start server");
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGTERM handler");
+        tokio::select! { _ = terminate.recv() => {}, _ = tokio::signal::ctrl_c() => {} }
+    }
+    #[cfg(not(unix))]
+    { let _ = tokio::signal::ctrl_c().await; }
 }

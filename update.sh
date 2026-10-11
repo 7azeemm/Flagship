@@ -61,7 +61,7 @@ main() {
     (cd deploy/directus && npm ci --omit=dev --no-audit --no-fund)
 
     printf '%s\n' 'Building the Rust release binary...'
-    cargo build --release --locked --jobs "$flagship_jobs"
+    cargo build --release --bin Flagship --locked --jobs "$flagship_jobs"
     printf '%s\n' 'Updating the retailer browser and proxy services...'
     bash deploy/install-retailer-services.sh
     printf '%s\n' 'Update and build complete.'

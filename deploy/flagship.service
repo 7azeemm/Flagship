@@ -17,7 +17,7 @@ Environment=FLAGSHIP_WEB_DIR=/opt/flagship/website/dist
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
-KillMode=control-group
+KillMode=mixed
 NoNewPrivileges=true
 PrivateTmp=true
 UMask=0077

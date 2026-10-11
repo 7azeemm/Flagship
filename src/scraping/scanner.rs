@@ -5,24 +5,23 @@ use crate::database::Database;
 use crate::discord::events::{
     DiscordEvent, ProductChangeKind, ScanCatalogMetrics, ScanSectionMetric, ScanSiteMetric, ScanSummary, emit,
 };
-use crate::scraping::retailers::RETAILERS;
+use crate::scraping::product_cache;
+use crate::scraping::retailers::{RETAILERS, Retailer};
 use crate::scraping::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::scraping::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::scraping::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
 use crate::utils::regex_cache::RegexCache;
 use chrono::{Duration, Utc};
-use futures::{StreamExt, stream};
-use rand::RngExt;
-use rand::seq::SliceRandom;
+use futures::{StreamExt, stream::FuturesUnordered};
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
-use std::future::Future;
-use std::sync::LazyLock;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{LazyLock, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
-use std::time::{Duration as StdDuration, Instant};
+use std::time::Instant;
 use strum::IntoEnumIterator;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
 pub static CACHED_PRODUCT_INFO: LazyLock<RwLock<HashMap<String, CachedProductInfo>>> =
@@ -32,12 +31,16 @@ const CACHE_EXPIRATION_DURATION: Duration = Duration::days(14);
 const SCAN_INTERVAL_TIME: Duration = Duration::hours(2);
 const HTTP_RETAILER_CONCURRENCY: usize = 15;
 const BROWSER_RETAILER_CONCURRENCY: usize = 10;
-const MIN_RETAILER_REQUEST_GAP_MS: u64 = 100;
-const MAX_RETAILER_REQUEST_GAP_MS: u64 = 200;
+const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+
+type RetailerRef = &'static dyn Retailer;
+type PageResult = (PageReport, Vec<Product>);
+type DetailJob = (RetailerRef, PageReport, Vec<Product>);
 
 pub struct CatalogScanner {
     scanning: Arc<AtomicBool>,
     next_scheduled_at: RwLock<Option<chrono::DateTime<Utc>>>,
+    tasks: Mutex<Vec<JoinHandle<()>>>,
 }
 
 struct ScanGuard(Arc<AtomicBool>);
@@ -62,11 +65,14 @@ impl CatalogScanner {
         let scanner = Arc::new(CatalogScanner {
             scanning: Arc::new(AtomicBool::new(false)),
             next_scheduled_at: RwLock::new(None),
+            tasks: Mutex::new(Vec::new()),
         });
         let _ = CATALOG_SCANNER.set(scanner.clone());
         Self::load_caches().await;
+        product_cache::start_checkpoints();
 
-        tokio::spawn(async move {
+        let handle_owner = scanner.clone();
+        let task = tokio::spawn(async move {
             loop {
                 *scanner.next_scheduled_at.write().await = None;
                 let sites = vec![];
@@ -82,6 +88,17 @@ impl CatalogScanner {
                 sleep((next - Utc::now()).to_std().unwrap_or_default()).await;
             }
         });
+        handle_owner.tasks.lock().expect("Scanner tasks poisoned").push(task);
+    }
+
+    pub async fn shutdown() {
+        if let Some(scanner) = Self::try_get() {
+            let tasks = std::mem::take(&mut *scanner.tasks.lock().expect("Scanner tasks poisoned"));
+            for task in tasks {
+                task.abort();
+                let _ = task.await;
+            }
+        }
     }
 
     async fn load_caches() {
@@ -95,18 +112,19 @@ impl CatalogScanner {
         let now = Utc::now();
         cached_product_info.retain(|_, info| now.signed_duration_since(info.timestamp) <= CACHE_EXPIRATION_DURATION);
 
+        tracing::info!(entries = cached_product_info.len(), "Cache loaded");
         *CACHED_PRODUCT_INFO.write().await = cached_product_info;
     }
 
     async fn save_caches(&self, report: &ScanReport) {
-        let mut cached_product_info = CACHED_PRODUCT_INFO.write().await;
-        cached_product_info.retain(|_, info| info.is_fresh());
-        for product in &report.removed_items {
-            cached_product_info.remove(&product.url);
+        {
+            let mut cached_product_info = CACHED_PRODUCT_INFO.write().await;
+            cached_product_info.retain(|_, info| info.is_fresh());
+            for product in &report.removed_items {
+                cached_product_info.remove(&product.url);
+            }
         }
-        if let Err(error) = Database::save_product_info_cache(&cached_product_info).await {
-            tracing::error!(%error, "Failed to save products info");
-        }
+        product_cache::flush().await;
     }
 
     fn reserve(&self) -> Result<ScanGuard, String> {
@@ -116,11 +134,16 @@ impl CatalogScanner {
             .map_err(|_| "A product scan is already running".to_string())
     }
 
-    pub fn spawn(self: &Arc<Self>, sections: Vec<Section>, retailers: Vec<String>, trigger: ScanTrigger) -> Result<(), String> {
+    pub fn spawn(
+        self: &Arc<Self>,
+        sections: Vec<Section>,
+        retailers: Vec<String>,
+        trigger: ScanTrigger,
+    ) -> Result<(), String> {
         let guard = self.reserve()?;
         let scanner = self.clone();
 
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             let result = scanner.run(sections, retailers, trigger).await;
             if let Err(error) = result {
                 tracing::error!(%error, "Manually triggered scan failed");
@@ -128,10 +151,19 @@ impl CatalogScanner {
             drop(guard);
         });
 
+        let mut tasks = self.tasks.lock().expect("Scanner tasks poisoned");
+        tasks.retain(|task| !task.is_finished());
+        tasks.push(task);
+
         Ok(())
     }
 
-    pub async fn start(&self, sections: Vec<Section>, site_names: Vec<String>, trigger: ScanTrigger) -> Result<(), String> {
+    pub async fn start(
+        &self,
+        sections: Vec<Section>,
+        site_names: Vec<String>,
+        trigger: ScanTrigger,
+    ) -> Result<(), String> {
         let _scan_guard = self.reserve()?;
         self.run(sections, site_names, trigger).await
     }
@@ -155,7 +187,10 @@ impl CatalogScanner {
             retailers: retailers.iter().map(|retailer| retailer.to_string()).collect(),
         });
 
-        self.execute_scan(&sections, &retailers, &mut report).await?;
+        tracing::info!(retailers = retailers.len(), sections = sections.len(), "Scan started");
+        let result = self.execute_scan(&sections, &retailers, &mut report).await;
+        product_cache::flush().await;
+        result?;
 
         let error_health = ErrorTracker::reconcile(&report).await;
         report.completed_at = Utc::now();
@@ -166,7 +201,9 @@ impl CatalogScanner {
             Some(next)
         };
 
-        tracing::info!(elapsed_ms = report.duration.as_millis(), "Product scan completed");
+        tracing::info!(elapsed = %format_args!("{:.1}s", report.duration.as_secs_f64()),
+            added = report.update.added, edited = report.update.edited, removed = report.update.removed,
+            errors = report.scrape_errors.len(), "Scan completed");
 
         let record = ScanRecord::new(scan_summary(&report, error_health).await);
         ScanCache::insert(record.clone()).await;
@@ -197,7 +234,12 @@ impl CatalogScanner {
         Ok(())
     }
 
-    async fn execute_scan(&self, sections: &[Section], retailers: &[&'static str], report: &mut ScanReport) -> Result<(), String> {
+    async fn execute_scan(
+        &self,
+        sections: &[Section],
+        retailers: &[&'static str],
+        report: &mut ScanReport,
+    ) -> Result<(), String> {
         let baseline = ProductStorage::get_storage().read().await.clone();
         let mut products = self.scrape(sections, retailers, report).await;
         for product in &mut products {
@@ -212,101 +254,51 @@ impl CatalogScanner {
 
     async fn scrape(&self, sections: &[Section], retailers: &[&'static str], report: &mut ScanReport) -> Vec<Product> {
         let start_time = Instant::now();
-        let mut all_products = Vec::new();
-        let mut page_reports = Vec::new();
-
-        let mut browser_tasks = Vec::new();
-        let mut client_tasks = Vec::new();
-
-        // Collect Pages
+        let mut browser_jobs = Vec::new();
+        let mut http_jobs = Vec::new();
         for section in sections {
-            for site in RETAILERS.iter().filter(|site| retailers.is_empty() || retailers.contains(&site.name())) {
+            for site in RETAILERS
+                .iter()
+                .filter(|site| retailers.is_empty() || retailers.contains(&site.name()))
+            {
                 for (_, url) in site.config().sections.iter().filter(|(s, _)| s == section) {
-                    let task = async move {
-                        if let Some((report, products)) = site.fetch_api(url, *section).await {
-                            random_wait().await;
-                            return (report, products, vec![]);
-                        }
-
-                        let (report, products, page_count) = site.scrape_page(url, 1, *section).await;
-                        let page_count = page_count.unwrap_or(1);
-                        let mut tasks = Vec::new();
-                        for page in 2..=page_count {
-                            tasks.push(async move {
-                                let (reports, products, _) = site.scrape_page(url, page, *section).await;
-                                random_wait().await;
-                                (reports, products)
-                            });
-                        }
-                        random_wait().await;
-                        (report, products, tasks)
+                    let job = CategoryJob {
+                        site: site.as_ref(),
+                        url,
+                        section: *section,
+                        page: 1,
                     };
-
                     if site.config().fetch_type.is_browser() {
-                        browser_tasks.push(task);
+                        browser_jobs.push(job);
                     } else {
-                        client_tasks.push(task);
+                        http_jobs.push(job);
                     }
                 }
             }
         }
-
-        // Fetch the first pages
-        let (browser_future, client_future) = {
-            let mut rng = rand::rng();
-            browser_tasks.shuffle(&mut rng);
-            client_tasks.shuffle(&mut rng);
-            (
-                fetch_pages(browser_tasks, BROWSER_RETAILER_CONCURRENCY, "first"),
-                fetch_pages(client_tasks, HTTP_RETAILER_CONCURRENCY, "first"),
-            )
-        };
-
-        let (browser_results, client_results) = tokio::join!(browser_future, client_future);
-
-        let mut client_tasks = Vec::new();
-        let mut browser_tasks = Vec::new();
-
-        for (reports, products, tasks) in browser_results {
-            page_reports.push(reports);
-            all_products.extend(products);
-            browser_tasks.extend(tasks);
-        }
-
-        for (reports, products, tasks) in client_results {
-            page_reports.push(reports);
-            all_products.extend(products);
-            client_tasks.extend(tasks);
-        }
-
-        // Fetch the rest
-        let (browser_future, client_future) = {
-            let mut rng = rand::rng();
-            browser_tasks.shuffle(&mut rng);
-            client_tasks.shuffle(&mut rng);
-            (
-                fetch_pages(browser_tasks, BROWSER_RETAILER_CONCURRENCY, "remaining"),
-                fetch_pages(client_tasks, HTTP_RETAILER_CONCURRENCY, "remaining"),
-            )
-        };
-
-        let (browser_results, client_results) = tokio::join!(browser_future, client_future);
-
-        for (reports, products) in browser_results.into_iter().chain(client_results) {
-            page_reports.push(reports);
+        let (browser_results, http_results) = tokio::join!(
+            scrape_jobs(browser_jobs, BROWSER_RETAILER_CONCURRENCY, "browser"),
+            scrape_jobs(http_jobs, HTTP_RETAILER_CONCURRENCY, "HTTP"),
+        );
+        let mut all_products = Vec::new();
+        let mut page_reports = Vec::new();
+        for (page, products) in browser_results.into_iter().chain(http_results) {
+            page_reports.push(page);
             all_products.extend(products);
         }
 
         report.metrics.record_pages(&page_reports);
-        report.scrape_errors = page_reports.iter().flat_map(|page| page.errors.iter().cloned()).collect();
+        report.scrape_errors = page_reports
+            .iter()
+            .flat_map(|page| page.errors.iter().cloned())
+            .collect();
         report.scrape = build_section_reports(page_reports);
 
         let old_count = all_products.len();
         all_products = deduplicate_products(all_products);
         report.metrics.duplicates_removed = old_count - all_products.len();
-        tracing::info!(duplicates = old_count - all_products.len(), "Deduplicated scraped products");
-
-        tracing::info!("Successfully Fetched {} products in {:.2?}", all_products.len(), start_time.elapsed());
+        tracing::info!(products = all_products.len(), duplicates = old_count - all_products.len(),
+            elapsed = %format_args!("{:.1}s", start_time.elapsed().as_secs_f64()), "Scraping completed");
 
         all_products
     }
@@ -392,22 +384,140 @@ impl CatalogScanner {
     }
 }
 
-async fn random_wait() {
-    let delay_ms = rand::rng().random_range(MIN_RETAILER_REQUEST_GAP_MS..=MAX_RETAILER_REQUEST_GAP_MS);
-    sleep(StdDuration::from_millis(delay_ms)).await;
+#[derive(Clone, Copy)]
+struct CategoryJob {
+    site: RetailerRef,
+    url: &'static str,
+    section: Section,
+    page: i32,
 }
 
-async fn fetch_pages<F: Future>(tasks: Vec<F>, concurrency: usize, phase: &str) -> Vec<F::Output> {
-    let total = tasks.len();
-    let mut completed = 0;
-    stream::iter(tasks)
-        .buffer_unordered(concurrency)
-        .inspect(|_| {
-            completed += 1;
-            tracing::info!(phase, completed, total, "Scan page progress");
-        })
-        .collect()
-        .await
+struct CategoryResult {
+    job: CategoryJob,
+    report: PageReport,
+    products: Vec<Product>,
+    page_count: Option<i32>,
+    enriched: bool,
+}
+
+async fn fetch_category_job(job: CategoryJob) -> CategoryResult {
+    if job.page == 1 && let Some((report, products)) = job.site.fetch_api(job.url, job.section).await {
+        return CategoryResult {
+            job,
+            report,
+            products,
+            page_count: None,
+            enriched: true,
+        };
+    }
+    let (report, products, page_count) = job.site.scrape_page(job.url, job.page, job.section).await;
+    CategoryResult {
+        job,
+        report,
+        products,
+        page_count,
+        enriched: false,
+    }
+}
+
+/// Pagination enters the queue as soon as its first page completes. Detail workers
+/// run alongside discovery, while WebClient enforces the actual network limits.
+async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -> Vec<PageResult> {
+    let mut discovered = jobs.len();
+    let mut completed_categories = 0;
+    let mut products = 0;
+    let mut metrics = crate::scraping::tracking::scan_metrics::PageMetrics::default();
+    let mut pending = CategoryQueue::default();
+    for job in jobs {
+        pending.push(job);
+    }
+    let mut categories = FuturesUnordered::new();
+    let mut detail_queue: VecDeque<DetailJob> = VecDeque::new();
+    let mut details = FuturesUnordered::new();
+    let mut results = Vec::new();
+    let mut progress = tokio::time::interval(PROGRESS_INTERVAL);
+    progress.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    progress.tick().await;
+    loop {
+        // Bound parsed listings waiting for details as well as active workers.
+        // Prioritize the detail backlog once it reaches this limit.
+        while categories.len() < concurrency && detail_queue.len() < concurrency * 2 {
+            let Some(job) = pending.pop() else {
+                break;
+            };
+            categories.push(fetch_category_job(job));
+        }
+        while details.len() < concurrency {
+            let Some((site, report, products)) = detail_queue.pop_front() else {
+                break;
+            };
+            details.push(site.enrich_products(report, products));
+        }
+        if categories.is_empty() && details.is_empty() && pending.is_empty() && detail_queue.is_empty() {
+            break;
+        }
+        let completed = tokio::select! {
+            Some(CategoryResult { job, report, products, page_count, enriched }) = categories.next(), if !categories.is_empty() => {
+                completed_categories += 1;
+                if job.page == 1 && !enriched {
+                    for page in 2..=page_count.unwrap_or(1) {
+                        pending.push(CategoryJob { page, ..job });
+                        discovered += 1;
+                    }
+                }
+                tracing::debug!(site = job.site.name(), url = report.url, "Category parsed");
+                if enriched { Some((report, products)) }
+                else { detail_queue.push_back((job.site, report, products)); None }
+            }
+            Some(result) = details.next(), if !details.is_empty() => Some(result),
+            _ = progress.tick() => {
+                tracing::info!(mode = %client, pages = %format_args!("{completed_categories}/{discovered}"),
+                    products, cached = metrics.cache_hits, requests = metrics.product_page_requests, "Scan progress");
+                None
+            }
+        };
+        if let Some((report, page_products)) = completed {
+            products += page_products.len();
+            metrics.add(&report.metrics);
+            results.push((report, page_products));
+        }
+    }
+    if discovered > 0 {
+        tracing::info!(mode = %client, pages = discovered, products,
+            cached = metrics.cache_hits, requests = metrics.product_page_requests, "Scan pages completed");
+    }
+    results
+}
+
+#[derive(Default)]
+struct CategoryQueue {
+    queues: HashMap<&'static str, VecDeque<CategoryJob>>,
+    ready: VecDeque<&'static str>,
+}
+
+impl CategoryQueue {
+    fn push(&mut self, job: CategoryJob) {
+        let name = job.site.name();
+        let queue = self.queues.entry(name).or_default();
+        if queue.is_empty() {
+            self.ready.push_back(name);
+        }
+        queue.push_back(job);
+    }
+
+    fn pop(&mut self) -> Option<CategoryJob> {
+        let name = self.ready.pop_front()?;
+        let queue = self.queues.get_mut(name).unwrap();
+        let job = queue.pop_front();
+        if !queue.is_empty() {
+            self.ready.push_back(name);
+        }
+        job
+    }
+
+    fn is_empty(&self) -> bool {
+        self.ready.is_empty()
+    }
 }
 
 fn deduplicate_products(products: Vec<Product>) -> Vec<Product> {
@@ -432,13 +542,22 @@ fn deduplicate_products(products: Vec<Product>) -> Vec<Product> {
 }
 
 fn duplicate_score(product: &Product) -> (u8, usize, usize) {
-    (product.section.dedup_priority(), product.title.trim().len(), product.description.trim().len())
+    (
+        product.section.dedup_priority(),
+        product.title.trim().len(),
+        product.description.trim().len(),
+    )
 }
 
 fn build_section_reports(page_reports: Vec<PageReport>) -> Vec<SectionReport> {
     let mut grouped: HashMap<Section, HashMap<String, Vec<PageReport>>> = HashMap::new();
     for page in page_reports {
-        grouped.entry(page.section).or_default().entry(page.retailer.clone()).or_default().push(page);
+        grouped
+            .entry(page.section)
+            .or_default()
+            .entry(page.retailer.clone())
+            .or_default()
+            .push(page);
     }
 
     let mut sections = Vec::new();
@@ -525,7 +644,12 @@ async fn scan_summary(report: &ScanReport, error_health: ErrorCycleSummary) -> S
         .collect::<Vec<_>>();
     change_sections.sort_by_key(|change| std::cmp::Reverse(change.1 + change.2 + change.3));
 
-    let pages = report.scrape.iter().flat_map(|section| &section.sites).map(|site| site.page_count).sum();
+    let pages = report
+        .scrape
+        .iter()
+        .flat_map(|section| &section.sites)
+        .map(|site| site.page_count)
+        .sum();
     let failed_pages = report.pages().filter(|page| !page.errors.is_empty()).count();
     let attempts = report.pages().map(|page| page.attempts).sum();
     let mut site_metrics = HashMap::<String, (usize, usize, usize, u128)>::new();

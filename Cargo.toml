@@ -2,6 +2,14 @@
 name = "Flagship"
 version = "0.1.0"
 edition = "2024"
+default-run = "Flagship"
+
+[lib]
+name = "flagship"
+
+[[bin]]
+name = "scan-benchmark"
+path = "tools/scan_benchmark.rs"
 
 [profile.release]
 opt-level = 3

@@ -5,7 +5,7 @@ use crate::scraping::tracking::scan_metrics::PageMetrics;
 use crate::scraping::tracking::scan_report::{PageReport, ScrapeError};
 use crate::scraping::tracking::scrape_error::{FetchError, ProductParseError, ScrapeErrorKind};
 use crate::utils::serde_ext::JsonExt;
-use crate::utils::web_client::{USER_AGENT, WebClientType};
+use crate::utils::web_client::{USER_AGENT, WebClient, WebClientType};
 use axum::http::HeaderMap;
 use reqwest::Client;
 use serde::Deserialize;
@@ -162,13 +162,7 @@ async fn fetch_api_from(
     let mut products = Vec::new();
     loop {
         let url = format!("{endpoint}?category={}&per_page={PER_PAGE}&page={page}", urlencoding::encode(category));
-        let body = client
-            .get(&url)
-            .send()
-            .await
-            .and_then(reqwest::Response::error_for_status)
-            .map_err(|error| ScrapeErrorKind::FetchFailed(FetchError::Request { message: error.to_string() }))?
-            .text()
+        let body = WebClient::http_request(&url, client.get(&url))
             .await
             .map_err(|error| ScrapeErrorKind::FetchFailed(FetchError::Request { message: error.to_string() }))?;
         metrics.html_bytes += body.len() as u64;

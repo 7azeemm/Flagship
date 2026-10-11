@@ -10,7 +10,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR3aHRmZ3V
  */
 static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
     RetailerConfigBuilder {
-        web_client_type: WebClientType::Browser,
+        web_client_type: WebClientType::PersistentBrowser,
         name: "SkyMil-Shop",
         nav_sel: "nav[role=navigation] ul li a",
         product_sel: "article.card-product",

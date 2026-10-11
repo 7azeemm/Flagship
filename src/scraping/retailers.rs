@@ -1,5 +1,6 @@
 use crate::core::product::{CachedProductInfo, Product, ProductStatus, minimize_image_url};
 use crate::core::sections::Section;
+use crate::scraping::product_cache;
 use crate::scraping::retailers::agora::Agora;
 use crate::scraping::retailers::batam::Batam;
 use crate::scraping::retailers::bestbuytunisie::BestBuyTunisie;
@@ -28,25 +29,34 @@ use crate::scraping::retailers::zoom::Zoom;
 use crate::scraping::scanner::CACHED_PRODUCT_INFO;
 use crate::scraping::tracking::scan_metrics::PageMetrics;
 use crate::scraping::tracking::scan_report::{PageReport, ScrapeError, ScrapeErrorKind};
-use crate::scraping::tracking::scrape_error::{FetchError, PaginationError, ProductFetchError, ProductParseError, UrlError};
+use crate::scraping::tracking::scrape_error::{
+    FetchError, PaginationError, ProductFetchError, ProductParseError, UrlError,
+};
+use crate::utils::logger::FetchLog;
 use crate::utils::scraper_ext::ElementRefExt;
 use crate::utils::web_client::{WebClient, WebClientType};
 use chrono::Utc;
+use futures::{StreamExt, stream};
 use scraper::{ElementRef, Html, Selector};
-use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio::time::sleep;
 
+pub mod affariyet;
 pub mod agora;
 pub mod batam;
 pub mod bestbuytunisie;
+pub mod bstech;
+pub mod carthago_informatique;
 pub mod cyberinfo;
 pub mod expert_gaming;
 pub mod gamershop;
+pub mod gameworld;
 pub mod gaming_gear_tn;
 pub mod graiet;
+pub mod info_tec;
+pub mod jmb;
 pub mod jumbo;
 pub mod lazari;
 pub mod mbm_informatique;
@@ -59,20 +69,14 @@ pub mod sig_shop;
 pub mod skymil_shop;
 pub mod spacenet;
 pub mod sws_informatique;
+pub mod tdiscount;
 pub mod techgate;
 pub mod techland;
 pub mod techspace;
-pub mod tunisianet;
-pub mod zoom;
-pub mod affariyet;
-pub mod bstech;
-pub mod carthago_informatique;
-pub mod gameworld;
-pub mod info_tec;
-pub mod jmb;
-pub mod tdiscount;
 pub mod tunewtec;
+pub mod tunisianet;
 pub mod wiki_tn;
+pub mod zoom;
 
 const MAX_RETRIES: i32 = 3;
 
@@ -137,7 +141,12 @@ pub struct RetailerConfig {
 pub trait Retailer: Send + Sync {
     fn config(&self) -> &RetailerConfig;
 
-    async fn scrape_page(&self, base_url: &str, page: i32, section: Section) -> (PageReport, Vec<Product>, Option<i32>) {
+    async fn scrape_page(
+        &self,
+        base_url: &str,
+        page: i32,
+        section: Section,
+    ) -> (PageReport, Vec<Product>, Option<i32>) {
         let started_at = std::time::Instant::now();
         let url = self.format_url(base_url, page);
         let mut products = Vec::new();
@@ -154,7 +163,9 @@ pub trait Retailer: Send + Sync {
                 Ok(body) => body,
                 Err(err) => {
                     if last_retry {
-                        errors.push(ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }));
+                        errors.push(ScrapeErrorKind::FetchFailed(FetchError::Request {
+                            message: err.to_string(),
+                        }));
                         break;
                     }
                     sleep(Duration::from_millis(500)).await;
@@ -178,28 +189,13 @@ pub trait Retailer: Send + Sync {
             sleep(Duration::from_millis(500)).await;
         }
 
-        let mut to_remove = HashSet::new();
-
-        // Fetch Descriptions
-        for product in &mut products {
-            if let Err(error) = self.fetch_product_page(product, &mut metrics).await {
-                if error.skip_product() {
-                    to_remove.insert(product.url.clone());
-                }
-                errors.push(ScrapeErrorKind::ProductFetchFailed {
-                    url: product.url.clone(),
-                    title: product.title.clone(),
-                    error,
-                });
-            }
-        }
-
-        products.retain(|p| !to_remove.contains(&p.url));
-
         (
             PageReport {
                 products: products.len(),
-                errors: errors.into_iter().map(|e| ScrapeError::new(e, section, self.name(), &url)).collect(),
+                errors: errors
+                    .into_iter()
+                    .map(|e| ScrapeError::new(e, section, self.name(), &url))
+                    .collect(),
                 url,
                 retailer: self.name().to_string(),
                 section,
@@ -212,11 +208,68 @@ pub trait Retailer: Send + Sync {
         )
     }
 
+    /// Enrich after category discovery, so descriptions cannot delay pagination.
+    async fn enrich_products(&self, mut report: PageReport, products: Vec<Product>) -> (PageReport, Vec<Product>) {
+        let started = std::time::Instant::now();
+        let concurrency = WebClient::get().limits.per_host(self.config().fetch_type);
+        let results = stream::iter(products.into_iter().map(|mut product| async move {
+            let mut metrics = PageMetrics::default();
+            let result = self.fetch_product_page(&mut product, &mut metrics).await;
+            (product, metrics, result)
+        }))
+            .buffer_unordered(concurrency)
+            .collect::<Vec<_>>()
+            .await;
+        
+        let mut products = Vec::new();
+        for (product, metrics, result) in results {
+            report.metrics.add(&metrics);
+            let skip = if let Err(error) = result {
+                let skip = error.skip_product();
+                report.errors.push(ScrapeError::new(
+                    ScrapeErrorKind::ProductFetchFailed {
+                        url: product.url.clone(),
+                        title: product.title.clone(),
+                        error,
+                    },
+                    report.section,
+                    self.name(),
+                    &report.url,
+                ));
+                skip
+            } else {
+                false
+            };
+            if !skip {
+                products.push(product);
+            }
+        }
+        
+        report.products = products.len();
+        report.duration += started.elapsed();
+        tracing::debug!(
+            retailer = self.name(),
+            url = report.url,
+            products = report.products,
+            cache_hits = report.metrics.cache_hits,
+            requests = report.metrics.product_page_requests,
+            elapsed_ms = report.duration.as_millis(),
+            "Category products enriched"
+        );
+        (report, products)
+    }
+
     async fn fetch_api(&self, _link: &str, _section: Section) -> Option<(PageReport, Vec<Product>)> {
         None
     }
 
-    fn parse(&self, section: Section, page: i32, body: String, page_count: &mut Option<i32>) -> (Vec<Product>, Vec<ScrapeErrorKind>, bool) {
+    fn parse(
+        &self,
+        section: Section,
+        page: i32,
+        body: String,
+        page_count: &mut Option<i32>,
+    ) -> (Vec<Product>, Vec<ScrapeErrorKind>, bool) {
         *page_count = None;
         let mut errors = Vec::new();
         let doc = Html::parse_document(&body);
@@ -245,8 +298,10 @@ pub trait Retailer: Send + Sync {
             match self.parse_product(section, product) {
                 Ok(product) => products.push(product),
                 Err(err) => {
-                    let url = product.select_elem(&self.config().title_sel, "url")
-                        .and_then(|elem| elem.select_attr("href", "url")).ok();
+                    let url = product
+                        .select_elem(&self.config().title_sel, "url")
+                        .and_then(|elem| elem.select_attr("href", "url"))
+                        .ok();
                     errors.push(ScrapeErrorKind::ParseFailed { url, error: err })
                 }
             }
@@ -321,25 +376,43 @@ pub trait Retailer: Send + Sync {
         false
     }
 
-    async fn fetch_product_page(&self, product: &mut Product, metrics: &mut PageMetrics) -> Result<(), ProductFetchError> {
-        if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(&product.url)
-            .filter(|cached| cached.is_fresh() && (!cached.description.is_empty() || !cached.images.is_empty())) {
-            if !cached.description.is_empty() { product.description = cached.description.clone(); }
-            if !cached.images.is_empty() { product.images = cached.images.clone(); }
+    async fn fetch_product_page(
+        &self,
+        product: &mut Product,
+        metrics: &mut PageMetrics,
+    ) -> Result<(), ProductFetchError> {
+        let _product_lock = product_cache::lock_product(&product.url).await;
+        if let Some(cached) = CACHED_PRODUCT_INFO
+            .read()
+            .await
+            .get(&product.url)
+            .filter(|cached| cached.is_fresh() && (!cached.description.is_empty() || !cached.images.is_empty()))
+        {
+            if !cached.description.is_empty() {
+                product.description = cached.description.clone();
+            }
+            if !cached.images.is_empty() {
+                product.images = cached.images.clone();
+            }
             metrics.cache_hits += 1;
+            tracing::debug!(retailer = self.name(), url = product.url, "Product detail cache hit");
             return Ok(());
         }
+
+        let log = FetchLog::new(self.name(), &product.url);
 
         for attempt in 1..=MAX_RETRIES {
             let last_retry = attempt == MAX_RETRIES;
             metrics.product_page_requests += 1;
-            sleep(Duration::from_millis(100)).await;
 
             let body = match self.fetch(&product.url).await {
                 Ok(content) => content,
                 Err(err) => {
+                    log.failed(attempt, &err, !last_retry);
                     if last_retry {
-                        return Err(ProductFetchError::FetchFailed { message: err.to_string() });
+                        return Err(ProductFetchError::FetchFailed {
+                            message: err.to_string(),
+                        });
                     }
                     sleep(Duration::from_millis(500)).await;
                     continue;
@@ -350,12 +423,18 @@ pub trait Retailer: Send + Sync {
             let (description, images) = {
                 let html = Html::parse_document(&body);
 
-                if [Jumbo.name(), SBSInformatique.name()].contains(&product.retailer.as_str()) &&
-                    html.select(&self.config().product_sel).next().is_some() {
+                if [Jumbo.name(), SBSInformatique.name()].contains(&product.retailer.as_str())
+                    && html.select(&self.config().product_sel).next().is_some()
+                {
+                    log.failed(attempt, "Product is no longer listed", false);
                     return Err(ProductFetchError::ProductMissing);
                 }
 
-                let description = html.select(&self.config().page_desc_sel).next().map(|element| element.get_text()).unwrap_or_default();
+                let description = html
+                    .select(&self.config().page_desc_sel)
+                    .next()
+                    .map(|element| element.get_text())
+                    .unwrap_or_default();
 
                 let images = html
                     .select(&self.config().page_images_sel)
@@ -368,6 +447,7 @@ pub trait Retailer: Send + Sync {
             };
 
             if !last_retry && description.is_empty() && images.is_empty() {
+                log.failed(attempt, "No detail content", true);
                 sleep(Duration::from_millis(500)).await;
                 continue;
             }
@@ -379,16 +459,20 @@ pub trait Retailer: Send + Sync {
                 product.images = images.clone();
             }
 
-            if !description.is_empty() || !images.is_empty() {
-                CACHED_PRODUCT_INFO.write().await.insert(
+            let cached = !description.is_empty() || !images.is_empty();
+            if cached {
+                product_cache::store(
                     product.url.clone(),
                     CachedProductInfo {
                         timestamp: Utc::now(),
                         description,
                         images,
                     },
-                );
+                )
+                .await;
             }
+
+            log.completed(attempt, body.len(), cached);
 
             return Ok(());
         }
@@ -399,13 +483,18 @@ pub trait Retailer: Send + Sync {
     async fn fetch(&self, url: &str) -> Result<String, String> {
         let cfg = self.config();
         WebClient::fetch(url, &cfg.fetch_type, &[&cfg.page_desc_sel, &cfg.page_images_sel])
-            .await.map_err(|e| e.to_string())
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn fetch_category(&self, url: &str) -> Result<String, String> {
         let mut ready = vec![&self.config().product_sel];
-        if let Some(empty) = &self.config().empty_page_sel { ready.push(empty); }
-        WebClient::fetch(url, &self.config().fetch_type, &ready).await.map_err(|e| e.to_string())
+        if let Some(empty) = &self.config().empty_page_sel {
+            ready.push(empty);
+        }
+        WebClient::fetch(url, &self.config().fetch_type, &ready)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     fn name(&self) -> &'static str {
@@ -417,7 +506,9 @@ pub trait Retailer: Send + Sync {
     }
 
     fn format_url(&self, url: &str, page: i32) -> String {
-        if page == 1 { return url.to_string(); }
+        if page == 1 {
+            return url.to_string();
+        }
         format!("{url}?page={page}")
     }
 }
@@ -456,13 +547,20 @@ pub fn extract_prices(
         }
     } else {
         let price = parse_price(&element.select_text(price_sel, "price")?)?;
-        let original_price = element.select(original_price_sel).next().map(|p| parse_price(&p.get_text())).transpose()?;
+        let original_price = element
+            .select(original_price_sel)
+            .next()
+            .map(|p| parse_price(&p.get_text()))
+            .transpose()?;
         Ok((price, original_price))
     }
 }
 
 pub fn parse_price(text: &str) -> Result<i32, ProductParseError> {
-    let text: String = text.chars().filter(|c| c.is_ascii_digit() || *c == '.' || *c == ',').collect();
+    let text: String = text
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
+        .collect();
 
     let normalized = if text.contains(',') && text.contains('.') {
         if text.find(',') < text.find('.') {
@@ -502,10 +600,9 @@ pub fn validate_url(url: &str) -> Result<(), UrlError> {
         Err(UrlError::InvalidScheme { value: url.to_string() })
     } else if url.chars().any(char::is_whitespace) {
         Err(UrlError::ContainsSpaces { value: url.to_string() })
-    } else if reqwest::Url::parse(url)
-        .ok()
-        .is_none_or(|parsed| parsed.host_str().is_none() || !parsed.username().is_empty() || parsed.password().is_some())
-    {
+    } else if reqwest::Url::parse(url).ok().is_none_or(|parsed| {
+        parsed.host_str().is_none() || !parsed.username().is_empty() || parsed.password().is_some()
+    }) {
         Err(UrlError::Malformed { value: url.to_string() })
     } else {
         Ok(())

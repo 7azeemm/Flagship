@@ -18,4 +18,5 @@ exec /usr/bin/xvfb-run -a -s '-screen 0 1280x900x24' "$browser" \
     --user-data-dir="$profile" \
     --remote-debugging-address=127.0.0.1 --remote-debugging-port=9224 \
     --proxy-server=socks5://127.0.0.1:40000 \
+    --disable-back-forward-cache \
     --disable-dev-shm-usage --no-sandbox --no-first-run --no-default-browser-check about:blank

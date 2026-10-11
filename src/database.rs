@@ -409,21 +409,15 @@ impl Database {
             .await
             .map_err(db_error)?;
         
-        for (url, info) in cache {
-            let expires_at = info.timestamp + CACHE_EXPIRATION_DURATION;
-            if expires_at <= now {
-                continue;
-            }
-
-            sqlx::query("INSERT INTO product_info_cache (url,expires_at,fetched_at,description,images) VALUES ($1,$2,$3,$4,$5) ON CONFLICT(url) DO UPDATE SET expires_at=excluded.expires_at,fetched_at=excluded.fetched_at,description=excluded.description,images=excluded.images WHERE (product_info_cache.fetched_at,product_info_cache.description,product_info_cache.images) IS DISTINCT FROM (excluded.fetched_at,excluded.description,excluded.images)")
-                .bind(url)
-                .bind(expires_at)
-                .bind(info.timestamp)
-                .bind(&info.description)
-                .bind(sqlx::types::Json(&info.images))
-                .execute(&mut *transaction)
-                .await
-                .map_err(db_error)?;
+        let entries: Vec<_> = cache.iter().filter(|(_, info)| info.timestamp + CACHE_EXPIRATION_DURATION > now).collect();
+        for chunk in entries.chunks(1000) {
+            let mut query = sqlx::QueryBuilder::<Postgres>::new("INSERT INTO product_info_cache (url,expires_at,fetched_at,description,images) ");
+            query.push_values(chunk.iter().copied(), |mut row, (url, info)| {
+                row.push_bind(url).push_bind(info.timestamp + CACHE_EXPIRATION_DURATION)
+                    .push_bind(info.timestamp).push_bind(&info.description).push_bind(sqlx::types::Json(&info.images));
+            });
+            query.push(" ON CONFLICT(url) DO UPDATE SET expires_at=excluded.expires_at,fetched_at=excluded.fetched_at,description=excluded.description,images=excluded.images WHERE (product_info_cache.fetched_at,product_info_cache.description,product_info_cache.images) IS DISTINCT FROM (excluded.fetched_at,excluded.description,excluded.images)");
+            query.build().execute(&mut *transaction).await.map_err(db_error)?;
         }
         transaction.commit().await.map_err(db_error)
     }

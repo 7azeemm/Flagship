@@ -1,21 +1,23 @@
 use crate::core::product::{CachedProductInfo, Product, ProductStatus};
 use crate::core::sections::Section;
+use crate::scraping::product_cache;
 use crate::scraping::retailers::{Retailer, RetailerConfig, RetailerConfigBuilder};
 use crate::scraping::scanner::CACHED_PRODUCT_INFO;
 use crate::scraping::tracking::scan_metrics::PageMetrics;
 use crate::scraping::tracking::scan_report::{PageReport, ScrapeError, ScrapeErrorKind};
 use crate::scraping::tracking::scrape_error::{FetchError, ProductFetchError, ProductParseError};
+use crate::utils::logger::FetchLog;
 use crate::utils::serde_ext::JsonExt;
-use crate::utils::web_client::{USER_AGENT, WebClientType};
+use crate::utils::web_client::{USER_AGENT, WebClient, WebClientType};
 use axum::http::HeaderMap;
 use chrono::Utc;
+use futures::{StreamExt, stream};
 use reqwest::Client;
 use scraper::Html;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
-use tokio::time::sleep;
 use urlencoding::encode;
 
 static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
@@ -146,23 +148,31 @@ impl Retailer for MegaPC {
                 duration: started_at.elapsed(),
                 attempts: 0,
                 metrics,
-                errors: errors.into_iter().map(|e| ScrapeError::new(e, section, self.name(), link)).collect(),
+                errors: errors
+                    .into_iter()
+                    .map(|e| ScrapeError::new(e, section, self.name(), link))
+                    .collect(),
             },
             products,
         ))
     }
 }
 
-async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> Result<(Vec<Product>, Vec<ScrapeErrorKind>), ScrapeErrorKind> {
+async fn fetch_api(
+    link: &str,
+    section: Section,
+    metrics: &mut PageMetrics,
+) -> Result<(Vec<Product>, Vec<ScrapeErrorKind>), ScrapeErrorKind> {
     let (category, sub_category) = link.split_once('/').ok_or_else(|| {
         ScrapeErrorKind::FetchFailed(FetchError::Request {
             message: format!("Invalid MegaPC category path: {link}"),
         })
     })?;
 
-    let body = HTTP_CLIENT
-        .post("https://apiclt.gi-ga.tech/produit/byPaginationNew")
-        .json(&json!({
+    let api_url = "https://apiclt.gi-ga.tech/produit/byPaginationNew";
+    let body = WebClient::http_request(
+        api_url,
+        HTTP_CLIENT.post(api_url).json(&json!({
             "recordByPage":12,
             "pageNumber":"1",
             "categorie":{"titre":category},
@@ -173,21 +183,23 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
             "query":null,
             "brand":[],
             "valeurAttribute1":[]
-        }))
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?
-        .text()
-        .await
-        .map_err(|err| ScrapeErrorKind::FetchFailed(FetchError::Request { message: err.to_string() }))?;
+        })),
+    )
+    .await
+    .map_err(|err| {
+        ScrapeErrorKind::FetchFailed(FetchError::Request {
+            message: err.to_string(),
+        })
+    })?;
 
     metrics.html_bytes += body.len() as u64;
 
     let products = serde_json::from_str::<APIResponse>(&body)
         .map_err(|err| ScrapeErrorKind::ParseFailed {
             url: Some(link.to_string()),
-            error: ProductParseError::Other { message: err.to_string() },
+            error: ProductParseError::Other {
+                message: err.to_string(),
+            },
         })?
         .products;
 
@@ -195,7 +207,9 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
 
     let products = {
         let mut list = Vec::new();
-        for product in products {
+        let results = stream::iter(products.into_iter().map(|product| async move {
+            let mut metrics = PageMetrics::default();
+            let mut errors = Vec::new();
             let url = format!("https://megapc.tn/shop/product/{}/{}", encode(link), product.lien);
 
             let mut images = product
@@ -209,14 +223,16 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
             let Some(preview_image) = images.next() else {
                 errors.push(ScrapeErrorKind::ParseFailed {
                     url: Some(url.clone()),
-                    error: ProductParseError::MissingElement { field: "image".to_string() },
+                    error: ProductParseError::MissingElement {
+                        field: "image".to_string(),
+                    },
                 });
-                continue;
+                return (None, metrics, errors);
             };
 
             let images: Vec<String> = images.collect();
 
-            let description = match fetch_product_page(&url, category, sub_category, &product.lien, metrics).await {
+            let description = match fetch_product_page(&url, category, sub_category, &product.lien, &mut metrics).await {
                 Ok(desc) => desc,
                 Err(err) => {
                     errors.push(ScrapeErrorKind::ProductFetchFailed {
@@ -228,22 +244,41 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
                 }
             };
 
-            list.push(Product::new(
-                CONFIG.name,
-                url,
-                product.title,
-                section,
-                description,
-                preview_image,
-                images,
-                match (product.on_arrive, product.on_request) {
-                    (false, false) => ProductStatus::InStock,
-                    (false, true) => ProductStatus::OnDemand,
-                    (true, _) => ProductStatus::Arriving,
-                },
-                product.new_price.unwrap_or(product.price),
-                if product.new_price.is_some() { Some(product.price) } else { None },
-            ))
+            (
+                Some(Product::new(
+                    CONFIG.name,
+                    url,
+                    product.title,
+                    section,
+                    description,
+                    preview_image,
+                    images,
+                    match (product.on_arrive, product.on_request) {
+                        (false, false) => ProductStatus::InStock,
+                        (false, true) => ProductStatus::OnDemand,
+                        (true, _) => ProductStatus::Arriving,
+                    },
+                    product.new_price.unwrap_or(product.price),
+                    if product.new_price.is_some() {
+                        Some(product.price)
+                    } else {
+                        None
+                    },
+                )),
+                metrics,
+                errors,
+            )
+        }))
+            .buffer_unordered(WebClient::get().limits.http_per_host)
+            .collect::<Vec<_>>()
+            .await;
+
+        for (product, product_metrics, product_errors) in results {
+            metrics.add(&product_metrics);
+            errors.extend(product_errors);
+            if let Some(product) = product {
+                list.push(product);
+            }
         }
         list
     };
@@ -251,49 +286,71 @@ async fn fetch_api(link: &str, section: Section, metrics: &mut PageMetrics) -> R
     Ok((products, errors))
 }
 
-async fn fetch_product_page(product_url: &str, category: &str, sub_category: &str, lien: &str, metrics: &mut PageMetrics) -> Result<String, ProductFetchError> {
-    if let Some(cached) = CACHED_PRODUCT_INFO.read().await.get(product_url)
-        .filter(|cached| cached.is_fresh() && !cached.description.is_empty()) {
+async fn fetch_product_page(
+    product_url: &str,
+    category: &str,
+    sub_category: &str,
+    lien: &str,
+    metrics: &mut PageMetrics,
+) -> Result<String, ProductFetchError> {
+    let _product = product_cache::lock_product(product_url).await;
+    if let Some(cached) = CACHED_PRODUCT_INFO
+        .read()
+        .await
+        .get(product_url)
+        .filter(|cached| cached.is_fresh() && !cached.description.is_empty())
+    {
         metrics.cache_hits += 1;
+        tracing::debug!(retailer = "MegaPC", url = product_url, "Product detail cache hit");
         return Ok(cached.description.clone());
     }
 
-    sleep(Duration::from_millis(100)).await;
-
     let url = format!("https://megapc.tn/_next/data/build-1779382291697/shop/product/{category}/{sub_category}/{lien}.json");
     metrics.product_page_requests += 1;
-    let body = HTTP_CLIENT
-        .get(&url)
-        .send()
+    let log = FetchLog::new("MegaPC", product_url);
+    let body = WebClient::http_request(&url, HTTP_CLIENT.get(&url))
         .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?
-        .text()
-        .await
-        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?;
+        .map_err(|err| {
+            log.failed(1, &err.to_string(), false);
+            ProductFetchError::FetchFailed {
+                message: err.to_string(),
+            }
+        })?;
     metrics.html_bytes += body.len() as u64;
 
     let string = serde_json::from_str::<Value>(&body)
-        .map_err(|err| ProductFetchError::FetchFailed { message: err.to_string() })?
+        .map_err(|err| {
+            log.failed(1, &err.to_string(), false);
+            ProductFetchError::FetchFailed {
+                message: err.to_string(),
+            }
+        })?
         .get_str("pageProps/product/miniDescription_fr")
         .map(|s| s.to_string());
 
     let Some(description) = string else {
+        log.completed(1, body.len(), false);
         return Ok("".to_string());
     };
 
-    let description = Html::parse_document(&description).root_element().text().collect::<String>();
+    let description = Html::parse_document(&description)
+        .root_element()
+        .text()
+        .collect::<String>();
 
     if !description.is_empty() {
-        CACHED_PRODUCT_INFO.write().await.insert(
+        product_cache::store(
             product_url.to_string(),
             CachedProductInfo {
                 timestamp: Utc::now(),
                 description: description.clone(),
                 images: vec![],
             },
-        );
+        )
+        .await;
     }
+
+    log.completed(1, body.len(), !description.is_empty());
 
     Ok(description)
 }
