@@ -12,6 +12,7 @@ use crate::scraping::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::scraping::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
 use crate::utils::regex_cache::RegexCache;
 use crate::utils::logger::{SCAN_PROGRESS, ScanLogProgress};
+use crate::utils::web_client::WebClient;
 use chrono::{Duration, Utc};
 use futures::{StreamExt, stream::FuturesUnordered};
 use std::collections::hash_map::Entry;
@@ -434,6 +435,9 @@ async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -
     let mut detail_queue: VecDeque<DetailJob> = VecDeque::new();
     let mut details = FuturesUnordered::new();
     let mut results = Vec::new();
+    let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(60));
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    heartbeat.tick().await;
     loop {
         // Bound parsed listings waiting for details as well as active workers.
         // Prioritize the detail backlog once it reaches this limit.
@@ -468,6 +472,15 @@ async fn scrape_jobs(jobs: Vec<CategoryJob>, concurrency: usize, client: &str) -
                 else { detail_queue.push_back((job.site, report, products)); None }
             }
             Some(result) = details.next(), if !details.is_empty() => Some(result),
+            _ = heartbeat.tick() => {
+                let (active_browser, active_http) = WebClient::get().active_requests();
+                tracing::info!(target: "retailer_fetch", categories_active = categories.len(),
+                    categories_pending = discovered - progress.pages.load(Ordering::Relaxed) - categories.len(),
+                    detail_batches_active = details.len(), detail_batches_pending = detail_queue.len(),
+                    pages_completed = results.len(), active_browser, active_http,
+                    "{} Scan still running", progress.prefix());
+                None
+            }
         };
         if let Some((report, page_products)) = completed {
             products += page_products.len();

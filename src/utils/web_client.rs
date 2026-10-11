@@ -7,16 +7,21 @@ use reqwest::{Client, ClientBuilder};
 use scraper::{Html, Selector};
 use std::collections::HashMap;
 use std::error::Error;
+use std::future::Future;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, OnceCell, Semaphore};
-use tokio::time::{Instant, sleep, sleep_until};
+use tokio::time::{Instant, sleep, sleep_until, timeout};
 
 pub const USER_AGENT: &str =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
 const TIMEOUT: Duration = Duration::from_secs(30);
 const CHALLENGE_TIMEOUT: Duration = Duration::from_secs(45);
+// Playwright's navigation timeout does not bound protocol calls such as content(),
+// new_page(), or close(). Bound the entire attempt after acquiring its slots.
+const BROWSER_FETCH_TIMEOUT: Duration = Duration::from_secs(120);
+const BROWSER_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 const RETAILER_PROXY: &str = "socks5h://127.0.0.1:40000";
 const BROWSER_CDP_ENDPOINT: &str = "http://127.0.0.1:9224";
 const TAB_REQUEST_LIMIT: usize = 20;
@@ -90,7 +95,7 @@ impl Drop for PageLease {
     fn drop(&mut self) {
         if let Some(page) = self.0.take() {
             tokio::spawn(async move {
-                let _ = page.page.close().await;
+                let _ = close_page(&page.page).await;
             });
         }
     }
@@ -240,6 +245,13 @@ impl WebClient {
         )
     }
 
+    pub(crate) fn active_requests(&self) -> (usize, usize) {
+        (
+            self.browser_requests.active.load(Ordering::Relaxed),
+            self.http_requests.active.load(Ordering::Relaxed),
+        )
+    }
+
     async fn session(
         &self,
         url: &str,
@@ -293,28 +305,35 @@ impl WebClient {
             client.http_slots.acquire().await?
         };
 
-        if matches!(
-            client_type,
-            WebClientType::ProxyHttpClient | WebClientType::PersistentBrowser
-        ) {
-            let mut next = session.next_request.lock().await;
-            sleep_until(*next).await;
-            *next = Instant::now() + client.limits.proxied_start_gap;
-        }
-        tracing::debug!(url, queued_ms = waiting.elapsed().as_millis(), "Request slot acquired");
-
-        let _request = if client_type.is_browser() {
-            client.browser_requests.enter()
-        } else {
-            client.http_requests.enter()
-        };
-
-        match client_type {
-            WebClientType::HttpClient => Self::fetch_http(&client.http_client, url).await,
-            WebClientType::ProxyHttpClient => Self::fetch_http(&client.proxy_client, url).await,
-            WebClientType::Browser | WebClientType::PersistentBrowser => {
-                client.fetch_browser(url, *client_type, ready).await
+        let fetch = async {
+            if matches!(
+                client_type,
+                WebClientType::ProxyHttpClient | WebClientType::PersistentBrowser
+            ) {
+                let mut next = session.next_request.lock().await;
+                sleep_until(*next).await;
+                *next = Instant::now() + client.limits.proxied_start_gap;
             }
+            tracing::debug!(url, queued_ms = waiting.elapsed().as_millis(), "Request slot acquired");
+
+            let _request = if client_type.is_browser() {
+                client.browser_requests.enter()
+            } else {
+                client.http_requests.enter()
+            };
+
+            match client_type {
+                WebClientType::HttpClient => Self::fetch_http(&client.http_client, url).await,
+                WebClientType::ProxyHttpClient => Self::fetch_http(&client.proxy_client, url).await,
+                WebClientType::Browser | WebClientType::PersistentBrowser => {
+                    client.fetch_browser(url, *client_type, ready).await
+                }
+            }
+        };
+        if client_type.is_browser() {
+            browser_deadline(url, "fetch", BROWSER_FETCH_TIMEOUT, fetch).await
+        } else {
+            fetch.await
         }
     }
 
@@ -360,19 +379,18 @@ impl WebClient {
                 .await
                 .is_ok()
         {
+            // Keep the lease until the pool lock is acquired: cancellation while
+            // waiting must still arrange cleanup of the checked-out tab.
+            let mut pages = self.browser_pages.lock().await;
             let mut pooled = lease.0.take().unwrap();
             pooled.requests += 1;
-            self.browser_pages
-                .lock()
-                .await
-                .entry(client_type)
-                .or_default()
-                .push(pooled);
+            pages.entry(client_type).or_default().push(pooled);
         }
 
-        if let Some(retired) = lease.0.take() {
-            let _ = retired.page.close().await;
+        if let Some(retired) = lease.0.as_ref() {
+            let _ = close_page(&retired.page).await;
         }
+        let _ = lease.0.take();
         result
     }
 
@@ -447,14 +465,18 @@ impl WebClient {
         let deadline = Instant::now() + CHALLENGE_TIMEOUT;
         let mut saw_challenge = challenged;
         loop {
-            let body = match page.content().await {
+            let body = match browser_deadline(url, "read content", TIMEOUT, async {
+                page.content().await.map_err(|error| error.into())
+            })
+            .await
+            {
                 Ok(body) => body,
                 // Cloudflare can replace the document between polling and serializing it.
                 Err(error) if navigation_in_progress(&error.to_string()) && Instant::now() < deadline => {
                     sleep(Duration::from_secs(1)).await;
                     continue;
                 }
-                Err(error) => return Err(error.into()),
+                Err(error) => return Err(error),
             };
 
             let blocked = challenge_page(&body);
@@ -500,7 +522,7 @@ impl WebClient {
         for pages in self.browser_pages.lock().await.values_mut() {
             for page in pages.drain(..) {
                 if !page.page.is_closed() {
-                    log_close_result(page.page.close().await, "page");
+                    log_close_result(close_page(&page.page).await, "page");
                 }
             }
         }
@@ -517,6 +539,32 @@ impl WebClient {
             tracing::error!(%error, "Failed to shut down Playwright");
         }
     }
+}
+
+async fn browser_deadline<T>(
+    url: &str,
+    operation: &str,
+    limit: Duration,
+    future: impl Future<Output = Result<T, Box<dyn Error + Send + Sync>>>,
+) -> Result<T, Box<dyn Error + Send + Sync>> {
+    match timeout(limit, future).await {
+        Ok(result) => result,
+        Err(_) => {
+            tracing::warn!(target: "retailer_fetch", url, operation, timeout_seconds = limit.as_secs(),
+                "Browser operation exceeded hard deadline");
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("Browser {operation} exceeded {}s hard deadline: {url}", limit.as_secs()),
+            )
+            .into())
+        }
+    }
+}
+
+async fn close_page(page: &Page) -> playwright_rs::Result<()> {
+    timeout(BROWSER_CLOSE_TIMEOUT, page.close()).await.unwrap_or_else(|_| {
+        Err(playwright_rs::Error::ProtocolError("Browser page close exceeded 5s deadline".into()))
+    })
 }
 
 fn target_closed(error: &playwright_rs::Error) -> bool {
