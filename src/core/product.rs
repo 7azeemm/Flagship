@@ -382,7 +382,7 @@ impl FromStr for ProductStatus {
             (Self::InStock, vec!["instock", "en stock", "in stock", "ajouter", "disponible", "sale"]),
             (Self::OutOfStock, vec!["outofstock", "out of stock", "hors stock", "epuisé", "épuisé", "rupture de stock", "en rupture"]),
             (Self::Arriving, vec!["onarrive", "en arrivage", "arriving", "en arrvage", "incoming"]),
-            (Self::OnDemand, vec!["onrequest", "sur commande", "surcommande", "pre-order", "on demand", "commande"]),
+            (Self::OnDemand, vec!["onrequest", "sur commande", "surcommande", "sur devis", "pre-order", "on demand", "commande"]),
         ];
 
         for (status, keys) in statuses {

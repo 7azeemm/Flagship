@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 
 static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
     RetailerConfigBuilder {
-        web_client_type: WebClientType::HttpClient,
+        web_client_type: WebClientType::PersistentBrowser,
         name: "Mytek",
         nav_sel: "nav.custom-pagination ul.pagination li.page-item",
         product_sel: "div#product-list-container div#seo-product-data div[data-id]",

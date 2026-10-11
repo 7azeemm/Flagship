@@ -10,7 +10,6 @@ use crate::scraping::tracking::error_tracker::{ErrorCycleSummary, ErrorTracker};
 use crate::scraping::tracking::scan_cache::{ScanCache, ScanRecord, ScanTrigger};
 use crate::scraping::tracking::scan_report::{PageReport, ScanReport, SectionReport, SiteReport};
 use crate::utils::regex_cache::RegexCache;
-use crate::utils::web_client::WebClientType;
 use chrono::{Duration, Utc};
 use futures::{StreamExt, stream};
 use rand::RngExt;
@@ -243,10 +242,11 @@ impl CatalogScanner {
                         (report, products, tasks)
                     };
 
-                    match site.config().fetch_type {
-                        WebClientType::HttpClient => client_tasks.push(task),
-                        WebClientType::Browser => browser_tasks.push(task),
-                    };
+                    if site.config().fetch_type.is_browser() {
+                        browser_tasks.push(task);
+                    } else {
+                        client_tasks.push(task);
+                    }
                 }
             }
         }

@@ -11,14 +11,14 @@ static URL_SELECTOR: LazyLock<Selector> = LazyLock::new(|| Selector::parse("a[hr
 
 static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
     RetailerConfigBuilder {
-        web_client_type: WebClientType::Browser,
+        web_client_type: WebClientType::PersistentBrowser,
         name: "Lazari",
         nav_sel: "div.items-center p.font-medium.text-gray-700",
         product_sel: "div[data-product-id]",
         title_sel: "h3",
         image_sel: "img.product-image",
-        price_sel: "p.new-price",
-        original_price_sel: "p.old-price",
+        price_sel: ".new-price",
+        original_price_sel: ".old-price",
         page_desc_sel: "div.product-description-content",
         page_images_sel: "div.thumbnail-swiper img",
         status_sel: None,

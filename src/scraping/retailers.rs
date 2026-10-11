@@ -150,7 +150,7 @@ pub trait Retailer: Send + Sync {
             attempts += 1;
             let last_retry = attempts == MAX_RETRIES;
 
-            let body = match self.fetch(&url).await {
+            let body = match self.fetch_category(&url).await {
                 Ok(body) => body,
                 Err(err) => {
                     if last_retry {
@@ -397,7 +397,15 @@ pub trait Retailer: Send + Sync {
     }
 
     async fn fetch(&self, url: &str) -> Result<String, String> {
-        WebClient::fetch(url, &self.config().fetch_type).await.map_err(|e| e.to_string())
+        let cfg = self.config();
+        WebClient::fetch(url, &cfg.fetch_type, &[&cfg.page_desc_sel, &cfg.page_images_sel])
+            .await.map_err(|e| e.to_string())
+    }
+
+    async fn fetch_category(&self, url: &str) -> Result<String, String> {
+        let mut ready = vec![&self.config().product_sel];
+        if let Some(empty) = &self.config().empty_page_sel { ready.push(empty); }
+        WebClient::fetch(url, &self.config().fetch_type, &ready).await.map_err(|e| e.to_string())
     }
 
     fn name(&self) -> &'static str {

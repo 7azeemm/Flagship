@@ -1,0 +1,19 @@
+[Unit]
+Description=Flagship retailer WARP proxy
+Wants=network-online.target warp-svc.service
+After=network-online.target warp-svc.service
+
+[Service]
+Type=simple
+User=hazem
+Group=hazem
+ExecStart=/usr/bin/bash /home/hazem/.local/share/flagship-scraping/bin/retailer-warp.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

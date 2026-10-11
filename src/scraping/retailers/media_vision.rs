@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 
 static CONFIG: LazyLock<RetailerConfig> = LazyLock::new(|| {
     RetailerConfigBuilder {
-        web_client_type: WebClientType::HttpClient,
+        web_client_type: WebClientType::PersistentBrowser,
         name: "MediaVision",
         nav_sel: "nav.pagination ul.page-list li",
         product_sel: "div.products article[data-id-product]",

@@ -1,0 +1,20 @@
+[Unit]
+Description=Flagship persistent retailer Chromium
+Wants=flagship-warp.service
+After=flagship-warp.service
+
+[Service]
+Type=exec
+User=hazem
+Group=hazem
+ExecStart=/usr/bin/bash /home/hazem/.local/share/flagship-scraping/bin/retailer-browser.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillMode=control-group
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

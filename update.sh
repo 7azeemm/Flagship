@@ -62,6 +62,8 @@ main() {
 
     printf '%s\n' 'Building the Rust release binary...'
     cargo build --release --locked --jobs "$flagship_jobs"
+    printf '%s\n' 'Updating the retailer browser and proxy services...'
+    bash deploy/install-retailer-services.sh
     printf '%s\n' 'Update and build complete.'
     printf '%s\n' 'Verifying the new systemd service files...'
     # Verify before replacing installed units or restarting any services.

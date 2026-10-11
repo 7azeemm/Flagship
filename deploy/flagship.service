@@ -1,7 +1,7 @@
 [Unit]
 Description=Flagship website and API
-After=network.target postgresql.service
-Wants=postgresql.service flagship-directus.service
+After=network.target postgresql.service flagship-browser.service
+Wants=postgresql.service flagship-directus.service flagship-browser.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
