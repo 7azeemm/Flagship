@@ -141,3 +141,9 @@ FlagShip's original code and documentation use the **MIT License**. In practical
 This license does not grant rights to retailer names, trademarks, product images, listings, collected data, or third-party dependencies. The optional Directus dependency uses its own MSCL license and is not covered by FlagShip's MIT license. No production catalog data is redistributed here.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## Support
+
+FlagShip is preserved as an open-source project for learning, exploration, and reuse. If you find the project helpful or appreciate the engineering work behind it, you can support its preservation with a one-time contribution.
+
+[![Buy Me a Coffee](https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png)](https://buymeacoffee.com/flagship.tn)
