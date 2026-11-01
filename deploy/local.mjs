@@ -325,7 +325,7 @@ async function main() {
   if (['setup', 'directus', 'production-directus', 'all', 'reset'].includes(mode) && version[0] !== 22) {
     throw new Error('This Directus version requires Node.js 22 for its native dependencies. Run start.bat to use state/node22, or install Node.js 22 LTS.');
   }
-  if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See deploy/README.md.');
+  if (!existsSync(join(root, '.env'))) throw new Error('Create the root .env first. See docs/setup.md.');
   settings = { ...parseEnv(readFileSync(join(root, '.env'), 'utf8')), ...process.env };
   try { database = new URL(required('DATABASE_URL')); } catch { throw new Error('DATABASE_URL must be a valid PostgreSQL connection URL.'); }
   if (!['postgres:', 'postgresql:'].includes(database.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(database.hostname)

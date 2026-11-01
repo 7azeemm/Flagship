@@ -1,4 +1,5 @@
 /target
+/.idea/
 /data.json
 .idea/dataSources
 /reports/
@@ -7,5 +8,6 @@
 /data
 /state
 /backups
-/.env
+/.env*
+!/.env.example
 /deploy/directus/node_modules/
