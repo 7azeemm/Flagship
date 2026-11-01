@@ -17,27 +17,17 @@
 - Save wishlists and email price alerts with an account; Google sign-in is optional.
 - Send optional Discord scan notifications and manage catalog data through an optional Directus staff interface.
 
-**Planned, not implemented:** PC builder and marketplace experiences. The roadmap voting page exists; those proposed products do not.
+**Planned, not implemented:** PC builder and Marketplace, API, Performance Benchmarks...
 
 At its peak, FlagShip's catalog contained approximately **40,000 products**. The production catalog is not included in this repository.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td align="center"><a href="assets/catalog-and-filters.png"><img src="assets/catalog-and-filters.png" width="100%" alt="FlagShip catalog with product filters and grouped retailer offers"></a></td>
-    <td align="center"><a href="assets/retailer-landscape.png"><img src="assets/retailer-landscape.png" width="100%" alt="Retailer price and stock comparison"></a></td>
-    <td align="center"><a href="assets/price-history.png"><img src="assets/price-history.png" width="100%" alt="Historical price movement analytics"></a></td>
-  </tr>
-</table>
 
 ## Technology
 
 
-| Backend                          | Frontend                   | Data and operations               |
-| -------------------------------- | -------------------------- | --------------------------------- |
-| Rust 2024, Tokio, Axum           | React 19, TypeScript, Vite | PostgreSQL, SQLx migrations       |
-| `reqwest`, `scraper`, Playwright | Tailwind CSS, Lucide       | HTTP and Chromium-backed scraping |
+| Backend                      | Frontend                   | Data and operations               |
+| ---------------------------- | -------------------------- | --------------------------------- |
+| Rust 2024, Tokio, Axum       | React 19, TypeScript, Vite | PostgreSQL, SQLx migrations       |
+| reqwest, scraper, Playwright | Tailwind CSS, Lucide       | HTTP and Chromium-backed scraping |
 
 ## Architecture
 
@@ -55,6 +45,14 @@ flowchart LR
 ```
 
 Each adapter handles a retailer's page structure and pagination. Shared fetch clients, category parsers, product models, scan reports, and error tracking connect those adapters to the catalog and API. Retailer markup and access behavior change often, so integrations may need updates before they work against current sites.
+
+## Screenshots
+
+![FlagShip catalog with product filters and grouped retailer offers](assets/catalog-and-filters.png)
+
+![Retailer price and stock comparison](assets/retailer-landscape.png)
+
+![Historical price movement analytics](assets/price-history.png)
 
 ## Repository layout
 
